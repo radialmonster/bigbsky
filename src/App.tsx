@@ -11,6 +11,7 @@ import {
   LayoutList,
   List,
   Loader2,
+  LogOut,
   Plus,
   X,
   ChevronLeft,
@@ -141,6 +142,9 @@ const searchLanguages = [
   { label: "French", value: "fr" },
 ];
 const recentStorageKey = "bigbsky:recent";
+const savedPostsStorageKey = "bigbsky:saved-posts";
+const composerDraftStorageKey = "bigbsky:composer-draft";
+const replyDraftPrefix = "bigbsky:reply-draft:";
 const estimatedPostHeights: Record<string, number> = {
   comfortable: 310,
   compact: 238,
@@ -175,6 +179,30 @@ function readRecentItems() {
     return Array.isArray(items) ? items.slice(0, 8) : [];
   } catch {
     return [];
+  }
+}
+
+function readSavedPosts() {
+  try {
+    const posts = JSON.parse(localStorage.getItem(savedPostsStorageKey) || "[]") as FeedPost[];
+    return Array.isArray(posts) ? posts : [];
+  } catch {
+    return [];
+  }
+}
+
+function readComposerDraft() {
+  try {
+    const draft = JSON.parse(localStorage.getItem(composerDraftStorageKey) || "{}") as {
+      posts?: string[];
+      mediaSlots?: Record<string, number>;
+    };
+    return {
+      posts: Array.isArray(draft.posts) && draft.posts.length > 0 ? draft.posts : [""],
+      mediaSlots: draft.mediaSlots ?? {},
+    };
+  } catch {
+    return { posts: [""], mediaSlots: {} };
   }
 }
 
@@ -283,7 +311,8 @@ export function App() {
   const [actorSearchState, setActorSearchState] = useState<ActorSearchState>(emptyActorSearchState);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [feedMetadata, setFeedMetadata] = useState<FeedGeneratorView | null>(null);
-  const [composerText, setComposerText] = useState("");
+  const [composerDraft, setComposerDraft] = useState(() => readComposerDraft());
+  const [savedPosts, setSavedPosts] = useState<FeedPost[]>(() => readSavedPosts());
   const [imageViewer, setImageViewer] = useState<ImageViewerState>(null);
   const [densityByContext, setDensityByContext] = useState<Record<string, string>>(() => readDensityPreferences());
   const [recentItems, setRecentItems] = useState<RecentItem[]>(() => readRecentItems());
@@ -839,7 +868,8 @@ export function App() {
     await clearOAuthSessionStorage();
     setDensityByContext({});
     setRecentItems([]);
-    setComposerText("");
+    setComposerDraft({ posts: [""], mediaSlots: {} });
+    setSavedPosts([]);
     feedCacheRef.current = {};
     feedMetadataCacheRef.current = {};
     profileCacheRef.current = {};
@@ -899,6 +929,15 @@ export function App() {
     });
   }
 
+  function toggleSavedPost(post: FeedPost) {
+    setSavedPosts((current) => {
+      const exists = current.some((savedPost) => savedPost.uri === post.uri);
+      const next = exists ? current.filter((savedPost) => savedPost.uri !== post.uri) : [post, ...current].slice(0, 100);
+      localStorage.setItem(savedPostsStorageKey, JSON.stringify(next));
+      return next;
+    });
+  }
+
   function navigate(nextRoute: RouteState, path = "/") {
     window.history.pushState(null, "", path);
     setRoute(nextRoute);
@@ -934,6 +973,11 @@ export function App() {
       });
       navigate(routeState, "/feeds");
       requestAnimationFrame(() => document.querySelector<HTMLInputElement>(".feed-search")?.focus());
+      return;
+    }
+
+    if (item === "Profile" && authState.session) {
+      openProfile(authState.session);
       return;
     }
 
@@ -1107,6 +1151,16 @@ export function App() {
             );
           })}
         </nav>
+        {authState.session && (
+          <div className="rail-account" aria-label="Signed-in account">
+            <button type="button" title={`Open @${authState.session.handle}`} onClick={() => openProfile(authState.session as Profile)}>
+              <Avatar profile={authState.session} />
+            </button>
+            <button type="button" title="Sign out" onClick={handleSignOut}>
+              <LogOut size={17} />
+            </button>
+          </div>
+        )}
         <button className="compose-button" type="button" title="New post">
           <Send size={20} />
         </button>
@@ -1186,6 +1240,17 @@ export function App() {
             onOpenPost={openPost}
             onOpenProfile={openProfile}
             onLoadBranch={loadThreadBranch}
+            onToggleSaved={toggleSavedPost}
+            savedUris={new Set(savedPosts.map((post) => post.uri))}
+          />
+        ) : route.kind === "surface" && route.name === "saved" ? (
+          <SavedPostsView
+            posts={savedPosts}
+            savedUris={new Set(savedPosts.map((post) => post.uri))}
+            onOpenImage={setImageViewer}
+            onOpenPost={openPost}
+            onOpenProfile={openProfile}
+            onToggleSaved={toggleSavedPost}
           />
         ) : route.kind === "surface" ? (
           <SurfaceView
@@ -1193,6 +1258,7 @@ export function App() {
             name={route.name}
             density={density}
             recentCount={recentItems.length}
+            savedPostCount={savedPosts.length}
             savedPreferenceCount={Object.keys(densityByContext).length}
             onClearLocalData={clearLocalReaderData}
             onOpenSearch={() => navigate({ kind: "search" }, "/search")}
@@ -1212,6 +1278,8 @@ export function App() {
             onOpenImage={setImageViewer}
             onOpenPost={openPost}
             onOpenProfile={openProfile}
+            savedUris={new Set(savedPosts.map((post) => post.uri))}
+            onToggleSaved={toggleSavedPost}
             onQueryChange={setGlobalSearchText}
             onSearch={submitSearch}
             onClearSearch={clearSearch}
@@ -1252,6 +1320,8 @@ export function App() {
                 onOpenImage={setImageViewer}
                 onOpenPost={openPost}
                 onOpenProfile={openProfile}
+                savedUris={new Set(savedPosts.map((post) => post.uri))}
+                onToggleSaved={toggleSavedPost}
                 onRenderedRowsChange={setVirtualRenderedRows}
               >
                 {feedState.cursor && (
@@ -1269,8 +1339,8 @@ export function App() {
           >
             <FeedDetailHeader source={activeSource} metadata={feedMetadata} />
             <Composer
-              text={composerText}
-              onTextChange={setComposerText}
+              draft={composerDraft}
+              onDraftChange={setComposerDraft}
             />
             {feedState.status === "loading" && <LoadingState label="Loading public Bluesky posts" />}
             {feedState.status === "error" && <ErrorState message={feedState.error || "Feed failed to load."} />}
@@ -1283,6 +1353,8 @@ export function App() {
                 onOpenImage={setImageViewer}
                 onOpenPost={openPost}
                 onOpenProfile={openProfile}
+                savedUris={new Set(savedPosts.map((post) => post.uri))}
+                onToggleSaved={toggleSavedPost}
                 onRenderedRowsChange={setVirtualRenderedRows}
               >
                 {feedState.cursor && (
@@ -1354,7 +1426,9 @@ function VirtualPostList({
   onOpenImage,
   onOpenPost,
   onOpenProfile,
+  onToggleSaved,
   onRenderedRowsChange,
+  savedUris,
 }: {
   children?: React.ReactNode;
   containerRef: RefObject<HTMLDivElement | null>;
@@ -1363,7 +1437,9 @@ function VirtualPostList({
   onOpenImage: (image: ImageViewerState) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
+  onToggleSaved: (post: FeedPost) => void;
   onRenderedRowsChange: (count: number) => void;
+  savedUris: Set<string>;
 }) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const [viewport, setViewport] = useState({ height: 900, top: 0 });
@@ -1420,6 +1496,8 @@ function VirtualPostList({
           onOpenImage={onOpenImage}
           onOpenPost={onOpenPost}
           onOpenProfile={onOpenProfile}
+          isSaved={savedUris.has(item.post.uri)}
+          onToggleSaved={onToggleSaved}
         />
       ))}
       <div style={{ height: afterHeight }} />
@@ -1433,6 +1511,7 @@ function SurfaceView({
   name,
   density,
   recentCount,
+  savedPostCount,
   savedPreferenceCount,
   onClearLocalData,
   onOpenSearch,
@@ -1443,6 +1522,7 @@ function SurfaceView({
   name: string;
   density: string;
   recentCount: number;
+  savedPostCount: number;
   savedPreferenceCount: number;
   onClearLocalData: () => void | Promise<void>;
   onOpenSearch: () => void;
@@ -1559,6 +1639,10 @@ function SurfaceView({
               <div>
                 <dt>Recent trail items</dt>
                 <dd>{recentCount.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Saved posts</dt>
+                <dd>{savedPostCount.toLocaleString()}</dd>
               </div>
               <div>
                 <dt>Storage scope</dt>
@@ -1773,45 +1857,60 @@ function ProfileDetailHeader({
 }
 
 function Composer({
-  text,
-  onTextChange,
+  draft,
+  onDraftChange,
 }: {
-  text: string;
-  onTextChange: (value: string) => void;
+  draft: { posts: string[]; mediaSlots: Record<string, number> };
+  onDraftChange: (draft: { posts: string[]; mediaSlots: Record<string, number> }) => void;
 }) {
-  const [extraPosts, setExtraPosts] = useState<string[]>([]);
-  const [mediaSlots, setMediaSlots] = useState<Record<number, number>>({});
-  const drafts = [text, ...extraPosts];
-  const overLimit = drafts.some((draft) => draft.length > 300);
-  const hasContent = drafts.some((draft) => draft.trim().length > 0) || Object.values(mediaSlots).some((count) => count > 0);
+  const drafts = draft.posts.length > 0 ? draft.posts : [""];
+  const mediaSlots = draft.mediaSlots;
+  const overLimit = drafts.some((postDraft) => postDraft.length > 300);
+  const hasContent = drafts.some((postDraft) => postDraft.trim().length > 0) || Object.values(mediaSlots).some((count) => count > 0);
 
-  function updateDraft(index: number, value: string) {
-    if (index === 0) {
-      onTextChange(value);
-      return;
+  useEffect(() => {
+    if (hasContent) {
+      localStorage.setItem(composerDraftStorageKey, JSON.stringify({ posts: drafts, mediaSlots }));
+    } else {
+      localStorage.removeItem(composerDraftStorageKey);
     }
+  }, [drafts, hasContent, mediaSlots]);
 
-    setExtraPosts((current) => current.map((draft, draftIndex) => (draftIndex === index - 1 ? value : draft)));
-  }
-
-  function removeDraft(index: number) {
-    setExtraPosts((current) => current.filter((_, draftIndex) => draftIndex !== index - 1));
-    setMediaSlots((current) => {
-      const next: Record<number, number> = {};
-      Object.entries(current).forEach(([key, value]) => {
-        const numericKey = Number(key);
-        if (numericKey < index) {
-          next[numericKey] = value;
-        } else if (numericKey > index) {
-          next[numericKey - 1] = value;
-        }
-      });
-      return next;
+  function setDrafts(nextPosts: string[], nextMediaSlots = mediaSlots) {
+    onDraftChange({
+      posts: nextPosts.length > 0 ? nextPosts : [""],
+      mediaSlots: nextMediaSlots,
     });
   }
 
+  function updateDraft(index: number, value: string) {
+    setDrafts(drafts.map((postDraft, draftIndex) => (draftIndex === index ? value : postDraft)));
+  }
+
+  function removeDraft(index: number) {
+    const nextMediaSlots: Record<string, number> = {};
+    Object.entries(mediaSlots).forEach(([key, value]) => {
+      const numericKey = Number(key);
+      if (numericKey < index) {
+        nextMediaSlots[numericKey] = value;
+      } else if (numericKey > index) {
+        nextMediaSlots[numericKey - 1] = value;
+      }
+    });
+    setDrafts(drafts.filter((_, draftIndex) => draftIndex !== index), nextMediaSlots);
+  }
+
   function attachImage(index: number) {
-    setMediaSlots((current) => ({ ...current, [index]: Math.min((current[index] ?? 0) + 1, 4) }));
+    onDraftChange({
+      posts: drafts,
+      mediaSlots: { ...mediaSlots, [index]: Math.min((mediaSlots[index] ?? 0) + 1, 4) },
+    });
+  }
+
+  function clearDraft() {
+    const emptyDraft = { posts: [""], mediaSlots: {} };
+    localStorage.removeItem(composerDraftStorageKey);
+    onDraftChange(emptyDraft);
   }
 
   return (
@@ -1854,11 +1953,12 @@ function Composer({
         })}
       </div>
       <div className="composer-footer">
-        <button type="button" onClick={() => setExtraPosts((current) => [...current, ""])} title="Add post to thread">
+        <span>{hasContent ? "Draft autosaved locally" : "No local draft"}</span>
+        <button type="button" onClick={() => setDrafts([...drafts, ""])} title="Add post to thread">
           <Plus size={17} /> Add post
         </button>
-        <button type="button" disabled>
-          Drafts
+        <button type="button" onClick={clearDraft} disabled={!hasContent}>
+          Clear draft
         </button>
         <button type="button" disabled={overLimit || !hasContent}>
           Post All
@@ -1896,12 +1996,56 @@ function SearchBox({
   );
 }
 
+function SavedPostsView({
+  posts,
+  savedUris,
+  onOpenImage,
+  onOpenPost,
+  onOpenProfile,
+  onToggleSaved,
+}: {
+  posts: FeedPost[];
+  savedUris: Set<string>;
+  onOpenImage: (image: ImageViewerState) => void;
+  onOpenPost: (post: FeedPost) => void;
+  onOpenProfile: (profile: Profile) => void;
+  onToggleSaved: (post: FeedPost) => void;
+}) {
+  return (
+    <div className="timeline comfortable">
+      <section className="surface-placeholder">
+        <h2>Saved</h2>
+        <p>Saved posts are stored only in this browser and can be cleared from Settings.</p>
+      </section>
+      {posts.length === 0 ? (
+        <EmptyState title="No saved posts yet" message="Use the save action on loaded posts to build a local saved timeline." />
+      ) : (
+        <section className="saved-posts-list" aria-label="Saved posts">
+          {posts.map((post) => (
+            <PostCard
+              item={{ post }}
+              key={post.uri}
+              isSaved={savedUris.has(post.uri)}
+              onOpenImage={onOpenImage}
+              onOpenPost={onOpenPost}
+              onOpenProfile={onOpenProfile}
+              onToggleSaved={onToggleSaved}
+            />
+          ))}
+        </section>
+      )}
+    </div>
+  );
+}
+
 function SearchView({
   actorSearchState,
   feedSources,
   language,
+  onToggleSaved,
   query,
   searchState,
+  savedUris,
   sort,
   tab,
   onLoadMore,
@@ -1925,6 +2069,7 @@ function SearchView({
   tab: (typeof searchTabs)[number];
   onLoadMore: () => void;
   onLanguageChange: (language: string) => void;
+  onToggleSaved: (post: FeedPost) => void;
   onOpenFeed: (source: FeedSource) => void;
   onOpenImage: (image: ImageViewerState) => void;
   onOpenPost: (post: FeedPost) => void;
@@ -1934,6 +2079,7 @@ function SearchView({
   onClearSearch: () => void;
   onSortChange: (sort: "top" | "latest") => void;
   onTabChange: (tab: (typeof searchTabs)[number]) => void;
+  savedUris: Set<string>;
 }) {
   const feedResults = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -2067,6 +2213,8 @@ function SearchView({
                   onOpenImage={onOpenImage}
                   onOpenPost={onOpenPost}
                   onOpenProfile={onOpenProfile}
+                  isSaved={savedUris.has(post.uri)}
+                  onToggleSaved={onToggleSaved}
                 />
               ))}
               {searchState.cursor && (
@@ -2134,15 +2282,19 @@ function FeedDetailHeader({ source, metadata }: { source: FeedSource; metadata: 
 }
 
 function PostCard({
+  isSaved = false,
   item,
   onOpenImage,
   onOpenPost,
   onOpenProfile,
+  onToggleSaved,
 }: {
+  isSaved?: boolean;
   item: FeedItem;
   onOpenImage?: (image: ImageViewerState) => void;
   onOpenPost?: (post: FeedPost) => void;
   onOpenProfile?: (profile: Profile) => void;
+  onToggleSaved?: (post: FeedPost) => void;
 }) {
   const post = item.post;
   const images = getEmbedImages(post.embed);
@@ -2278,6 +2430,14 @@ function PostCard({
         <span>
           <Bell size={16} /> {post.likeCount ?? 0}
         </span>
+        <button
+          className={isSaved ? "saved" : ""}
+          type="button"
+          onClick={() => onToggleSaved?.(post)}
+          title={isSaved ? "Remove from saved" : "Save post locally"}
+        >
+          <Bookmark size={16} /> {isSaved ? "Saved" : "Save"}
+        </button>
       </footer>
     </article>
   );
@@ -2428,6 +2588,8 @@ function ThreadView({
   onLoadBranch,
   onOpenPost,
   onOpenProfile,
+  onToggleSaved,
+  savedUris,
 }: {
   thread: { status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string };
   loadingBranches: Record<string, boolean>;
@@ -2435,11 +2597,30 @@ function ThreadView({
   onLoadBranch: (uri: string) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
+  onToggleSaved: (post: FeedPost) => void;
+  savedUris: Set<string>;
 }) {
   const [expandedBranches, setExpandedBranches] = useState<Record<string, boolean>>({});
-  const [replyText, setReplyText] = useState("");
   const rootPost = findFirstThreadPost(thread.node);
+  const replyDraftKey = rootPost ? `${replyDraftPrefix}${rootPost.uri}` : "";
+  const [replyText, setReplyText] = useState("");
   const remainingReplyChars = 300 - replyText.length;
+
+  useEffect(() => {
+    setReplyText(replyDraftKey ? localStorage.getItem(replyDraftKey) || "" : "");
+  }, [replyDraftKey]);
+
+  useEffect(() => {
+    if (!replyDraftKey) {
+      return;
+    }
+
+    if (replyText.trim()) {
+      localStorage.setItem(replyDraftKey, replyText);
+    } else {
+      localStorage.removeItem(replyDraftKey);
+    }
+  }, [replyDraftKey, replyText]);
 
   if (thread.status === "loading") {
     return <LoadingState label="Loading thread" />;
@@ -2504,6 +2685,7 @@ function ThreadView({
       {renderThreadNode(thread.node, 0, expandedBranches, (uri) =>
         setExpandedBranches((current) => ({ ...current, [uri]: !current[uri] })),
         { loadingBranches, onLoadBranch, onOpenImage, onOpenPost, onOpenProfile },
+        { onToggleSaved, savedUris },
       )}
     </div>
   );
@@ -2676,6 +2858,10 @@ function renderThreadNode(
     onOpenPost: (post: FeedPost) => void;
     onOpenProfile: (profile: Profile) => void;
   },
+  savedState: {
+    onToggleSaved: (post: FeedPost) => void;
+    savedUris: Set<string>;
+  },
 ): React.ReactNode {
   if (!("post" in node)) {
     return (
@@ -2700,8 +2886,10 @@ function renderThreadNode(
         onOpenImage={handlers.onOpenImage}
         onOpenPost={handlers.onOpenPost}
         onOpenProfile={handlers.onOpenProfile}
+        isSaved={savedState.savedUris.has(node.post.uri)}
+        onToggleSaved={savedState.onToggleSaved}
       />
-      {visibleReplies.map((reply) => renderThreadNode(reply, depth + 1, expandedBranches, onToggleBranch, handlers))}
+      {visibleReplies.map((reply) => renderThreadNode(reply, depth + 1, expandedBranches, onToggleBranch, handlers, savedState))}
       {replies.length > 8 && (
         <button className="load-more branch-toggle" type="button" onClick={() => onToggleBranch(node.post.uri)}>
           {isExpanded ? "Show fewer replies" : `Show ${hiddenReplyCount} more replies`}

@@ -998,7 +998,7 @@ Request budget mindset:
 - Handle OAuth callback parsing, state validation, token exchange, session restore, and refresh in browser code or the OAuth SDK without a BigBSky backend. Status: partial; the app lazy-loads `@atproto/oauth-client-browser` for known stored sessions, callbacks, sign-in, and sign-out, and avoids loading OAuth chunks on cold signed-out reader visits. End-to-end production token exchange still needs verification.
 - Persist session locally. Status: partial; the SDK-managed IndexedDB store is used and BigBSky records the active DID/handle in `bigbsky:auth:*` local keys for restore. Reload and multi-tab verification remain pending.
 - Show signed-in account identity. Status: first pass implemented after SDK restore/callback by fetching the signed-in profile through `@atproto/api` and showing handle/display name/avatar in the account panel and Settings.
-- Add visible sign-out in account/profile menu and Settings. Status: partial; right-rail account panel and Settings account panel expose sign-out when a session is present. Left-rail/profile-menu placement remains pending.
+- Add visible sign-out in account/profile menu and Settings. Status: partial; right-rail account panel, Settings account panel, and signed-in left rail expose sign-out when a session is present. Rich account switcher placement remains pending.
 - Sign-out must clear local OAuth session state, account-specific cache, and account-specific browser-local data without needing a BigBSky backend. Status: partial; sign-out now clears `bigbsky:auth:*` keys and the SDK OAuth IndexedDB store after attempting revocation, and Settings local data cleanup also clears browser reader/auth state. Account-scoped query cache clearing will expand with signed-in reads.
 - Sign-out should attempt OAuth revocation where supported, but local sign-out must still work if revocation fails. Status: first pass implemented with SDK `revoke()` attempt and local cleanup fallback.
 - Verify reload persistence and multi-tab behavior.
@@ -1013,26 +1013,26 @@ Request budget mindset:
 - Feed organization that supports topic/community-style browsing while retaining Bluesky terminology.
 - Notifications.
 - Personal feeds/lists.
-- Saved posts.
+- Saved posts. Status: first pass implemented as a browser-local saved timeline under `/saved`; post cards can save/remove loaded public posts locally without a backend or account write.
 - Search and trending topics.
 - Profile/self-profile surfaces.
-- Account switcher placeholder and sign-out.
-- Inline composer/input at the top of the active Feed timeline.
-- Image attachment support for the inline composer.
-- Multi-post/thread composition from the inline composer.
-- Drafts and Post All support where feasible.
-- 300-character-per-post limit counter and validation.
+- Account switcher placeholder and sign-out. Status: partial; signed-in identity now appears in the left rail with profile access and visible sign-out, plus right-rail and Settings account controls.
+- Inline composer/input at the top of the active Feed timeline. Status: implemented as a local composer placeholder with autosaved browser-local draft state.
+- Image attachment support for the inline composer. Status: first pass implemented with per-post local media placeholders capped at four images while authenticated upload remains pending.
+- Multi-post/thread composition from the inline composer. Status: implemented locally with add/remove post controls and per-post validation.
+- Drafts and Post All support where feasible. Status: partial; composer drafts autosave locally and can be cleared, while authenticated Drafts/Post All write behavior remains disabled until OAuth posting is implemented.
+- 300-character-per-post limit counter and validation. Status: implemented for each local composer post and reply draft.
 - Menu destination views for Explore, Notifications, Feeds, Lists, Saved, Profile, and Settings. Status: first pass implemented with static SPA routes for Explore, Feeds, Notifications, Chat, Lists, Saved, Profile, and Settings; each route now shows structured client-only section cards, Explore links into public search, and Settings has local appearance/data/account panels.
 - Chat entry point and empty/message-list state, with full DM behavior deferred until privacy/API handling is clear. Status: first pass implemented as a static SPA placeholder route that explicitly defers DM behavior.
 - Feed detail header with Feed name, creator, count, options, and active Feed timeline below. Status: first pass implemented for public Feed Generator metadata, creator handle, like count, Feed URI key, description, avatar, and active timeline below; client-only options now include disabled Pin feed, Copy URI, and Open on Bluesky controls.
-- Post/thread detail view with reply composer, stats, repost/quote/like/save links, and reply permissions. Status: partial; standalone threads now show conversation metadata, reply/repost/quote/like counts, timestamp, reply-permission text, and a local 300-character reply composer placeholder; authenticated reply/write actions remain pending.
+- Post/thread detail view with reply composer, stats, repost/quote/like/save links, and reply permissions. Status: partial; standalone threads now show conversation metadata, reply/repost/quote/like counts, timestamp, reply-permission text, local save actions, and a browser-local 300-character reply draft per thread; authenticated reply/write actions remain pending.
 - Search result view with query, clear action, language selector, and Top/Latest/People/Feeds filters. Status: first pass implemented with query form, clear-query button, Posts/People/Feeds tabs, Top/Latest post results, language selector for post search, public actor search for People, and local Feed destination results for Feeds.
 - Profile view variants for self-profile and other-user profiles. Status: partial; public other-user profile routes now render a profile-specific header with stats, disabled follow/action controls, Open on Bluesky/Copy link actions, and local Posts/Replies/Media/Videos tabs over loaded public posts. Self-profile remains a signed-in placeholder until OAuth account identity exists.
 - Media, GIF/video, alt text, and content-label rendering states. Status: partial; image alt badges, video thumbnail/placeholder cards, and content-label chips now render from loaded AppView data, with full GIF/video playback controls and richer moderation states still pending.
 - Muted/blocked content handling as exposed by APIs.
 - Account-aware post rendering.
 - Wider active Feed timeline formatting while preserving endless-scroll behavior.
-- Preserve feed scroll position when opening post/thread/profile/media context.
+- Preserve feed scroll position when opening post/thread/profile/media context. Status: partial; feed/profile scroll offsets are cached locally for shell navigation while saved-post and full browser reload restoration still need verification.
 
 ### Phase 4: Account Actions
 
@@ -1061,7 +1061,7 @@ Request budget mindset:
 - Contextual right rail and preview side panel.
 - Thread reader with parent/reply context.
 - Media lightbox.
-- Saved local workspaces.
+- Saved local workspaces. Status: partial; browser-local saved posts, recent trail, per-feed density preferences, composer drafts, and reply drafts are stored under `bigbsky:*` and clearable from Settings.
 - Per-column source selection: Home, Discover, Following, feed, list, search, profile, mentions, notifications, saved.
 - Per-Feed layout memory. Status: implemented for density mode.
 - Smart post grouping by repeated link/topic/quote activity. Status: first pass implemented in the right rail from already-loaded posts by repeated links, quoted post URIs, reply roots, and normalized text.
@@ -1137,7 +1137,7 @@ Request budget mindset:
 - At 1920px, the active endless-scroll Feed timeline uses width better than `bsky.app`'s narrow mobile column.
 - At 2560px, the feed presentation becomes richer or more useful instead of expanding empty gutters.
 - No user data is sent to a backend we control.
-- Browser-local preferences/drafts/history can be cleared locally and are not persisted on our infrastructure.
+- Browser-local preferences/drafts/history can be cleared locally and are not persisted on our infrastructure. Status: implemented for density preferences, recent trail, saved posts, composer draft, reply drafts, and OAuth/local auth markers through the Settings clear-data control.
 - Desktop screenshot at 1920x1080 shows the intended wide layout.
 - Mobile viewport remains usable enough, even though desktop is the priority.
 - Scrolling a long Feed keeps DOM node count bounded and does not degrade after several loaded pages.

@@ -118,6 +118,32 @@ button {
   transform: translateX(0);
 }
 
+.rail-account {
+  display: grid;
+  gap: 8px;
+}
+
+.rail-account button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 8px;
+  background: var(--app-surface-2);
+  color: var(--app-text-muted);
+}
+
+.rail-account .avatar {
+  width: 34px;
+  height: 34px;
+}
+
+.rail-account button:hover {
+  color: var(--app-text);
+  background: rgba(5, 96, 255, 0.18);
+}
+
 .compose-button {
   background: var(--bsky-blue);
   color: #fff;
@@ -565,9 +591,17 @@ button {
 .composer-footer {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 12px;
+}
+
+.composer-footer span {
+  margin-right: auto;
+  color: var(--app-text-soft);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .composer-footer button:last-child {
@@ -1322,6 +1356,16 @@ button {
 
 .post-actions button:hover {
   color: var(--bsky-blue-soft);
+}
+
+.post-actions button.saved {
+  color: var(--bsky-blue-soft);
+}
+
+.saved-posts-list {
+  display: grid;
+  gap: 0;
+  margin-top: 14px;
 }
 
 .thread-detail-header,
