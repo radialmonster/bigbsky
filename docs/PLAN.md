@@ -254,12 +254,16 @@ Initial performance budgets:
 - Cloudflare Pages preview deployments are public by default.
 - Target Cloudflare Pages Free compatibility for v1.
 - Root Vite/React/TypeScript app is scaffolded at the repository root, so Cloudflare can run `npm run build` and publish `dist`.
-- Current root app includes a desktop reader shell, grouped Feed selector, right context rail, local composer UI with 300-character validation, direct public Bluesky feed-generator loading for Home, direct public author-feed loading for `/profile/:handleOrDid`, standalone post-thread route loading, static `_headers`, static `_redirects`, and a build-output audit for forbidden server/runtime artifacts.
+- Current root app includes a desktop reader shell, grouped/filterable Feed selector, right context rail, browser-local recent trail, local composer UI with 300-character validation, per-feed density preferences, direct public Bluesky feed-generator loading for Home, direct public author-feed loading for `/profile/:handleOrDid`, standalone post-thread route loading, public post search at `/search?q=...`, static `_headers`, static `_redirects`, and a build-output audit for forbidden server/runtime artifacts.
 - Latest local production build passed with `npm run build`; audit result: static-only `dist` output.
 - Default visual theme is dark, using Bluesky brand colors as anchors: Blue `#0560FF`, Light Blue `#75AFFF`, Dark Gray `#232E3E`, and Light Gray `#F9FAFB`.
 - `https://bigbsky.pages.dev/` and `https://bigbsky.com/` are serving the static app. Clean profile routes such as `https://bigbsky.com/profile/radialmonster.com` return the SPA shell through static fallback.
 - Signed-out Home feed has been tested working against public feed-generator sources. Current default sources intentionally avoid official feed generators that returned `502` signed out, and avoid `What's Hot Classic` because it surfaced NSFW content despite returning `200`.
 - Signed-out profile routes are implemented for Bluesky-style URLs such as `/profile/radialmonster.com`, `/profile/edutopia.org`, `/profile/standardissuecomputing.blog`, `/profile/foxes.hourly.media`, and `/profile/nsiabblog.bsky.social`; these use `app.bsky.actor.getProfile` plus `app.bsky.feed.getAuthorFeed` directly from the browser.
+- Signed-out post/thread routes are clickable from feed/search cards and direct-load through `/profile/:handleOrDid/post/:rkey`. Verified example: `/profile/suewho82.bsky.social/post/3mnpjvwbxq22b` rendered the root post plus nested replies through the static app shell.
+- Signed-out public post search is implemented at `/search?q=...`, including Top/Latest sort, post-card results, pagination, profile links, thread links, and browser-local recent search entries. Search typing does not issue a request until the form is submitted.
+- Feed selector filtering is implemented as local browser filtering over known feed sources; it does not make network requests per keystroke.
+- Per-feed density memory is implemented in localStorage under `bigbsky:density-by-context`; recent feed/profile/thread/search trail is implemented in localStorage under `bigbsky:recent`.
 - Feed image cards use Bluesky `thumb` URLs, display without cropping or forced aspect ratios, and constrain only to container width and viewport height. Clicking an image opens the Bluesky `fullsize` URL in an in-app viewer constrained to the viewport.
 - Multi-image posts support image-viewer navigation with left/right arrow keys, on-screen arrow buttons, and clicking the left/right side of the overlay.
 - The first fixed-height virtual window was removed after natural-height images caused scroll jumps. Current Phase 1 renders loaded posts directly; measured-row virtualization should be added later before large-feed/power-user polish.
@@ -345,6 +349,7 @@ Public reads:
   - Feed generator output.
   - Post/thread lookup.
   - Search, if public endpoint behavior is acceptable.
+- Search endpoint finding: `https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts` returned `403 Forbidden` during browser/static testing, while `https://api.bsky.app/xrpc/app.bsky.feed.searchPosts` returned CORS-enabled public results. Current app keeps feed/profile/thread reads on `public.api.bsky.app` and uses `api.bsky.app` only for public post search.
 
 Authenticated reads/actions:
 
@@ -944,42 +949,42 @@ Request budget mindset:
 
 ### Phase 1: Static Reader Shell
 
-- Create Vite/React/TypeScript app.
-- Build responsive desktop-first shell.
+- Create Vite/React/TypeScript app. Status: implemented.
+- Build responsive desktop-first shell. Status: implemented.
 - Ship one static app document plus a small number of hashed assets.
 - Establish bundle budgets before adding OAuth or write-heavy features.
-- Add static `_headers`/`_redirects` for cache policy and SPA fallback routing as needed.
-- Add a build-output quota audit that fails if `functions/`, `_worker.js`, server bundles, SSR manifests, middleware, API routes, or edge runtime artifacts are generated.
+- Add static `_headers`/`_redirects` for cache policy and SPA fallback routing as needed. Status: implemented.
+- Add a build-output quota audit that fails if `functions/`, `_worker.js`, server bundles, SSR manifests, middleware, API routes, or edge runtime artifacts are generated. Status: implemented.
 - Add a manual Cloudflare verification step after deploy: normal reader browsing should show zero Pages Function/Worker invocations.
-- Establish the primary layout regions: left sidebar, improved feed selector, right sidebar, and central endless-scroll feed.
-- Build the active Feed timeline as the central product surface.
+- Establish the primary layout regions: left sidebar, improved feed selector, right sidebar, and central endless-scroll feed. Status: implemented.
+- Build the active Feed timeline as the central product surface. Status: implemented.
 - Implement timeline virtualization before large-feed polish so card/layout choices are tested against the real scrolling model.
 - Reserve stable media/embed dimensions in post cards to reduce layout shift during image, video, GIF, and link-card loading.
-- Include the signed-in inline composer/input at the top of the active Feed timeline.
+- Include the signed-in inline composer/input at the top of the active Feed timeline. Status: UI placeholder implemented for signed-out/static shell.
 - Include composer image attachment UI and upload/posting flow.
 - Include multi-post/thread composer UI.
 - Include per-post media attachment UI and upload/posting flow.
-- Include 300-character counter and validation per post in composer UI.
-- Experiment with wider post/card formats for text, media, link cards, quote posts, and threads.
-- Add public timeline/feed/profile/thread data loading.
-- Add standalone post-thread data loading for `/profile/:handleOrDid/post/:rkey`, including direct-open support for Bluesky-style copied post URLs.
-- Render standalone post routes as full threaded conversation pages: root post first, then nested replies/comments, with branch expansion for additional replies when Bluesky truncates the initial thread response.
+- Include 300-character counter and validation per post in composer UI. Status: implemented for the current placeholder composer.
+- Experiment with wider post/card formats for text, media, link cards, quote posts, and threads. Status: implemented as first pass; needs more embed/quote/content-label coverage.
+- Add public timeline/feed/profile/thread data loading. Status: implemented.
+- Add standalone post-thread data loading for `/profile/:handleOrDid/post/:rkey`, including direct-open support for Bluesky-style copied post URLs. Status: implemented.
+- Render standalone post routes as full threaded conversation pages: root post first, then nested replies/comments, with branch expansion for additional replies when Bluesky truncates the initial thread response. Status: partial; nested replies render, explicit branch expansion controls are still placeholder-only.
 - Add normalized in-memory entities for loaded posts, authors, embeds, and Feed metadata before building right-rail previews.
 - Add request cancellation and source-level cache retention so switching Feeds or previews does not produce stale renders or repeated first-page fetches.
 - Support client-side URL routes served by the single static app shell:
-  - `/`
-  - `/profile/:handleOrDid`
-  - `/profile/:handleOrDid/post/:rkey`
+  - `/` Status: implemented.
+  - `/profile/:handleOrDid` Status: implemented.
+  - `/profile/:handleOrDid/post/:rkey` Status: implemented.
   - `/feed/:uri`
-  - `/search`
-- Add loading, empty, error, and rate-limit states.
-- Add local layout preferences.
-- Apply local density/layout preferences before initial timeline paint.
+  - `/search` Status: implemented with `q` query parameter for post search.
+- Add loading, empty, error, and rate-limit states. Status: partial; loading/empty/error implemented, rate-limit-specific UI still pending.
+- Add local layout preferences. Status: implemented for density.
+- Apply local density/layout preferences before initial timeline paint. Status: implemented for per-feed/default density.
 - Add service worker/app-shell caching once the shell stabilizes.
 - Verify repeat visits and in-app navigation do not depend on Cloudflare document reloads or paid/quota-triggering Cloudflare requests. Static asset update checks are allowed only as deliberate background checks.
 - Verify DOM size remains bounded after scrolling multiple timeline pages.
 - Verify all clean routes and OAuth callback routes are served by static SPA fallback, not by server-side handlers.
-- Verify a direct standalone post route such as `/profile/suewho82.bsky.social/post/3mnpjvwbxq22b` renders through the static SPA shell, makes only direct Bluesky/AT Protocol data calls after load, shows the root post plus threaded replies/comments, and triggers zero Pages Function/Worker invocations.
+- Verify a direct standalone post route such as `/profile/suewho82.bsky.social/post/3mnpjvwbxq22b` renders through the static SPA shell, makes only direct Bluesky/AT Protocol data calls after load, shows the root post plus threaded replies/comments, and triggers zero Pages Function/Worker invocations. Status: local static-shell/thread rendering verified; Cloudflare dashboard zero-invocation verification still pending.
 
 ### Phase 2: OAuth Login
 
@@ -1018,7 +1023,7 @@ Request budget mindset:
 - Chat entry point and empty/message-list state, with full DM behavior deferred until privacy/API handling is clear.
 - Feed detail header with Feed name, creator, count, options, and active Feed timeline below.
 - Post/thread detail view with reply composer, stats, repost/quote/like/save links, and reply permissions.
-- Search result view with query, clear action, language selector, and Top/Latest/People/Feeds filters.
+- Search result view with query, clear action, language selector, and Top/Latest/People/Feeds filters. Status: public post search implemented with query plus Top/Latest post results; People/Feeds tabs and language selector still pending.
 - Profile view variants for self-profile and other-user profiles.
 - Media, GIF/video, alt text, and content-label rendering states.
 - Muted/blocked content handling as exposed by APIs.
@@ -1055,11 +1060,11 @@ Request budget mindset:
 - Media lightbox.
 - Saved local workspaces.
 - Per-column source selection: Home, Discover, Following, feed, list, search, profile, mentions, notifications, saved.
-- Per-Feed layout memory.
+- Per-Feed layout memory. Status: implemented for density mode.
 - Smart post grouping by repeated link/topic/quote activity.
 - Feed map grouped by topic/community-style categories.
 - Link preview reader.
-- Session history trail.
+- Session history trail. Status: implemented as a browser-local recent trail for feeds, profiles, threads, and searches.
 - Optional media strip/panel for visual Feeds.
 - Performance inspector for development builds showing active source, loaded pages, rendered rows, API requests, cache hits, and service-worker state.
 - Quota inspector for development builds showing Cloudflare document/static asset requests separately from Bluesky API requests, with a warning if any Pages Function/Worker route is detected.
