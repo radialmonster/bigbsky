@@ -2709,9 +2709,10 @@ function PostCard({
   const text = post.record.text?.trim() || "";
   const preservesLineBreaks = text.includes("\n");
   const hasRichContent = images.length > 0 || !!external || !!recordEmbed || !!video;
+  const postVariant = images.length > 0 || !!video ? "has-media" : external ? "has-link" : recordEmbed ? "has-quote" : "text-only";
 
   return (
-    <article className="post-card">
+    <article className={`post-card ${postVariant}`}>
       <header className="post-header">
         <Avatar profile={post.author} />
         <button className="author-button" type="button" onClick={() => onOpenProfile?.(post.author)}>
@@ -3243,9 +3244,32 @@ function ImageViewer({
         onClick={(event) => {
           event.stopPropagation();
           clearSelection();
-          onClose();
         }}
       />
+      <div className="image-viewer-footer" onClick={(event) => event.stopPropagation()}>
+        <div>
+          <strong>{hasMultiple ? `Image ${image.index + 1} of ${image.images.length}` : "Image"}</strong>
+          <span>{selected.alt || "No alt text provided."}</span>
+        </div>
+        <a href={selected.src} target="_blank" rel="noreferrer">
+          <LinkIcon size={15} /> Open original
+        </a>
+      </div>
+      {hasMultiple && (
+        <div className="image-viewer-thumbs" onClick={(event) => event.stopPropagation()}>
+          {image.images.map((thumb, index) => (
+            <button
+              className={index === image.index ? "selected" : ""}
+              key={`${thumb.src}:${index}`}
+              type="button"
+              onClick={() => onChange({ images: image.images, index })}
+              aria-label={`Open image ${index + 1}`}
+            >
+              <img src={thumb.src} alt="" draggable={false} />
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

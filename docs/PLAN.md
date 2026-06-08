@@ -1020,7 +1020,7 @@ Request budget mindset:
 - Post/thread detail view with reply composer, stats, repost/quote/like/save links, and reply permissions. Status: partial; standalone threads now show conversation metadata, reply/repost/quote/like counts, timestamp, reply-permission text, local save actions, and a browser-local 300-character reply draft per thread; authenticated reply/write actions remain pending.
 - Search result view with query, clear action, language selector, and Top/Latest/People/Feeds filters. Status: first pass implemented with query form, clear-query button, Posts/People/Feeds tabs, Top/Latest post results, language selector for post search, public actor search for People, and local Feed destination results for Feeds.
 - Profile view variants for self-profile and other-user profiles. Status: partial; public other-user profile routes now render a profile-specific header with stats, disabled follow/action controls, Open on Bluesky/Copy link actions, and local Posts/Replies/Media/Videos tabs over loaded public posts. Self-profile now uses the restored OAuth identity for display/stats/sign-out and can open the signed-in user's public profile reader, while account-only tabs and edit controls remain pending.
-- Media, GIF/video, alt text, and content-label rendering states. Status: partial; image alt badges, video thumbnail/placeholder cards, and content-label chips now render from loaded AppView data, with full GIF/video playback controls and richer moderation states still pending.
+- Media, GIF/video, alt text, and content-label rendering states. Status: partial; image alt badges, image-viewer alt text, video thumbnail/placeholder cards, and content-label chips now render from loaded AppView data, with full GIF/video playback controls and richer moderation states still pending.
 - Muted/blocked content handling as exposed by APIs.
 - Account-aware post rendering.
 - Wider active Feed timeline formatting while preserving endless-scroll behavior.
@@ -1047,12 +1047,12 @@ Request budget mindset:
 - Optional multiple timelines side by side for users who want it, not as the default requirement.
 - Pinned feeds/profiles/searches/notifications. Status: partial; known Feeds and searches can be pinned locally in the browser, while profile and notification pins remain pending.
 - Feed grouping, filtering, ordering, and quick switching. Status: partial; the selector supports grouped browsing, local filtering, group collapse/expand state, local Pinned shortcuts, and one-click switching without a horizontal tab strip. Manual account-backed ordering remains pending.
-- Wide post-card layout variants.
-- Media-heavy and compact reading modes.
+- Wide post-card layout variants. Status: first pass implemented; post cards are classified as text-only, media, link, or quote variants, and wide desktop viewports can split rich embeds beside author/text/action context instead of simply stretching the card.
+- Media-heavy and compact reading modes. Status: first pass implemented; density modes persist per Feed/surface, compact text-only cards use a denser two-zone desktop layout, and media mode gives image/video posts larger stable media space.
 - Sticky active Feed header.
 - Contextual right rail and preview side panel. Status: partial; the right rail adapts between Feed/profile context, link previews, recent history, Feed Map, local pinned searches, and loaded-post hashtag trends.
 - Thread reader with parent/reply context.
-- Media lightbox.
+- Media lightbox. Status: first pass implemented; image posts open in an in-app viewer with viewport-constrained fullsize media, keyboard/onscreen navigation for multi-image posts, thumbnail selection, alt text display, and an open-original action.
 - Saved local workspaces. Status: partial; browser-local saved posts, recent trail, per-feed density preferences, composer drafts, reply drafts, pinned Feeds, pinned searches, and width preferences are stored under `bigbsky:*` and clearable from Settings.
 - Per-column source selection: Home, Discover, Following, feed, list, search, profile, mentions, notifications, saved.
 - Per-Feed layout memory. Status: implemented for density mode.
@@ -1131,7 +1131,7 @@ Request budget mindset:
 - Desktop screenshot at 1920x1080 shows the intended wide layout. Status: fallback Puppeteer screenshot captured on 2026-06-08 after the auto-pagination/trending/pinned-search changes; wide rails, active timeline, right context, composer, and loaded-data trending panel rendered correctly.
 - Mobile viewport remains usable enough, even though desktop is the priority.
 - Scrolling a long Feed keeps DOM node count bounded and does not degrade after several loaded pages. Status: partial; measured-row virtualization is implemented for feed/profile timelines, and fallback Puppeteer verification confirmed 29 loaded rows with only 2-3 mounted post cards after scrolling. Several loaded-page degradation testing remains pending.
-- Media-heavy Feed cards avoid visible layout jumps by reserving stable image/video/link-card space.
+- Media-heavy Feed cards avoid visible layout jumps by reserving stable image/video/link-card space. Status: partial; media and comfortable layouts now reserve larger stable media regions, but cumulative layout-shift measurement is still pending.
 - Opening profile and thread previews reuses already-loaded post/author data before making detail requests.
 - Switching between Feeds restores cached pages and scroll position without refetching the visible page from scratch.
 - Search and Feed selector input do not send a network request for every keystroke.
