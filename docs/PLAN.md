@@ -959,7 +959,7 @@ Request budget mindset:
 - Establish the primary layout regions: left sidebar, improved feed selector, right sidebar, and central endless-scroll feed. Status: implemented.
 - Build the active Feed timeline as the central product surface. Status: implemented.
 - Implement timeline virtualization before large-feed polish so card/layout choices are tested against the real scrolling model.
-- Reserve stable media/embed dimensions in post cards to reduce layout shift during image, video, GIF, and link-card loading.
+- Reserve stable media/embed dimensions in post cards to reduce layout shift during image, video, GIF, and link-card loading. Status: partial; image cards now apply Bluesky aspect-ratio metadata and stable minimum space, link/video/GIF coverage still pending.
 - Include the signed-in inline composer/input at the top of the active Feed timeline. Status: UI placeholder implemented for signed-out/static shell.
 - Include composer image attachment UI and upload/posting flow.
 - Include multi-post/thread composer UI.
@@ -968,16 +968,16 @@ Request budget mindset:
 - Experiment with wider post/card formats for text, media, link cards, quote posts, and threads. Status: implemented as first pass; needs more embed/quote/content-label coverage.
 - Add public timeline/feed/profile/thread data loading. Status: implemented.
 - Add standalone post-thread data loading for `/profile/:handleOrDid/post/:rkey`, including direct-open support for Bluesky-style copied post URLs. Status: implemented.
-- Render standalone post routes as full threaded conversation pages: root post first, then nested replies/comments, with branch expansion for additional replies when Bluesky truncates the initial thread response. Status: partial; nested replies render, explicit branch expansion controls are still placeholder-only.
-- Add normalized in-memory entities for loaded posts, authors, embeds, and Feed metadata before building right-rail previews.
-- Add request cancellation and source-level cache retention so switching Feeds or previews does not produce stale renders or repeated first-page fetches.
+- Render standalone post routes as full threaded conversation pages: root post first, then nested replies/comments, with branch expansion for additional replies when Bluesky truncates the initial thread response. Status: partial; nested replies render and loaded reply branches can now expand/collapse locally, deeper Bluesky branch fetches for API-truncated branches still pending.
+- Add normalized in-memory entities for loaded posts, authors, embeds, and Feed metadata before building right-rail previews. Status: first pass implemented for loaded posts, author profiles, link URLs, and media-post indexes.
+- Add request cancellation and source-level cache retention so switching Feeds or previews does not produce stale renders or repeated first-page fetches. Status: implemented for feed/profile/search/thread first-page loads with session cache and route scroll restoration.
 - Support client-side URL routes served by the single static app shell:
   - `/` Status: implemented.
   - `/profile/:handleOrDid` Status: implemented.
   - `/profile/:handleOrDid/post/:rkey` Status: implemented.
-  - `/feed/:uri`
+  - `/feed/:uri` Status: implemented for known Feed source IDs and matching Feed URIs.
   - `/search` Status: implemented with `q` query parameter for post search.
-- Add loading, empty, error, and rate-limit states. Status: partial; loading/empty/error implemented, rate-limit-specific UI still pending.
+- Add loading, empty, error, and rate-limit states. Status: implemented for current public feed/search surfaces; additional labeled/blocked/deleted states still pending.
 - Add local layout preferences. Status: implemented for density.
 - Apply local density/layout preferences before initial timeline paint. Status: implemented for per-feed/default density.
 - Add service worker/app-shell caching once the shell stabilizes.

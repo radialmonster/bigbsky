@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ApiError,
   type FeedItem,
   type FeedPost,
   type Profile,
@@ -43,14 +44,14 @@ const navIcons = [Home, Compass, Bell, MessageCircle, Hash, List, Bookmark, User
 type FeedState = {
   items: FeedItem[];
   cursor?: string;
-  status: "idle" | "loading" | "ready" | "error";
+  status: "idle" | "loading" | "ready" | "error" | "rate-limit";
   error?: string;
 };
 
 type SearchState = {
   posts: FeedPost[];
   cursor?: string;
-  status: "idle" | "loading" | "ready" | "error";
+  status: "idle" | "loading" | "ready" | "error" | "rate-limit";
   error?: string;
 };
 
@@ -70,8 +71,17 @@ type RecentItem = {
   sourceId?: string;
 };
 
+type EntityCache = {
+  posts: Record<string, FeedPost>;
+  profiles: Record<string, Profile>;
+  linkUrls: string[];
+  mediaPostUris: string[];
+};
+
 const densityModes = ["comfortable", "compact", "media"];
 const recentStorageKey = "bigbsky:recent";
+const emptyFeedState: FeedState = { items: [], status: "idle" };
+const emptySearchState: SearchState = { posts: [], status: "idle" };
 
 function readDensityPreferences() {
   try {
@@ -95,6 +105,14 @@ function postPath(post: FeedPost) {
   return rkey ? `/profile/${encodeURIComponent(post.author.handle)}/post/${encodeURIComponent(rkey)}` : null;
 }
 
+function isRateLimit(error: unknown) {
+  return error instanceof ApiError && error.status === 429;
+}
+
+function rateLimitMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Bluesky rate limit reached.";
+}
+
 export function App() {
   const [route, setRoute] = useState<RouteState>(() => getRouteState());
   const [activeSourceId, setActiveSourceId] = useState(feedSources[0].id);
@@ -104,8 +122,8 @@ export function App() {
     return initialRoute.kind === "search" ? initialRoute.query || "" : "";
   });
   const [searchSort, setSearchSort] = useState<"top" | "latest">("top");
-  const [feedState, setFeedState] = useState<FeedState>({ items: [], status: "idle" });
-  const [searchState, setSearchState] = useState<SearchState>({ posts: [], status: "idle" });
+  const [feedState, setFeedState] = useState<FeedState>(emptyFeedState);
+  const [searchState, setSearchState] = useState<SearchState>(emptySearchState);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [composerText, setComposerText] = useState("");
   const [imageViewer, setImageViewer] = useState<ImageViewerState>(null);
@@ -115,8 +133,16 @@ export function App() {
     status: "idle",
   });
   const timelineRef = useRef<HTMLDivElement | null>(null);
+  const feedCacheRef = useRef<Record<string, FeedState>>({});
+  const profileCacheRef = useRef<Record<string, { feed: FeedState; profile: Profile | null }>>({});
+  const searchCacheRef = useRef<Record<string, SearchState>>({});
+  const threadCacheRef = useRef<Record<string, ThreadNode>>({});
+  const scrollCacheRef = useRef<Record<string, number>>({});
 
-  const activeSource = feedSources.find((source) => source.id === activeSourceId) ?? feedSources[0];
+  const routeFeedSource =
+    route.kind === "feed" && route.uri ? feedSources.find((source) => source.id === route.uri || source.uri === route.uri) : undefined;
+  const activeSource = routeFeedSource ?? feedSources.find((source) => source.id === activeSourceId) ?? feedSources[0];
+  const feedRoutePath = (source: FeedSource) => `/feed/${encodeURIComponent(source.id)}`;
   const densityKey = route.kind === "feed" ? `feed:${activeSource.id}` : route.kind;
   const density = densityByContext[densityKey] || densityByContext.default || "comfortable";
   const visibleSources = useMemo(() => {
@@ -137,8 +163,41 @@ export function App() {
       }, {}),
     [visibleSources],
   );
-  const loadFeed = useCallback(async (source: FeedSource, cursor?: string) => {
-    const controller = new AbortController();
+  const entityCache = useMemo<EntityCache>(() => {
+    const posts: Record<string, FeedPost> = {};
+    const profiles: Record<string, Profile> = {};
+    const linkUrls: string[] = [];
+    const mediaPostUris: string[] = [];
+
+    for (const post of [...feedState.items.map((item) => item.post), ...searchState.posts]) {
+      posts[post.uri] = post;
+      profiles[post.author.did] = post.author;
+      profiles[post.author.handle] = post.author;
+
+      const external = getExternalEmbed(post.embed);
+      if (external?.uri) {
+        linkUrls.push(external.uri);
+      }
+
+      if (getEmbedImages(post.embed).length > 0) {
+        mediaPostUris.push(post.uri);
+      }
+    }
+
+    return { posts, profiles, linkUrls, mediaPostUris };
+  }, [feedState.items, searchState.posts]);
+
+  const loadFeed = useCallback(async (source: FeedSource, cursor?: string, signal?: AbortSignal) => {
+    const cacheKey = `feed:${source.id}`;
+    if (!cursor) {
+      const cached = feedCacheRef.current[cacheKey];
+      if (cached?.status === "ready") {
+        setFeedState(cached);
+        requestAnimationFrame(() => timelineRef.current?.scrollTo({ top: scrollCacheRef.current[cacheKey] || 0 }));
+        return;
+      }
+    }
+
     setFeedState((current) => ({
       ...current,
       status: cursor ? current.status : "loading",
@@ -146,27 +205,39 @@ export function App() {
     }));
 
     try {
-      const response = await getFeed(source.uri, cursor, controller.signal);
-      setFeedState((current) => ({
-        items: cursor ? [...current.items, ...response.feed] : response.feed,
-        cursor: response.cursor,
-        status: "ready",
-      }));
+      const response = await getFeed(source.uri, cursor, signal);
+      setFeedState((current) => {
+        const next = {
+          items: cursor ? [...current.items, ...response.feed] : response.feed,
+          cursor: response.cursor,
+          status: "ready" as const,
+        };
+        feedCacheRef.current[cacheKey] = next;
+        return next;
+      });
     } catch (error) {
-      if (!controller.signal.aborted) {
+      if (!signal?.aborted) {
         setFeedState((current) => ({
           ...current,
-          status: "error",
-          error: error instanceof Error ? error.message : String(error),
+          status: isRateLimit(error) ? "rate-limit" : "error",
+          error: rateLimitMessage(error),
         }));
       }
     }
-
-    return () => controller.abort();
   }, []);
 
-  const loadProfileFeed = useCallback(async (actor: string, cursor?: string) => {
-    const controller = new AbortController();
+  const loadProfileFeed = useCallback(async (actor: string, cursor?: string, signal?: AbortSignal) => {
+    const cacheKey = `profile:${actor}`;
+    if (!cursor) {
+      const cached = profileCacheRef.current[cacheKey];
+      if (cached?.feed.status === "ready") {
+        setProfile(cached.profile);
+        setFeedState(cached.feed);
+        requestAnimationFrame(() => timelineRef.current?.scrollTo({ top: scrollCacheRef.current[cacheKey] || 0 }));
+        return;
+      }
+    }
+
     setFeedState((current) => ({
       ...current,
       status: cursor ? current.status : "loading",
@@ -175,33 +246,43 @@ export function App() {
 
     try {
       const [profileResponse, feedResponse] = await Promise.all([
-        cursor ? Promise.resolve(null) : getProfile(actor, controller.signal),
-        getAuthorFeed(actor, cursor, controller.signal),
+        cursor ? Promise.resolve(null) : getProfile(actor, signal),
+        getAuthorFeed(actor, cursor, signal),
       ]);
 
       if (profileResponse) {
         setProfile(profileResponse);
       }
-      setFeedState((current) => ({
-        items: cursor ? [...current.items, ...feedResponse.feed] : feedResponse.feed,
-        cursor: feedResponse.cursor,
-        status: "ready",
-      }));
+      setFeedState((current) => {
+        const next = {
+          items: cursor ? [...current.items, ...feedResponse.feed] : feedResponse.feed,
+          cursor: feedResponse.cursor,
+          status: "ready" as const,
+        };
+        profileCacheRef.current[cacheKey] = { feed: next, profile: profileResponse ?? profileCacheRef.current[cacheKey]?.profile ?? null };
+        return next;
+      });
     } catch (error) {
-      if (!controller.signal.aborted) {
+      if (!signal?.aborted) {
         setFeedState((current) => ({
           ...current,
-          status: "error",
-          error: error instanceof Error ? error.message : String(error),
+          status: isRateLimit(error) ? "rate-limit" : "error",
+          error: rateLimitMessage(error),
         }));
       }
     }
-
-    return () => controller.abort();
   }, []);
 
-  const loadSearch = useCallback(async (query: string, sort: "top" | "latest", cursor?: string) => {
-    const controller = new AbortController();
+  const loadSearch = useCallback(async (query: string, sort: "top" | "latest", cursor?: string, signal?: AbortSignal) => {
+    const cacheKey = `search:${sort}:${query}`;
+    if (!cursor) {
+      const cached = searchCacheRef.current[cacheKey];
+      if (cached?.status === "ready") {
+        setSearchState(cached);
+        return;
+      }
+    }
+
     setSearchState((current) => ({
       ...current,
       status: cursor ? current.status : "loading",
@@ -209,23 +290,25 @@ export function App() {
     }));
 
     try {
-      const response: SearchPostsResponse = await searchPosts(query, sort, cursor, controller.signal);
-      setSearchState((current) => ({
-        posts: cursor ? [...current.posts, ...response.posts] : response.posts,
-        cursor: response.cursor,
-        status: "ready",
-      }));
+      const response: SearchPostsResponse = await searchPosts(query, sort, cursor, signal);
+      setSearchState((current) => {
+        const next = {
+          posts: cursor ? [...current.posts, ...response.posts] : response.posts,
+          cursor: response.cursor,
+          status: "ready" as const,
+        };
+        searchCacheRef.current[cacheKey] = next;
+        return next;
+      });
     } catch (error) {
-      if (!controller.signal.aborted) {
+      if (!signal?.aborted) {
         setSearchState((current) => ({
           ...current,
-          status: "error",
-          error: error instanceof Error ? error.message : String(error),
+          status: isRateLimit(error) ? "rate-limit" : "error",
+          error: rateLimitMessage(error),
         }));
       }
     }
-
-    return () => controller.abort();
   }, []);
 
   useEffect(() => {
@@ -233,28 +316,33 @@ export function App() {
       return undefined;
     }
 
+    const controller = new AbortController();
     if (route.kind === "profile") {
       setProfile(null);
-      return void loadProfileFeed(route.actor);
+      void loadProfileFeed(route.actor, undefined, controller.signal);
+      return () => controller.abort();
     }
 
     setProfile(null);
-    return void loadFeed(activeSource);
+    void loadFeed(activeSource, undefined, controller.signal);
+    return () => controller.abort();
   }, [activeSource, loadFeed, loadProfileFeed, route]);
 
   useEffect(() => {
     if (route.kind !== "search") {
-      setSearchState({ posts: [], status: "idle" });
+      setSearchState(emptySearchState);
       return undefined;
     }
 
     setGlobalSearchText(route.query || "");
     if (!route.query) {
-      setSearchState({ posts: [], status: "idle" });
+      setSearchState(emptySearchState);
       return undefined;
     }
 
-    return void loadSearch(route.query, searchSort);
+    const controller = new AbortController();
+    void loadSearch(route.query, searchSort, undefined, controller.signal);
+    return () => controller.abort();
   }, [loadSearch, route, searchSort]);
 
   useEffect(() => {
@@ -269,16 +357,28 @@ export function App() {
       return;
     }
 
+    const cacheKey = `${route.actor}:${route.rkey}`;
+    const cached = threadCacheRef.current[cacheKey];
+    if (cached) {
+      setThread({ status: "ready", node: cached });
+      return;
+    }
+
     const controller = new AbortController();
     setThread({ status: "loading" });
     getPostThread(route.actor, route.rkey, controller.signal)
-      .then((response) => setThread({ status: "ready", node: response.thread }))
-      .catch((error) =>
-        setThread({
-          status: "error",
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
+      .then((response) => {
+        threadCacheRef.current[cacheKey] = response.thread;
+        setThread({ status: "ready", node: response.thread });
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setThread({
+            status: "error",
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
     return () => controller.abort();
   }, [route]);
 
@@ -319,6 +419,24 @@ export function App() {
         : isProfileRoute
           ? displayName(profile ?? undefined)
           : activeSource.label;
+  const activeScrollKey = route.kind === "profile" ? `profile:${route.actor}` : route.kind === "feed" ? `feed:${activeSource.id}` : "";
+
+  useEffect(() => {
+    const timeline = timelineRef.current;
+    if (!timeline || !activeScrollKey) {
+      return undefined;
+    }
+
+    const rememberScroll = () => {
+      scrollCacheRef.current[activeScrollKey] = timeline.scrollTop;
+    };
+    timeline.addEventListener("scroll", rememberScroll, { passive: true });
+    return () => {
+      rememberScroll();
+      timeline.removeEventListener("scroll", rememberScroll);
+    };
+  }, [activeScrollKey]);
+
   const loadMore = () => {
     if (route.kind === "search") {
       if (route.query && searchState.cursor) {
@@ -423,7 +541,7 @@ export function App() {
             <h2>{group}</h2>
             {sources?.map((source) => (
               <button
-                className={source.id === activeSourceId ? "feed-source active" : "feed-source"}
+                className={source.id === activeSource.id ? "feed-source active" : "feed-source"}
                 key={source.id}
                 type="button"
                 onClick={() => {
@@ -431,11 +549,11 @@ export function App() {
                   remember({
                     label: source.label,
                     detail: source.description,
-                    path: "/",
-                    route: { kind: "feed" },
+                    path: feedRoutePath(source),
+                    route: { kind: "feed", uri: source.id },
                     sourceId: source.id,
                   });
-                  navigate({ kind: "feed" });
+                  navigate({ kind: "feed", uri: source.id }, feedRoutePath(source));
                   timelineRef.current?.scrollTo({ top: 0 });
                 }}
               >
@@ -494,6 +612,7 @@ export function App() {
             />
             {feedState.status === "loading" && <LoadingState label="Loading public Bluesky posts" />}
             {feedState.status === "error" && <ErrorState message={feedState.error || "Feed failed to load."} />}
+            {feedState.status === "rate-limit" && <RateLimitState message={feedState.error} />}
             {feedState.status === "ready" && (
               <>
                 {feedState.items.map((item) => (
@@ -518,7 +637,11 @@ export function App() {
 
       <aside className="right-rail" aria-label="Context">
         <SearchBox value={globalSearchText} onChange={setGlobalSearchText} onSearch={submitSearch} />
-        {route.kind === "profile" ? <ProfileContextPanel actor={route.actor} profile={profile} /> : <FeedContextPanel source={activeSource} />}
+        {route.kind === "profile" ? (
+          <ProfileContextPanel actor={route.actor} profile={profile ?? entityCache.profiles[route.actor] ?? null} />
+        ) : (
+          <FeedContextPanel source={activeSource} entityCache={entityCache} />
+        )}
         <RecentPanel
           items={recentItems}
           onOpen={(item) => {
@@ -658,6 +781,7 @@ function SearchView({
       {searchState.status === "idle" && <EmptyState title="Search public posts" message="Enter a term to search Bluesky without signing in." />}
       {searchState.status === "loading" && <LoadingState label="Searching public Bluesky posts" />}
       {searchState.status === "error" && <ErrorState message={searchState.error || "Search failed to load."} />}
+      {searchState.status === "rate-limit" && <RateLimitState message={searchState.error} />}
       {searchState.status === "ready" && searchState.posts.length === 0 && (
         <EmptyState title="No posts found" message="Try a broader query or switch between top and latest results." />
       )}
@@ -697,6 +821,8 @@ function PostCard({
   const post = item.post;
   const images = getEmbedImages(post.embed);
   const external = getExternalEmbed(post.embed);
+  const text = post.record.text || "Post has no plain text.";
+  const preservesLineBreaks = text.includes("\n");
 
   return (
     <article className="post-card">
@@ -712,7 +838,7 @@ function PostCard({
       </header>
       {item.reason?.by && <p className="reason">Reposted by {displayName(item.reason.by)}</p>}
       {item.reply?.parent && <p className="reason">Replying in a thread from @{item.reply.parent.author.handle}</p>}
-      <p className="post-text">{post.record.text || "Post has no plain text."}</p>
+      <p className={preservesLineBreaks ? "post-text has-line-breaks" : "post-text"}>{text}</p>
       {images.length > 0 && (
         <div className={`image-grid count-${Math.min(images.length, 4)}`}>
           {images.slice(0, 4).map((image) => (
@@ -733,7 +859,16 @@ function PostCard({
               }}
               aria-label={image.alt ? "Open image" : "Open full size image"}
             >
-              <img alt={image.alt || ""} src={image.thumb || image.fullsize} loading="lazy" />
+              <img
+                alt={image.alt || ""}
+                src={image.thumb || image.fullsize}
+                loading="lazy"
+                style={
+                  image.aspectRatio?.width && image.aspectRatio?.height
+                    ? { aspectRatio: `${image.aspectRatio.width} / ${image.aspectRatio.height}` }
+                    : undefined
+                }
+              />
             </button>
           ))}
         </div>
@@ -767,6 +902,8 @@ function ThreadView({
 }: {
   thread: { status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string };
 }) {
+  const [expandedBranches, setExpandedBranches] = useState<Record<string, boolean>>({});
+
   if (thread.status === "loading") {
     return <LoadingState label="Loading thread" />;
   }
@@ -779,7 +916,13 @@ function ThreadView({
     return <ErrorState message="No thread selected." />;
   }
 
-  return <div className="thread-view">{renderThreadNode(thread.node, 0)}</div>;
+  return (
+    <div className="thread-view">
+      {renderThreadNode(thread.node, 0, expandedBranches, (uri) =>
+        setExpandedBranches((current) => ({ ...current, [uri]: !current[uri] })),
+      )}
+    </div>
+  );
 }
 
 function ImageViewer({
@@ -893,12 +1036,24 @@ function ImageViewer({
           </div>
         </>
       )}
-      <img src={selected.src} alt={selected.alt} onClick={(event) => event.stopPropagation()} />
+      <img
+        src={selected.src}
+        alt={selected.alt}
+        onClick={(event) => {
+          event.stopPropagation();
+          onClose();
+        }}
+      />
     </div>
   );
 }
 
-function renderThreadNode(node: ThreadNode, depth: number): React.ReactNode {
+function renderThreadNode(
+  node: ThreadNode,
+  depth: number,
+  expandedBranches: Record<string, boolean>,
+  onToggleBranch: (uri: string) => void,
+): React.ReactNode {
   if (!("post" in node)) {
     return (
       <div className="thread-alert" style={{ marginLeft: depth * 22 }}>
@@ -907,11 +1062,20 @@ function renderThreadNode(node: ThreadNode, depth: number): React.ReactNode {
     );
   }
 
+  const replies = node.replies ?? [];
+  const isExpanded = !!expandedBranches[node.post.uri];
+  const visibleReplies = isExpanded ? replies : replies.slice(0, 8);
+  const hiddenReplyCount = Math.max(0, replies.length - visibleReplies.length);
+
   return (
     <div className="thread-node" key={node.post.uri} style={{ marginLeft: depth * 22 }}>
       <PostCard item={{ post: node.post }} />
-      {node.replies?.slice(0, 8).map((reply) => renderThreadNode(reply, depth + 1))}
-      {(node.replies?.length ?? 0) > 8 && <button className="load-more">Load more replies</button>}
+      {visibleReplies.map((reply) => renderThreadNode(reply, depth + 1, expandedBranches, onToggleBranch))}
+      {replies.length > 8 && (
+        <button className="load-more branch-toggle" type="button" onClick={() => onToggleBranch(node.post.uri)}>
+          {isExpanded ? "Show fewer replies" : `Show ${hiddenReplyCount} more replies`}
+        </button>
+      )}
     </div>
   );
 }
@@ -934,7 +1098,7 @@ function RecentPanel({ items, onOpen }: { items: RecentItem[]; onOpen: (item: Re
   );
 }
 
-function FeedContextPanel({ source }: { source: FeedSource }) {
+function FeedContextPanel({ source, entityCache }: { source: FeedSource; entityCache: EntityCache }) {
   return (
     <section className="profile-panel">
       <span className="feed-glyph">
@@ -950,6 +1114,14 @@ function FeedContextPanel({ source }: { source: FeedSource }) {
         <div>
           <dt>Source</dt>
           <dd>Public</dd>
+        </div>
+        <div>
+          <dt>Cached posts</dt>
+          <dd>{Object.keys(entityCache.posts).length.toLocaleString()}</dd>
+        </div>
+        <div>
+          <dt>Media posts</dt>
+          <dd>{entityCache.mediaPostUris.length.toLocaleString()}</dd>
         </div>
       </dl>
     </section>
@@ -995,6 +1167,15 @@ function ErrorState({ message }: { message: string }) {
     <div className="state error">
       <strong>Unable to load</strong>
       <span>{message}</span>
+    </div>
+  );
+}
+
+function RateLimitState({ message }: { message?: string }) {
+  return (
+    <div className="state error">
+      <strong>Rate limit reached</strong>
+      <span>{message || "Bluesky is throttling this public API request. Wait a bit, then try again."}</span>
     </div>
   );
 }

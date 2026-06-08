@@ -1,6 +1,15 @@
 const API_HOST = "https://public.api.bsky.app/xrpc";
 const SEARCH_API_HOST = "https://api.bsky.app/xrpc";
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, statusText: string) {
+    super(`${status} ${statusText}`);
+    this.status = status;
+  }
+}
+
 export type Profile = {
   did: string;
   handle: string;
@@ -69,7 +78,7 @@ async function getJson<T>(path: string, params: Record<string, string>, signal?:
 
   const response = await fetch(url, { signal });
   if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
+    throw new ApiError(response.status, response.statusText);
   }
 
   return response.json() as Promise<T>;

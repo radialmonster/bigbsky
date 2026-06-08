@@ -423,6 +423,9 @@ button {
   color: var(--app-text);
   font-size: 17px;
   line-height: 1.48;
+}
+
+.post-text.has-line-breaks {
   white-space: pre-wrap;
 }
 
@@ -449,8 +452,10 @@ button {
   max-width: 100%;
   width: auto;
   height: auto;
+  min-height: 120px;
   max-height: calc(100vh - 140px);
   border-radius: 8px;
+  object-fit: contain;
   background: var(--app-surface-2);
 }
 
@@ -461,15 +466,21 @@ button {
   background: transparent;
   color: inherit;
   text-align: left;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .image-button:focus-visible {
-  outline: 2px solid var(--bsky-blue-soft);
+  outline: 2px solid var(--app-text-muted);
   outline-offset: 3px;
 }
 
 .image-button:hover img {
-  box-shadow: 0 0 0 2px rgba(117, 175, 255, 0.5);
+  box-shadow: 0 0 0 2px rgba(174, 189, 204, 0.48);
+}
+
+.image-button:active img,
+.image-button:focus:not(:focus-visible) img {
+  box-shadow: none;
 }
 
 .link-card {
@@ -534,6 +545,10 @@ button {
 .load-more {
   display: block;
   margin: 18px auto 0;
+}
+
+.branch-toggle {
+  margin: 8px 0 16px;
 }
 
 .right-rail {
