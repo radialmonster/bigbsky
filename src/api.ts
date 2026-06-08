@@ -251,8 +251,20 @@ export function getEmbedImages(embed: unknown) {
       alt?: string;
       aspectRatio?: { width?: number; height?: number };
     }>;
+    media?: {
+      images?: Array<{
+        thumb?: string;
+        fullsize?: string;
+        alt?: string;
+        aspectRatio?: { width?: number; height?: number };
+      }>;
+    };
   };
-  return Array.isArray(candidate.images) ? candidate.images : [];
+  if (Array.isArray(candidate.images)) {
+    return candidate.images;
+  }
+
+  return Array.isArray(candidate.media?.images) ? candidate.media.images : [];
 }
 
 export function getExternalEmbed(embed: unknown) {
@@ -262,8 +274,11 @@ export function getExternalEmbed(embed: unknown) {
 
   const candidate = embed as {
     external?: { uri?: string; title?: string; description?: string; thumb?: string };
+    media?: {
+      external?: { uri?: string; title?: string; description?: string; thumb?: string };
+    };
   };
-  return candidate.external ?? null;
+  return candidate.external ?? candidate.media?.external ?? null;
 }
 
 export function getVideoEmbed(embed: unknown) {
@@ -277,17 +292,25 @@ export function getVideoEmbed(embed: unknown) {
     thumbnail?: string;
     aspectRatio?: { width?: number; height?: number };
     alt?: string;
+    media?: {
+      $type?: string;
+      playlist?: string;
+      thumbnail?: string;
+      aspectRatio?: { width?: number; height?: number };
+      alt?: string;
+    };
   };
-  if (!candidate.playlist && !candidate.thumbnail) {
+  const video = candidate.playlist || candidate.thumbnail ? candidate : candidate.media;
+  if (!video?.playlist && !video?.thumbnail) {
     return null;
   }
 
   return {
-    type: candidate.$type,
-    playlist: candidate.playlist,
-    thumbnail: candidate.thumbnail,
-    aspectRatio: candidate.aspectRatio,
-    alt: candidate.alt,
+    type: video.$type,
+    playlist: video.playlist,
+    thumbnail: video.thumbnail,
+    aspectRatio: video.aspectRatio,
+    alt: video.alt,
   };
 }
 
@@ -297,9 +320,13 @@ export function getRecordEmbed(embed: unknown) {
   }
 
   const candidate = embed as {
-    record?: RecordEmbedView | { $type?: string; message?: string };
+    record?: RecordEmbedView | { $type?: string; message?: string; record?: RecordEmbedView | { $type?: string; message?: string } };
   };
-  const record = candidate.record;
+  const recordContainer = candidate.record;
+  const record =
+    recordContainer && typeof recordContainer === "object" && "record" in recordContainer
+      ? recordContainer.record
+      : recordContainer;
   if (!record || typeof record !== "object" || !("uri" in record)) {
     return null;
   }

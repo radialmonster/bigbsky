@@ -1347,7 +1347,14 @@ export function App() {
         : isProfileRoute
           ? displayName(profile ?? undefined)
           : feedMetadata?.displayName || activeSource.label;
-  const activeScrollKey = route.kind === "profile" ? `profile:${route.actor}` : route.kind === "feed" ? `feed:${activeSource.id}` : "";
+  const activeScrollKey =
+    route.kind === "profile"
+      ? `profile:${route.actor}`
+      : route.kind === "feed"
+        ? `feed:${activeSource.id}`
+        : route.kind === "surface" && (route.name === "saved" || route.name === "lists")
+          ? `surface:${route.name}`
+          : "";
   const renderedRows =
     route.kind === "post"
       ? countThreadRows(thread.node)
@@ -1380,6 +1387,17 @@ export function App() {
       rememberScroll();
       timeline.removeEventListener("scroll", rememberScroll);
     };
+  }, [activeScrollKey]);
+
+  useEffect(() => {
+    if (!activeScrollKey.startsWith("surface:")) {
+      return undefined;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      timelineRef.current?.scrollTo({ top: scrollCacheRef.current[activeScrollKey] || 0 });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [activeScrollKey]);
 
   const loadMore = () => {
