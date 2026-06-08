@@ -853,6 +853,70 @@ button {
   opacity: 0.55;
 }
 
+.self-profile-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 980px;
+}
+
+.self-profile-tab-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 192px;
+  padding: 16px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface);
+}
+
+.self-profile-tab-card span {
+  width: fit-content;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(117, 175, 255, 0.14);
+  color: var(--app-text-soft);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.self-profile-tab-card h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.self-profile-tab-card p {
+  margin: 0;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.self-profile-tab-card button {
+  align-self: end;
+  justify-self: start;
+  min-height: 34px;
+  margin-top: 4px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--app-surface-2);
+  color: var(--app-text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.self-profile-tab-card button:not(:disabled) {
+  background: var(--bsky-blue);
+  color: #fff;
+}
+
+.self-profile-tab-card button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .sign-in-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -2721,6 +2785,10 @@ button.surface-action {
   }
 
   .self-profile-card dl {
+    grid-template-columns: 1fr;
+  }
+
+  .self-profile-tabs {
     grid-template-columns: 1fr;
   }
 

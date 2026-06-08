@@ -2158,11 +2158,11 @@ function SurfaceView({
     },
     profile: {
       copy: auth.session
-        ? "Self-profile is attached to the restored OAuth identity. Public posts open in the profile reader while account-only tabs remain reserved."
+        ? "Self-profile is attached to the restored OAuth identity. Public posts open in the profile reader while account-only tabs are staged as account-aware panels."
         : "Self-profile needs OAuth before edit controls, likes, feeds, starter packs, and lists can be shown.",
       cards: [
         { title: "Posts", detail: "Signed-in users can open their public profile feed from this surface.", status: auth.session ? "Active" : "OAuth later" },
-        { title: "Likes", detail: "Self-only tabs need authenticated account context.", status: "OAuth later" },
+        { title: "Likes", detail: "Self-only liked-post reads need authenticated account context.", status: "OAuth later" },
         { title: "Edit Profile", detail: "Write scopes and local session handling are required first.", status: "Pending" },
       ],
     },
@@ -2342,51 +2342,14 @@ function SurfaceView({
 
   if (name === "profile" && auth.session) {
     return (
-      <div className="timeline comfortable">
-        <section className="self-profile-card">
-          <div className="account-identity">
-            <Avatar profile={auth.session} />
-            <span>
-              <strong>{auth.session.displayName || auth.session.handle}</strong>
-              <small>@{auth.session.handle}</small>
-            </span>
-          </div>
-          <dl>
-            <div>
-              <dt>Followers</dt>
-              <dd>{auth.session.followersCount?.toLocaleString() ?? "-"}</dd>
-            </div>
-            <div>
-              <dt>Following</dt>
-              <dd>{auth.session.followsCount?.toLocaleString() ?? "-"}</dd>
-            </div>
-            <div>
-              <dt>Posts</dt>
-              <dd>{auth.session.postsCount?.toLocaleString() ?? "-"}</dd>
-            </div>
-          </dl>
-          <div className="self-profile-actions">
-            <button type="button" onClick={() => onOpenProfile(auth.session as Profile)}>
-              Open public profile
-            </button>
-            <button type="button" disabled title="Edit profile requires authenticated write support">
-              Edit profile
-            </button>
-            <button type="button" onClick={onSignOut}>
-              Sign out
-            </button>
-          </div>
-        </section>
-        <section className="surface-grid" aria-label="Self-profile sections">
-          {surface.cards.map((card) => (
-            <article className="surface-card" key={card.title}>
-              <span>{card.status}</span>
-              <h3>{card.title}</h3>
-              <p>{card.detail}</p>
-            </article>
-          ))}
-        </section>
-      </div>
+      <SelfProfileSurface
+        auth={auth.session}
+        localLists={localLists}
+        pinnedFeedCount={pinnedFeedCount}
+        savedPostCount={savedPostCount}
+        onOpenProfile={onOpenProfile}
+        onSignOut={onSignOut}
+      />
     );
   }
 
@@ -2430,6 +2393,125 @@ function SurfaceView({
             <span>{card.status}</span>
             <h3>{card.title}</h3>
             <p>{card.detail}</p>
+          </article>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function SelfProfileSurface({
+  auth,
+  localLists,
+  pinnedFeedCount,
+  savedPostCount,
+  onOpenProfile,
+  onSignOut,
+}: {
+  auth: AuthSnapshot;
+  localLists: LocalList[];
+  pinnedFeedCount: number;
+  savedPostCount: number;
+  onOpenProfile: (profile: Profile) => void;
+  onSignOut: () => void | Promise<void>;
+}) {
+  const accountPanels = [
+    {
+      title: "Posts",
+      status: "Active",
+      detail: "Open the signed-in public profile reader without leaving the static shell.",
+      action: "Open public profile",
+      disabled: false,
+    },
+    {
+      title: "Replies",
+      status: "Active",
+      detail: "The public profile reader includes the replies tab over loaded author posts.",
+      action: "Open profile reader",
+      disabled: false,
+    },
+    {
+      title: "Media",
+      status: "Active",
+      detail: "The public profile reader can filter loaded posts to images and video cards.",
+      action: "Open profile reader",
+      disabled: false,
+    },
+    {
+      title: "Likes",
+      status: "OAuth later",
+      detail: `${savedPostCount.toLocaleString()} browser-local saved post${savedPostCount === 1 ? "" : "s"} are available now; Bluesky likes need authenticated reads.`,
+      action: "Needs account read",
+      disabled: true,
+    },
+    {
+      title: "Feeds",
+      status: "Local",
+      detail: `${pinnedFeedCount.toLocaleString()} pinned Feed${pinnedFeedCount === 1 ? "" : "s"} are stored in this browser until account-backed Feed sync is added.`,
+      action: "Use Feed selector",
+      disabled: true,
+    },
+    {
+      title: "Starter Packs",
+      status: "Reserved",
+      detail: "Starter Pack ownership and management are reserved for authenticated account APIs.",
+      action: "Needs account API",
+      disabled: true,
+    },
+    {
+      title: "Lists",
+      status: "Local",
+      detail: `${localLists.length.toLocaleString()} browser-local list workspace${localLists.length === 1 ? "" : "s"} are staged for later Bluesky list sync.`,
+      action: "Use Lists route",
+      disabled: true,
+    },
+  ];
+
+  return (
+    <div className="timeline comfortable">
+      <section className="self-profile-card">
+        <div className="account-identity">
+          <Avatar profile={auth} />
+          <span>
+            <strong>{auth.displayName || auth.handle}</strong>
+            <small>@{auth.handle}</small>
+          </span>
+        </div>
+        <dl>
+          <div>
+            <dt>Followers</dt>
+            <dd>{auth.followersCount?.toLocaleString() ?? "-"}</dd>
+          </div>
+          <div>
+            <dt>Following</dt>
+            <dd>{auth.followsCount?.toLocaleString() ?? "-"}</dd>
+          </div>
+          <div>
+            <dt>Posts</dt>
+            <dd>{auth.postsCount?.toLocaleString() ?? "-"}</dd>
+          </div>
+        </dl>
+        <div className="self-profile-actions">
+          <button type="button" onClick={() => onOpenProfile(auth as Profile)}>
+            Open public profile
+          </button>
+          <button type="button" disabled title="Edit profile requires authenticated write support">
+            Edit profile
+          </button>
+          <button type="button" onClick={onSignOut}>
+            Sign out
+          </button>
+        </div>
+      </section>
+      <section className="self-profile-tabs" aria-label="Self-profile account sections">
+        {accountPanels.map((panel) => (
+          <article className="self-profile-tab-card" key={panel.title}>
+            <span>{panel.status}</span>
+            <h3>{panel.title}</h3>
+            <p>{panel.detail}</p>
+            <button type="button" disabled={panel.disabled} onClick={() => onOpenProfile(auth as Profile)}>
+              {panel.action}
+            </button>
           </article>
         ))}
       </section>
