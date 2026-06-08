@@ -1552,6 +1552,18 @@ button.surface-action {
   font-weight: 800;
 }
 
+.more-media-badge {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: rgba(11, 17, 28, 0.88);
+  color: var(--app-text);
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .video-card {
   position: relative;
   display: block;

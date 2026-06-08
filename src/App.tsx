@@ -2972,7 +2972,7 @@ function PostCard({
       )}
       {images.length > 0 && (
         <div className={`image-grid count-${Math.min(images.length, 4)}`}>
-          {images.slice(0, 4).map((image) => (
+          {images.slice(0, 4).map((image, imageIndex) => (
             <button
               className="image-button"
               key={image.thumb || image.fullsize}
@@ -3002,6 +3002,7 @@ function PostCard({
                 }
               />
               {image.alt && <span className="alt-badge">ALT</span>}
+              {images.length > 4 && imageIndex === 3 && <span className="more-media-badge">+{images.length - 4}</span>}
             </button>
           ))}
         </div>
