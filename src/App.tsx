@@ -10,6 +10,8 @@ import {
   List,
   Loader2,
   X,
+  ChevronLeft,
+  ChevronRight,
   MessageCircle,
   MoreHorizontal,
   Repeat2,
@@ -42,8 +44,11 @@ type FeedState = {
 };
 
 type ImageViewerState = {
-  src: string;
-  alt: string;
+  images: Array<{
+    src: string;
+    alt: string;
+  }>;
+  index: number;
 } | null;
 
 export function App() {
@@ -262,7 +267,7 @@ export function App() {
         </section>
       </aside>
 
-      {imageViewer && <ImageViewer image={imageViewer} onClose={() => setImageViewer(null)} />}
+      {imageViewer && <ImageViewer image={imageViewer} onChange={setImageViewer} onClose={() => setImageViewer(null)} />}
     </div>
   );
 }
@@ -323,12 +328,17 @@ function PostCard({ item, onOpenImage }: { item: FeedItem; onOpenImage?: (image:
               className="image-button"
               key={image.thumb || image.fullsize}
               type="button"
-              onClick={() =>
-                onOpenImage?.({
-                  src: image.fullsize || image.thumb || "",
-                  alt: image.alt || "",
-                })
-              }
+              onClick={() => {
+                const viewerImages = images
+                  .slice(0, 4)
+                  .map((viewerImage) => ({
+                    src: viewerImage.fullsize || viewerImage.thumb || "",
+                    alt: viewerImage.alt || "",
+                  }))
+                  .filter((viewerImage) => viewerImage.src);
+                const selectedIndex = Math.max(0, viewerImages.findIndex((viewerImage) => viewerImage.src === (image.fullsize || image.thumb)));
+                onOpenImage?.({ images: viewerImages, index: selectedIndex });
+              }}
               aria-label={image.alt ? "Open image" : "Open full size image"}
             >
               <img alt={image.alt || ""} src={image.thumb || image.fullsize} loading="lazy" />
@@ -380,24 +390,118 @@ function ThreadView({
   return <div className="thread-view">{renderThreadNode(thread.node, 0)}</div>;
 }
 
-function ImageViewer({ image, onClose }: { image: NonNullable<ImageViewerState>; onClose: () => void }) {
+function ImageViewer({
+  image,
+  onChange,
+  onClose,
+}: {
+  image: NonNullable<ImageViewerState>;
+  onChange: (image: NonNullable<ImageViewerState>) => void;
+  onClose: () => void;
+}) {
+  const selected = image.images[image.index] ?? image.images[0];
+  const hasMultiple = image.images.length > 1;
+  const goPrevious = useCallback(() => {
+    if (!hasMultiple) {
+      return;
+    }
+
+    onChange({
+      images: image.images,
+      index: (image.index - 1 + image.images.length) % image.images.length,
+    });
+  }, [hasMultiple, image, onChange]);
+  const goNext = useCallback(() => {
+    if (!hasMultiple) {
+      return;
+    }
+
+    onChange({
+      images: image.images,
+      index: (image.index + 1) % image.images.length,
+    });
+  }, [hasMultiple, image, onChange]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         onClose();
       }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        goPrevious();
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        goNext();
+      }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, [goNext, goPrevious, onClose]);
 
   return (
-    <div className="image-viewer" role="dialog" aria-modal="true" aria-label="Image viewer" onClick={onClose}>
-      <button className="image-viewer-close" type="button" onClick={onClose} aria-label="Close image viewer">
+    <div
+      className="image-viewer"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Image viewer"
+      onClick={(event) => {
+        const halfway = window.innerWidth / 2;
+        if (!hasMultiple) {
+          onClose();
+          return;
+        }
+
+        if (event.clientX < halfway) {
+          goPrevious();
+        } else {
+          goNext();
+        }
+      }}
+    >
+      <button
+        className="image-viewer-close"
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onClose();
+        }}
+        aria-label="Close image viewer"
+      >
         <X size={22} />
       </button>
-      <img src={image.src} alt={image.alt} onClick={(event) => event.stopPropagation()} />
+      {hasMultiple && (
+        <>
+          <button
+            className="image-viewer-nav previous"
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              goPrevious();
+            }}
+            aria-label="Previous image"
+          >
+            <ChevronLeft size={30} />
+          </button>
+          <button
+            className="image-viewer-nav next"
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              goNext();
+            }}
+            aria-label="Next image"
+          >
+            <ChevronRight size={30} />
+          </button>
+          <div className="image-viewer-count">
+            {image.index + 1} / {image.images.length}
+          </div>
+        </>
+      )}
+      <img src={selected.src} alt={selected.alt} onClick={(event) => event.stopPropagation()} />
     </div>
   );
 }

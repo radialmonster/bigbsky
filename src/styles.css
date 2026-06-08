@@ -603,6 +603,48 @@ button {
   color: var(--app-text);
 }
 
+.image-viewer-nav {
+  position: fixed;
+  top: 50%;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 64px;
+  border-radius: 8px;
+  background: rgba(22, 31, 47, 0.72);
+  color: var(--app-text);
+  transform: translateY(-50%);
+}
+
+.image-viewer-nav.previous {
+  left: 18px;
+}
+
+.image-viewer-nav.next {
+  right: 18px;
+}
+
+.image-viewer-nav:hover,
+.image-viewer-close:hover {
+  background: rgba(44, 58, 79, 0.96);
+}
+
+.image-viewer-count {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  min-width: 58px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(22, 31, 47, 0.82);
+  color: var(--app-text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  transform: translateX(-50%);
+}
+
 .state.error {
   flex-direction: column;
   color: var(--app-danger);
