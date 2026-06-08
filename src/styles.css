@@ -573,13 +573,18 @@ button {
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 28px;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  padding: 68px 28px 28px;
   background: rgba(3, 7, 18, 0.88);
 }
 
 .image-viewer img {
-  max-width: 100%;
-  max-height: 100%;
+  max-width: calc(100vw - 56px);
+  max-height: calc(100vh - 96px);
+  width: auto;
+  height: auto;
   border-radius: 8px;
   object-fit: contain;
   box-shadow: 0 18px 70px rgba(0, 0, 0, 0.55);
