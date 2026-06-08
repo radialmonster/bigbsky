@@ -69,7 +69,7 @@ button {
 .compose-button,
 .rail-button,
 .feed-map-header button,
-.post-header button,
+.post-header button:not(.author-button),
 .composer-actions button:first-child {
   display: grid;
   place-items: center;
@@ -402,7 +402,7 @@ button {
   font-size: 13px;
 }
 
-.post-header button {
+.post-header button:not(.author-button) {
   width: 34px;
   height: 34px;
   background: transparent;
