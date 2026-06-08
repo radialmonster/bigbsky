@@ -155,6 +155,8 @@ const recentStorageKey = "bigbsky:recent";
 const savedPostsStorageKey = "bigbsky:saved-posts";
 const composerDraftStorageKey = "bigbsky:composer-draft";
 const workspaceWidthStorageKey = "bigbsky:workspace-width";
+const pinnedFeedsStorageKey = "bigbsky:pinned-feeds";
+const collapsedFeedGroupsStorageKey = "bigbsky:collapsed-feed-groups";
 const replyDraftPrefix = "bigbsky:reply-draft:";
 const emptyFeedState: FeedState = { items: [], status: "idle" };
 const emptySearchState: SearchState = { posts: [], status: "idle" };
@@ -218,6 +220,25 @@ function readWorkspaceWidthPreference() {
     return widthModes.includes(stored as (typeof widthModes)[number]) ? (stored as (typeof widthModes)[number]) : "balanced";
   } catch {
     return "balanced";
+  }
+}
+
+function readPinnedFeedIds() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(pinnedFeedsStorageKey) || "[]") as string[];
+    const knownIds = new Set(feedSources.map((source) => source.id));
+    return Array.isArray(stored) ? stored.filter((id) => knownIds.has(id)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readCollapsedFeedGroups() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(collapsedFeedGroupsStorageKey) || "{}") as Record<string, boolean>;
+    return stored && typeof stored === "object" ? stored : {};
+  } catch {
+    return {};
   }
 }
 
@@ -332,6 +353,8 @@ export function App() {
   const [linkPreview, setLinkPreview] = useState<LinkPreviewState>(null);
   const [densityByContext, setDensityByContext] = useState<Record<string, string>>(() => readDensityPreferences());
   const [workspaceWidth, setWorkspaceWidth] = useState<(typeof widthModes)[number]>(() => readWorkspaceWidthPreference());
+  const [pinnedFeedIds, setPinnedFeedIds] = useState<string[]>(() => readPinnedFeedIds());
+  const [collapsedFeedGroups, setCollapsedFeedGroups] = useState<Record<string, boolean>>(() => readCollapsedFeedGroups());
   const [recentItems, setRecentItems] = useState<RecentItem[]>(() => readRecentItems());
   const [devMetrics, setDevMetrics] = useState<DevMetrics>(initialDevMetrics);
   const [authState, setAuthState] = useState<AuthState>(initialAuthState);
@@ -364,7 +387,7 @@ export function App() {
         message: result.message,
       });
 
-      if (result.status === "callback" && window.location.pathname === "/oauth/callback") {
+      if (result.status === "callback") {
         window.history.replaceState(null, "", "/settings");
         setRoute({ kind: "surface", name: "settings" });
       }
@@ -391,14 +414,35 @@ export function App() {
       `${source.label} ${source.description} ${source.group}`.toLowerCase().includes(query),
     );
   }, [feedSearch]);
-  const groupedSources = useMemo(
+  const pinnedSources = useMemo(
     () =>
-      visibleSources.reduce<Record<string, FeedSource[]>>((groups, source) => {
-        groups[source.group] = [...(groups[source.group] ?? []), source];
-        return groups;
-      }, {}),
-    [visibleSources],
+      pinnedFeedIds
+        .map((id) => feedSources.find((source) => source.id === id))
+        .filter((source): source is FeedSource => !!source),
+    [pinnedFeedIds],
   );
+  const groupedSources = useMemo(() => {
+    const groups = visibleSources.reduce<Record<string, FeedSource[]>>((nextGroups, source) => {
+      nextGroups[source.group] = [...(nextGroups[source.group] ?? []), source];
+      return nextGroups;
+    }, {});
+
+    if (pinnedSources.length > 0 && (!feedSearch.trim() || pinnedSources.some((source) => visibleSources.includes(source)))) {
+      groups.Pinned = pinnedSources.filter((source) => !feedSearch.trim() || visibleSources.includes(source));
+    }
+
+    return Object.fromEntries(
+      Object.entries(groups).sort(([groupA], [groupB]) => {
+        if (groupA === "Pinned") {
+          return -1;
+        }
+        if (groupB === "Pinned") {
+          return 1;
+        }
+        return groupA.localeCompare(groupB);
+      }),
+    ) as Record<string, FeedSource[]>;
+  }, [feedSearch, pinnedSources, visibleSources]);
   const feedMapSummary = useMemo(
     () =>
       feedSources.reduce<Record<string, number>>((groups, source) => {
@@ -893,6 +937,8 @@ export function App() {
     setRecentItems([]);
     setComposerDraft({ posts: [""], mediaSlots: {} });
     setSavedPosts([]);
+    setPinnedFeedIds([]);
+    setCollapsedFeedGroups({});
     feedCacheRef.current = {};
     feedMetadataCacheRef.current = {};
     profileCacheRef.current = {};
@@ -957,6 +1003,22 @@ export function App() {
       const exists = current.some((savedPost) => savedPost.uri === post.uri);
       const next = exists ? current.filter((savedPost) => savedPost.uri !== post.uri) : [post, ...current].slice(0, 100);
       localStorage.setItem(savedPostsStorageKey, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function togglePinnedFeed(source: FeedSource) {
+    setPinnedFeedIds((current) => {
+      const next = current.includes(source.id) ? current.filter((id) => id !== source.id) : [source.id, ...current].slice(0, 12);
+      localStorage.setItem(pinnedFeedsStorageKey, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function toggleCollapsedFeedGroup(group: string) {
+    setCollapsedFeedGroups((current) => {
+      const next = { ...current, [group]: !current[group] };
+      localStorage.setItem(collapsedFeedGroupsStorageKey, JSON.stringify(next));
       return next;
     });
   }
@@ -1210,31 +1272,44 @@ export function App() {
         {Object.entries(groupedSources).map(([group, sources]) => (
           <section className="feed-group" key={group}>
             <h2>
-              {group}
+              <button type="button" onClick={() => toggleCollapsedFeedGroup(group)} aria-expanded={!collapsedFeedGroups[group]}>
+                {group}
+              </button>
               <span>{sources.length}</span>
             </h2>
-            {sources?.map((source) => (
-              <button
-                className={source.id === activeSource.id ? "feed-source active" : "feed-source"}
-                key={source.id}
-                type="button"
-                onClick={() => {
-                  setActiveSourceId(source.id);
-                  remember({
-                    label: source.label,
-                    detail: source.description,
-                    path: feedRoutePath(source),
-                    route: { kind: "feed", uri: source.id },
-                    sourceId: source.id,
-                  });
-                  navigate({ kind: "feed", uri: source.id }, feedRoutePath(source));
-                  timelineRef.current?.scrollTo({ top: 0 });
-                }}
-              >
-                <span>{source.label}</span>
-                <small>{source.description}</small>
-              </button>
-            ))}
+            {!collapsedFeedGroups[group] &&
+              sources?.map((source) => (
+                <div className="feed-source-row" key={`${group}:${source.id}`}>
+                  <button
+                    className={source.id === activeSource.id ? "feed-source active" : "feed-source"}
+                    type="button"
+                    onClick={() => {
+                      setActiveSourceId(source.id);
+                      remember({
+                        label: source.label,
+                        detail: source.description,
+                        path: feedRoutePath(source),
+                        route: { kind: "feed", uri: source.id },
+                        sourceId: source.id,
+                      });
+                      navigate({ kind: "feed", uri: source.id }, feedRoutePath(source));
+                      timelineRef.current?.scrollTo({ top: 0 });
+                    }}
+                  >
+                    <span>{source.label}</span>
+                    <small>{source.description}</small>
+                  </button>
+                  <button
+                    className={pinnedFeedIds.includes(source.id) ? "feed-pin pinned" : "feed-pin"}
+                    type="button"
+                    onClick={() => togglePinnedFeed(source)}
+                    aria-label={pinnedFeedIds.includes(source.id) ? `Unpin ${source.label}` : `Pin ${source.label}`}
+                    title={pinnedFeedIds.includes(source.id) ? "Unpin feed" : "Pin feed locally"}
+                  >
+                    <Bookmark size={15} />
+                  </button>
+                </div>
+              ))}
           </section>
         ))}
       </aside>
@@ -1303,6 +1378,8 @@ export function App() {
             recentCount={recentItems.length}
             savedPostCount={savedPosts.length}
             savedPreferenceCount={Object.keys(densityByContext).length}
+            pinnedFeedCount={pinnedFeedIds.length}
+            pinnedFeedIds={pinnedFeedIds}
             workspaceWidth={workspaceWidth}
             onClearLocalData={clearLocalReaderData}
             onOpenFeed={(source) => {
@@ -1319,6 +1396,7 @@ export function App() {
             onOpenSearch={() => navigate({ kind: "search" }, "/search")}
             onSignIn={handleSignIn}
             onSignOut={handleSignOut}
+            onTogglePinnedFeed={togglePinnedFeed}
             onWorkspaceWidthChange={updateWorkspaceWidth}
           />
         ) : route.kind === "search" ? (
@@ -1395,7 +1473,12 @@ export function App() {
             className={`timeline ${density}`}
             ref={timelineRef}
           >
-            <FeedDetailHeader source={activeSource} metadata={feedMetadata} />
+            <FeedDetailHeader
+              source={activeSource}
+              metadata={feedMetadata}
+              isPinned={pinnedFeedIds.includes(activeSource.id)}
+              onTogglePinned={togglePinnedFeed}
+            />
             <Composer
               draft={composerDraft}
               onDraftChange={setComposerDraft}
@@ -1657,12 +1740,15 @@ function SurfaceView({
   recentCount,
   savedPostCount,
   savedPreferenceCount,
+  pinnedFeedCount,
+  pinnedFeedIds,
   workspaceWidth,
   onClearLocalData,
   onOpenFeed,
   onOpenSearch,
   onSignIn,
   onSignOut,
+  onTogglePinnedFeed,
   onWorkspaceWidthChange,
 }: {
   auth: AuthState;
@@ -1671,12 +1757,15 @@ function SurfaceView({
   recentCount: number;
   savedPostCount: number;
   savedPreferenceCount: number;
+  pinnedFeedCount: number;
+  pinnedFeedIds: string[];
   workspaceWidth: (typeof widthModes)[number];
   onClearLocalData: () => void | Promise<void>;
   onOpenFeed: (source: FeedSource) => void;
   onOpenSearch: () => void;
   onSignIn: (handle: string) => void | Promise<void>;
   onSignOut: () => void | Promise<void>;
+  onTogglePinnedFeed: (source: FeedSource) => void;
   onWorkspaceWidthChange: (width: (typeof widthModes)[number]) => void;
 }) {
   const title = name.charAt(0).toUpperCase() + name.slice(1);
@@ -1698,9 +1787,9 @@ function SurfaceView({
       ],
     },
     feeds: {
-      copy: "Feeds are available in the desktop selector now. Signed-in saved feeds, pin controls, and feed editing will attach here after OAuth.",
+      copy: "Feeds are available in the desktop selector now. Local pins can keep important destinations at the top while signed-in feed sync waits for OAuth.",
       cards: [
-        { title: "Pinned Feeds", detail: "The selector already supports grouped destination browsing.", status: "Local" },
+        { title: "Pinned Feeds", detail: "Pins are stored only in this browser and reflected in the selector.", status: "Local" },
         { title: "Discover New Feeds", detail: "Feed search can open known public Feed sources immediately.", status: "Active" },
         { title: "Edit My Feeds", detail: "Account-backed pin and ordering controls wait for OAuth.", status: "Pending" },
       ],
@@ -1808,6 +1897,10 @@ function SurfaceView({
                 <dd>{savedPostCount.toLocaleString()}</dd>
               </div>
               <div>
+                <dt>Pinned feeds</dt>
+                <dd>{pinnedFeedCount.toLocaleString()}</dd>
+              </div>
+              <div>
                 <dt>Storage scope</dt>
                 <dd>bigbsky:*</dd>
               </div>
@@ -1866,11 +1959,20 @@ function SurfaceView({
       {name === "feeds" && (
         <section className="feed-directory-grid" aria-label="Known Feed destinations">
           {feedSources.map((source) => (
-            <button className="feed-directory-card" key={source.id} type="button" onClick={() => onOpenFeed(source)}>
-              <span>{source.group}</span>
-              <strong>{source.label}</strong>
-              <small>{source.description}</small>
-            </button>
+            <article className="feed-directory-card" key={source.id}>
+              <button type="button" onClick={() => onOpenFeed(source)}>
+                <span>{source.group}</span>
+                <strong>{source.label}</strong>
+                <small>{source.description}</small>
+              </button>
+              <button
+                className={pinnedFeedIds.includes(source.id) ? "directory-pin pinned" : "directory-pin"}
+                type="button"
+                onClick={() => onTogglePinnedFeed(source)}
+              >
+                {pinnedFeedIds.includes(source.id) ? "Pinned" : "Pin locally"}
+              </button>
+            </article>
           ))}
         </section>
       )}
@@ -2410,7 +2512,17 @@ function SearchView({
   );
 }
 
-function FeedDetailHeader({ source, metadata }: { source: FeedSource; metadata: FeedGeneratorView | null }) {
+function FeedDetailHeader({
+  source,
+  metadata,
+  isPinned,
+  onTogglePinned,
+}: {
+  source: FeedSource;
+  metadata: FeedGeneratorView | null;
+  isPinned: boolean;
+  onTogglePinned: (source: FeedSource) => void;
+}) {
   const [copied, setCopied] = useState(false);
   const creatorHandle = metadata?.creator?.handle;
   const bskyUrl = creatorHandle ? `https://bsky.app/profile/${creatorHandle}/feed/${source.uri.split("/").pop()}` : "https://bsky.app";
@@ -2439,8 +2551,8 @@ function FeedDetailHeader({ source, metadata }: { source: FeedSource; metadata: 
           </div>
         </dl>
         <div className="feed-detail-actions" aria-label="Feed options">
-          <button type="button" disabled title="Pin feed after OAuth is added">
-            Pin feed
+          <button type="button" onClick={() => onTogglePinned(source)}>
+            {isPinned ? "Unpin feed" : "Pin locally"}
           </button>
           <button
             type="button"

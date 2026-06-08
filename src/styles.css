@@ -209,10 +209,24 @@ button {
   justify-content: space-between;
 }
 
+.feed-group h2 button {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
 .feed-group h2 span {
   color: var(--app-text-muted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+}
+
+.feed-source-row {
+  position: relative;
 }
 
 .feed-source {
@@ -220,7 +234,7 @@ button {
   width: 100%;
   min-height: 82px;
   margin-bottom: 8px;
-  padding: 12px;
+  padding: 12px 42px 12px 12px;
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
@@ -247,6 +261,24 @@ button {
 .feed-source.active {
   border-color: rgba(117, 175, 255, 0.42);
   background: rgba(5, 96, 255, 0.16);
+}
+
+.feed-pin {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: var(--app-surface-2);
+  color: var(--app-text-muted);
+}
+
+.feed-pin.pinned,
+.directory-pin.pinned {
+  color: var(--bsky-blue-soft);
 }
 
 .workspace {
@@ -900,6 +932,13 @@ button {
   border: 1px solid var(--app-border);
   border-radius: 8px;
   background: var(--app-surface);
+}
+
+.feed-directory-card > button:first-child {
+  display: block;
+  width: 100%;
+  padding: 0;
+  background: transparent;
   color: var(--app-text);
   text-align: left;
 }
@@ -925,6 +964,17 @@ button {
   margin-top: 7px;
   color: var(--app-text-muted);
   line-height: 1.4;
+}
+
+.directory-pin {
+  min-height: 32px;
+  margin-top: 12px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--app-surface-2);
+  color: var(--app-text);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .feed-directory-card:hover {

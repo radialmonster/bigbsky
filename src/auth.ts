@@ -36,7 +36,11 @@ async function getClientId() {
   }
 
   const { buildLoopbackClientId } = await import("@atproto/oauth-client-browser");
-  return buildLoopbackClientId(window.location);
+  return buildLoopbackClientId({
+    hostname: window.location.hostname,
+    port: window.location.port,
+    pathname: "/",
+  });
 }
 
 export function looksLikeOAuthCallback() {
