@@ -961,10 +961,10 @@ Request budget mindset:
 - Implement timeline virtualization before large-feed polish so card/layout choices are tested against the real scrolling model. Status: first pass implemented for the active Feed timeline with estimated row windows, overscan, and development inspector rendered-row counts.
 - Reserve stable media/embed dimensions in post cards to reduce layout shift during image, video, GIF, and link-card loading. Status: partial; image cards apply Bluesky aspect-ratio metadata and stable minimum space, video embeds now render stable thumbnail/placeholder cards, and link-card sizing is stable; richer GIF/video controls still pending.
 - Include the signed-in inline composer/input at the top of the active Feed timeline. Status: UI placeholder implemented for signed-out/static shell.
-- Include composer image attachment UI and upload/posting flow.
-- Include multi-post/thread composer UI.
-- Include per-post media attachment UI and upload/posting flow.
-- Include 300-character counter and validation per post in composer UI. Status: implemented for the current placeholder composer.
+- Include composer image attachment UI and upload/posting flow. Status: partial; client-only image attachment placeholders are available per draft post, with actual upload/posting deferred until OAuth and write APIs are added.
+- Include multi-post/thread composer UI. Status: first pass implemented as a client-only thread composer with add/remove draft posts, Drafts/Post All controls, and per-post validation.
+- Include per-post media attachment UI and upload/posting flow. Status: partial; each draft post supports up to four local media placeholders, with actual upload/posting deferred until OAuth and write APIs are added.
+- Include 300-character counter and validation per post in composer UI. Status: implemented for the current placeholder composer and each draft in the thread composer.
 - Experiment with wider post/card formats for text, media, link cards, quote posts, and threads. Status: implemented as first pass; quote-post cards, quoted media/link/video previews, alt badges, content-label chips, and engagement density markers now render from loaded post data.
 - Add public timeline/feed/profile/thread data loading. Status: implemented.
 - Add standalone post-thread data loading for `/profile/:handleOrDid/post/:rkey`, including direct-open support for Bluesky-style copied post URLs. Status: implemented.
@@ -1022,9 +1022,9 @@ Request budget mindset:
 - Multi-post/thread composition from the inline composer.
 - Drafts and Post All support where feasible.
 - 300-character-per-post limit counter and validation.
-- Menu destination views for Explore, Notifications, Feeds, Lists, Saved, Profile, and Settings. Status: first pass implemented with static SPA routes/placeholders for Explore, Feeds, Notifications, Chat, Lists, Saved, Profile, and Settings, with Explore linking into public search.
+- Menu destination views for Explore, Notifications, Feeds, Lists, Saved, Profile, and Settings. Status: first pass implemented with static SPA routes for Explore, Feeds, Notifications, Chat, Lists, Saved, Profile, and Settings; each route now shows structured client-only section cards, and Explore links into public search.
 - Chat entry point and empty/message-list state, with full DM behavior deferred until privacy/API handling is clear. Status: first pass implemented as a static SPA placeholder route that explicitly defers DM behavior.
-- Feed detail header with Feed name, creator, count, options, and active Feed timeline below. Status: first pass implemented for public Feed Generator metadata, creator handle, like count, Feed URI key, description, avatar, and active timeline below; feed options remain pending.
+- Feed detail header with Feed name, creator, count, options, and active Feed timeline below. Status: first pass implemented for public Feed Generator metadata, creator handle, like count, Feed URI key, description, avatar, and active timeline below; client-only options now include disabled Pin feed, Copy URI, and Open on Bluesky controls.
 - Post/thread detail view with reply composer, stats, repost/quote/like/save links, and reply permissions. Status: partial; standalone threads now show conversation metadata, reply/repost/quote/like counts, timestamp, reply-permission text, and a local 300-character reply composer placeholder; authenticated reply/write actions remain pending.
 - Search result view with query, clear action, language selector, and Top/Latest/People/Feeds filters. Status: first pass implemented with query form, clear-query button, Posts/People/Feeds tabs, Top/Latest post results, language selector for post search, public actor search for People, and local Feed destination results for Feeds.
 - Profile view variants for self-profile and other-user profiles.
@@ -1133,7 +1133,7 @@ Request budget mindset:
 - Sign-out does not clear static app-shell/service-worker cache unless the user explicitly clears site data.
 - Public profile/thread/feed pages work while signed out.
 - Home timeline and notifications work while signed in.
-- Signed-in layout exposes the same core surfaces as `bsky.app`: Home, Explore/Discover, Following, Notifications, Chat entry point, Feeds, Lists, Saved, Profile, Settings, Search, Trending, Composer, and pinned/custom feeds. Status: partial; primary rail controls now open Home, Explore/Search, Feeds focus, and static placeholder routes for Notifications, Chat, Lists, Saved, Profile, and Settings.
+- Signed-in layout exposes the same core surfaces as `bsky.app`: Home, Explore/Discover, Following, Notifications, Chat entry point, Feeds, Lists, Saved, Profile, Settings, Search, Trending, Composer, and pinned/custom feeds. Status: partial; primary rail controls now open Home, Explore/Search, Feeds focus, and structured static routes for Notifications, Chat, Lists, Saved, Profile, and Settings.
 - At 1920px, the active endless-scroll Feed timeline uses width better than `bsky.app`'s narrow mobile column.
 - At 2560px, the feed presentation becomes richer or more useful instead of expanding empty gutters.
 - No user data is sent to a backend we control.

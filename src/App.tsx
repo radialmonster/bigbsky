@@ -11,6 +11,7 @@ import {
   LayoutList,
   List,
   Loader2,
+  Plus,
   X,
   ChevronLeft,
   ChevronRight,
@@ -815,7 +816,6 @@ export function App() {
     navigate(routeState, path);
   }
 
-  const remainingChars = 300 - composerText.length;
   const isProfileRoute = route.kind === "profile";
   const workspaceLabel =
     route.kind === "post"
@@ -1095,7 +1095,6 @@ export function App() {
           >
             <FeedDetailHeader source={activeSource} metadata={feedMetadata} />
             <Composer
-              remainingChars={remainingChars}
               text={composerText}
               onTextChange={setComposerText}
             />
@@ -1256,23 +1255,90 @@ function VirtualPostList({
 
 function SurfaceView({ name }: { name: string }) {
   const title = name.charAt(0).toUpperCase() + name.slice(1);
-  const copy: Record<string, string> = {
-    chat: "Direct messages stay deferred until the API and privacy posture are handled.",
-    explore: "Explore is the public discovery doorway for search, trending topics, people, and Feed discovery while signed-in recommendations wait on OAuth.",
-    feeds: "Feeds are available in the desktop selector now. Signed-in saved feeds, pin controls, and feed editing will attach here after OAuth.",
-    lists: "Lists will become timeline sources after signed-in reads are available.",
-    notifications: "Notifications need OAuth, account context, and local session restore.",
-    "oauth-callback": "The OAuth callback has a static SPA route now. Browser-side state validation and token exchange will attach here in Phase 2.",
-    profile: "Self-profile needs OAuth before edit controls, likes, feeds, starter packs, and lists can be shown.",
-    saved: "Saved posts need authenticated reads and account-aware rendering.",
-    settings: "Settings will start with local preferences, sign-out, and account/session controls.",
+  const surfaces: Record<string, { copy: string; cards: Array<{ title: string; detail: string; status: string }> }> = {
+    chat: {
+      copy: "Direct messages stay deferred until the API and privacy posture are handled.",
+      cards: [
+        { title: "Requests", detail: "Signed-in message requests belong here once DM support is safe.", status: "Deferred" },
+        { title: "Inbox", detail: "The shell reserves a message list without storing conversations on BigBSky.", status: "OAuth later" },
+        { title: "New chat", detail: "Composer entry point remains disabled until private-message scopes are settled.", status: "Blocked" },
+      ],
+    },
+    explore: {
+      copy: "Explore is the public discovery doorway for search, trending topics, people, and Feed discovery while signed-in recommendations wait on OAuth.",
+      cards: [
+        { title: "Search", detail: "Public post, profile, and local Feed search is available now.", status: "Active" },
+        { title: "Trending", detail: "The right rail keeps lightweight topic entry points visible.", status: "Static" },
+        { title: "Discover Feeds", detail: "Local Feed destinations are grouped and searchable without a horizontal tab strip.", status: "Active" },
+      ],
+    },
+    feeds: {
+      copy: "Feeds are available in the desktop selector now. Signed-in saved feeds, pin controls, and feed editing will attach here after OAuth.",
+      cards: [
+        { title: "Pinned Feeds", detail: "The selector already supports grouped destination browsing.", status: "Local" },
+        { title: "Discover New Feeds", detail: "Feed search can open known public Feed sources immediately.", status: "Active" },
+        { title: "Edit My Feeds", detail: "Account-backed pin and ordering controls wait for OAuth.", status: "Pending" },
+      ],
+    },
+    lists: {
+      copy: "Lists will become timeline sources after signed-in reads are available.",
+      cards: [
+        { title: "List Index", detail: "A stable route is ready for account list discovery.", status: "Pending" },
+        { title: "New List", detail: "Authenticated create/edit flows stay out of the public shell.", status: "OAuth later" },
+        { title: "List Timelines", detail: "Lists should behave like Feed sources once data is available.", status: "Planned" },
+      ],
+    },
+    notifications: {
+      copy: "Notifications need OAuth, account context, and local session restore.",
+      cards: [
+        { title: "All", detail: "Likes, reposts, follows, and replies will use account-aware reads.", status: "OAuth later" },
+        { title: "Mentions", detail: "Mentions are reserved as both a notification tab and a Feed selector source.", status: "Planned" },
+        { title: "Settings", detail: "Notification controls belong here after session handling exists.", status: "Pending" },
+      ],
+    },
+    "oauth-callback": {
+      copy: "The OAuth callback has a static SPA route now. Browser-side state validation and token exchange will attach here in Phase 2.",
+      cards: [
+        { title: "State Validation", detail: "Callback parsing must compare browser-local OAuth state.", status: "Pending" },
+        { title: "Token Exchange", detail: "The exchange must remain browser-side or use an approved SDK path.", status: "Pending" },
+        { title: "Session Restore", detail: "Local refresh and multi-tab behavior need explicit verification.", status: "Pending" },
+      ],
+    },
+    profile: {
+      copy: "Self-profile needs OAuth before edit controls, likes, feeds, starter packs, and lists can be shown.",
+      cards: [
+        { title: "Posts", detail: "Public profile routes already show other-user post feeds.", status: "Active" },
+        { title: "Likes", detail: "Self-only tabs need authenticated account context.", status: "OAuth later" },
+        { title: "Edit Profile", detail: "Write scopes and local session handling are required first.", status: "Pending" },
+      ],
+    },
+    saved: {
+      copy: "Saved posts need authenticated reads and account-aware rendering.",
+      cards: [
+        { title: "Saved Timeline", detail: "A stable destination exists for saved-post reads.", status: "OAuth later" },
+        { title: "Empty State", detail: "The route can show account-specific saved-state once signed in.", status: "Ready" },
+        { title: "Go Home", detail: "Saved can route back to the active reader without a document reload.", status: "Ready" },
+      ],
+    },
+    settings: {
+      copy: "Settings starts with local preferences, sign-out placement, and account/session controls.",
+      cards: [
+        { title: "Appearance", detail: "Density is stored locally per context and applied before feed paint.", status: "Active" },
+        { title: "Account", detail: "Account identity, switcher, and sign-out wait for OAuth.", status: "Pending" },
+        { title: "Privacy", detail: "No BigBSky backend storage is used for v1 reader data.", status: "Static" },
+      ],
+    },
+  };
+  const surface = surfaces[name] || {
+    copy: "This signed-in destination has a stable static route and is ready for OAuth-backed data.",
+    cards: [{ title: "Static Route", detail: "The SPA fallback can serve this destination without server code.", status: "Ready" }],
   };
 
   return (
     <div className="timeline comfortable">
       <section className="surface-placeholder">
         <h2>{title}</h2>
-        <p>{copy[name] || "This signed-in destination has a stable static route and is ready for OAuth-backed data."}</p>
+        <p>{surface.copy}</p>
         {name === "explore" && (
           <a className="surface-action" href="/search" onClick={(event) => {
             event.preventDefault();
@@ -1283,33 +1349,109 @@ function SurfaceView({ name }: { name: string }) {
           </a>
         )}
       </section>
+      <section className="surface-grid" aria-label={`${title} sections`}>
+        {surface.cards.map((card) => (
+          <article className="surface-card" key={card.title}>
+            <span>{card.status}</span>
+            <h3>{card.title}</h3>
+            <p>{card.detail}</p>
+          </article>
+        ))}
+      </section>
     </div>
   );
 }
 
 function Composer({
   text,
-  remainingChars,
   onTextChange,
 }: {
   text: string;
-  remainingChars: number;
   onTextChange: (value: string) => void;
 }) {
+  const [extraPosts, setExtraPosts] = useState<string[]>([]);
+  const [mediaSlots, setMediaSlots] = useState<Record<number, number>>({});
+  const drafts = [text, ...extraPosts];
+  const overLimit = drafts.some((draft) => draft.length > 300);
+  const hasContent = drafts.some((draft) => draft.trim().length > 0) || Object.values(mediaSlots).some((count) => count > 0);
+
+  function updateDraft(index: number, value: string) {
+    if (index === 0) {
+      onTextChange(value);
+      return;
+    }
+
+    setExtraPosts((current) => current.map((draft, draftIndex) => (draftIndex === index - 1 ? value : draft)));
+  }
+
+  function removeDraft(index: number) {
+    setExtraPosts((current) => current.filter((_, draftIndex) => draftIndex !== index - 1));
+    setMediaSlots((current) => {
+      const next: Record<number, number> = {};
+      Object.entries(current).forEach(([key, value]) => {
+        const numericKey = Number(key);
+        if (numericKey < index) {
+          next[numericKey] = value;
+        } else if (numericKey > index) {
+          next[numericKey - 1] = value;
+        }
+      });
+      return next;
+    });
+  }
+
+  function attachImage(index: number) {
+    setMediaSlots((current) => ({ ...current, [index]: Math.min((current[index] ?? 0) + 1, 4) }));
+  }
+
   return (
     <section className="composer" aria-label="Composer">
-      <textarea
-        placeholder="What should BigBSky post after OAuth is added?"
-        value={text}
-        onChange={(event) => onTextChange(event.target.value)}
-      />
-      <div className="composer-actions">
-        <button type="button" title="Attach image">
-          <Image size={18} />
+      <div className="composer-thread">
+        {drafts.map((draft, index) => {
+          const remainingChars = 300 - draft.length;
+          return (
+            <div className="composer-draft" key={index}>
+              <div className="composer-draft-header">
+                <span>Post {index + 1}</span>
+                {index > 0 && (
+                  <button type="button" title="Remove post from thread" onClick={() => removeDraft(index)}>
+                    <X size={15} />
+                  </button>
+                )}
+              </div>
+              <textarea
+                placeholder={index === 0 ? "What should BigBSky post after OAuth is added?" : "Continue the thread"}
+                value={draft}
+                onChange={(event) => updateDraft(index, event.target.value)}
+              />
+              {mediaSlots[index] > 0 && (
+                <div className="composer-media-row" aria-label={`Post ${index + 1} attached media placeholders`}>
+                  {Array.from({ length: mediaSlots[index] }).map((_, mediaIndex) => (
+                    <span key={mediaIndex}>
+                      <Image size={14} /> Image {mediaIndex + 1}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="composer-actions">
+                <button type="button" title="Attach image" onClick={() => attachImage(index)} disabled={(mediaSlots[index] ?? 0) >= 4}>
+                  <Image size={18} />
+                </button>
+                <span className={remainingChars < 0 ? "over-limit" : ""}>{remainingChars}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="composer-footer">
+        <button type="button" onClick={() => setExtraPosts((current) => [...current, ""])} title="Add post to thread">
+          <Plus size={17} /> Add post
         </button>
-        <span className={remainingChars < 0 ? "over-limit" : ""}>{remainingChars}</span>
-        <button type="button" disabled={remainingChars < 0 || text.trim().length === 0}>
-          Post
+        <button type="button" disabled>
+          Drafts
+        </button>
+        <button type="button" disabled={overLimit || !hasContent}>
+          Post All
         </button>
       </div>
     </section>
@@ -1531,6 +1673,10 @@ function SearchView({
 }
 
 function FeedDetailHeader({ source, metadata }: { source: FeedSource; metadata: FeedGeneratorView | null }) {
+  const [copied, setCopied] = useState(false);
+  const creatorHandle = metadata?.creator?.handle;
+  const bskyUrl = creatorHandle ? `https://bsky.app/profile/${creatorHandle}/feed/${source.uri.split("/").pop()}` : "https://bsky.app";
+
   return (
     <section className="feed-detail-header">
       <div className="feed-detail-avatar">
@@ -1554,6 +1700,24 @@ function FeedDetailHeader({ source, metadata }: { source: FeedSource; metadata: 
             <dd>{source.uri.split("/").pop()}</dd>
           </div>
         </dl>
+        <div className="feed-detail-actions" aria-label="Feed options">
+          <button type="button" disabled title="Pin feed after OAuth is added">
+            Pin feed
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void navigator.clipboard?.writeText(source.uri);
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1600);
+            }}
+          >
+            {copied ? "Copied URI" : "Copy URI"}
+          </button>
+          <a href={bskyUrl} target="_blank" rel="noreferrer">
+            Open on Bluesky
+          </a>
+        </div>
       </div>
     </section>
   );
