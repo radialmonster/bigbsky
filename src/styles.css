@@ -2369,45 +2369,45 @@ button.surface-action {
     padding-inline: 34px;
   }
 
-  .timeline.comfortable .post-card.has-link,
-  .timeline.comfortable .post-card.has-quote,
-  .timeline.comfortable .post-card.has-media {
+  .timeline.compact .post-card.has-link,
+  .timeline.compact .post-card.has-quote,
+  .timeline.compact .post-card.has-media {
     display: grid;
     grid-template-columns: minmax(280px, 0.92fr) minmax(360px, 1.08fr);
     column-gap: 18px;
     align-items: start;
   }
 
-  .timeline.comfortable .post-card.has-link .post-header,
-  .timeline.comfortable .post-card.has-quote .post-header,
-  .timeline.comfortable .post-card.has-media .post-header,
-  .timeline.comfortable .post-card.has-link .reason,
-  .timeline.comfortable .post-card.has-quote .reason,
-  .timeline.comfortable .post-card.has-media .reason,
-  .timeline.comfortable .post-card.has-link .post-badges,
-  .timeline.comfortable .post-card.has-quote .post-badges,
-  .timeline.comfortable .post-card.has-media .post-badges,
-  .timeline.comfortable .post-card.has-link .post-text,
-  .timeline.comfortable .post-card.has-quote .post-text,
-  .timeline.comfortable .post-card.has-media .post-text,
-  .timeline.comfortable .post-card.has-link .post-actions,
-  .timeline.comfortable .post-card.has-quote .post-actions,
-  .timeline.comfortable .post-card.has-media .post-actions {
+  .timeline.compact .post-card.has-link .post-header,
+  .timeline.compact .post-card.has-quote .post-header,
+  .timeline.compact .post-card.has-media .post-header,
+  .timeline.compact .post-card.has-link .reason,
+  .timeline.compact .post-card.has-quote .reason,
+  .timeline.compact .post-card.has-media .reason,
+  .timeline.compact .post-card.has-link .post-badges,
+  .timeline.compact .post-card.has-quote .post-badges,
+  .timeline.compact .post-card.has-media .post-badges,
+  .timeline.compact .post-card.has-link .post-text,
+  .timeline.compact .post-card.has-quote .post-text,
+  .timeline.compact .post-card.has-media .post-text,
+  .timeline.compact .post-card.has-link .post-actions,
+  .timeline.compact .post-card.has-quote .post-actions,
+  .timeline.compact .post-card.has-media .post-actions {
     grid-column: 1;
   }
 
-  .timeline.comfortable .post-card.has-link .link-card,
-  .timeline.comfortable .post-card.has-quote .quote-card,
-  .timeline.comfortable .post-card.has-media .image-grid,
-  .timeline.comfortable .post-card.has-media .video-card {
+  .timeline.compact .post-card.has-link .link-card,
+  .timeline.compact .post-card.has-quote .quote-card,
+  .timeline.compact .post-card.has-media .image-grid,
+  .timeline.compact .post-card.has-media .video-card {
     grid-column: 2;
     grid-row: 1 / span 8;
     margin-top: 0;
   }
 
-  .timeline.comfortable .post-card.has-media .image-grid.count-1 img,
-  .timeline.comfortable .post-card.has-media .video-card img,
-  .timeline.comfortable .post-card.has-media .video-placeholder {
+  .timeline.compact .post-card.has-media .image-grid.count-1 img,
+  .timeline.compact .post-card.has-media .video-card img,
+  .timeline.compact .post-card.has-media .video-placeholder {
     min-height: var(--post-embed-min);
   }
 }
