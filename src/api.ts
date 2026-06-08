@@ -21,6 +21,19 @@ export type Profile = {
   postsCount?: number;
 };
 
+export type FeedGeneratorView = {
+  uri: string;
+  cid?: string;
+  did?: string;
+  creator: Profile;
+  displayName: string;
+  description?: string;
+  avatar?: string;
+  likeCount?: number;
+  likedByCount?: number;
+  indexedAt?: string;
+};
+
 export type FeedPost = {
   uri: string;
   cid: string;
@@ -84,6 +97,11 @@ export type SearchPostsResponse = {
   posts: FeedPost[];
 };
 
+export type ActorSearchResponse = {
+  cursor?: string;
+  actors: Profile[];
+};
+
 export type ThreadPostNode = {
   post: FeedPost;
   replies?: ThreadNode[];
@@ -129,6 +147,10 @@ export function getFeed(feed: string, cursor?: string, signal?: AbortSignal) {
   );
 }
 
+export function getFeedGenerator(feed: string, signal?: AbortSignal) {
+  return getJson<{ view: FeedGeneratorView }>("app.bsky.feed.getFeedGenerator", { feed }, signal);
+}
+
 export function getAuthorFeed(actor: string, cursor?: string, signal?: AbortSignal) {
   return getJson<FeedResponse>(
     "app.bsky.feed.getAuthorFeed",
@@ -145,17 +167,30 @@ export function getProfile(actor: string, signal?: AbortSignal) {
   return getJson<Profile>("app.bsky.actor.getProfile", { actor }, signal);
 }
 
-export function searchPosts(query: string, sort: "top" | "latest", cursor?: string, signal?: AbortSignal) {
+export function searchPosts(query: string, sort: "top" | "latest", lang?: string, cursor?: string, signal?: AbortSignal) {
   return getJson<SearchPostsResponse>(
     "app.bsky.feed.searchPosts",
     {
       q: query,
       sort,
+      ...(lang ? { lang } : {}),
       limit: "30",
       ...(cursor ? { cursor } : {}),
     },
     signal,
     SEARCH_API_HOST,
+  );
+}
+
+export function searchActors(query: string, cursor?: string, signal?: AbortSignal) {
+  return getJson<ActorSearchResponse>(
+    "app.bsky.actor.searchActors",
+    {
+      q: query,
+      limit: "30",
+      ...(cursor ? { cursor } : {}),
+    },
+    signal,
   );
 }
 

@@ -254,14 +254,14 @@ Initial performance budgets:
 - Cloudflare Pages preview deployments are public by default.
 - Target Cloudflare Pages Free compatibility for v1.
 - Root Vite/React/TypeScript app is scaffolded at the repository root, so Cloudflare can run `npm run build` and publish `dist`.
-- Current root app includes a desktop reader shell, grouped/filterable Feed selector, right context rail, browser-local recent trail, local composer UI with 300-character validation, per-feed density preferences, direct public Bluesky feed-generator loading for Home, direct public author-feed loading for `/profile/:handleOrDid`, standalone post-thread route loading, public post search at `/search?q=...`, static service worker/app-shell caching, a development inspector for source/request/cache/static-runtime posture, static `_headers`, static `_redirects`, and a build-output audit for forbidden server/runtime artifacts.
+- Current root app includes a desktop reader shell, grouped/filterable Feed selector, right context rail, browser-local recent trail, local composer UI with 300-character validation, per-feed density preferences, direct public Bluesky feed-generator loading for Home, direct public Feed Generator metadata loading for active Feed detail/header context, direct public author-feed loading for `/profile/:handleOrDid`, standalone post-thread route loading, public post and people search at `/search?q=...`, local Feed search over known static Feed destinations, static service worker/app-shell caching, a development inspector for source/request/cache/static-runtime posture, static `_headers`, static `_redirects`, and a build-output audit for forbidden server/runtime artifacts.
 - Latest local production build passed with `npm run build`; audit result: static-only `dist` output. Local preview returned `200` for `/` and `/sw.js`. Browser-plugin visual verification was attempted on 2026-06-08 but the in-app browser backend was unavailable in this session.
 - Default visual theme is dark, using Bluesky brand colors as anchors: Blue `#0560FF`, Light Blue `#75AFFF`, Dark Gray `#232E3E`, and Light Gray `#F9FAFB`.
 - `https://bigbsky.pages.dev/` and `https://bigbsky.com/` are serving the static app. Clean profile routes such as `https://bigbsky.com/profile/radialmonster.com` return the SPA shell through static fallback.
 - Signed-out Home feed has been tested working against public feed-generator sources. Current default sources intentionally avoid official feed generators that returned `502` signed out, and avoid `What's Hot Classic` because it surfaced NSFW content despite returning `200`.
 - Signed-out profile routes are implemented for Bluesky-style URLs such as `/profile/radialmonster.com`, `/profile/edutopia.org`, `/profile/standardissuecomputing.blog`, `/profile/foxes.hourly.media`, and `/profile/nsiabblog.bsky.social`; these use `app.bsky.actor.getProfile` plus `app.bsky.feed.getAuthorFeed` directly from the browser.
 - Signed-out post/thread routes are clickable from feed/search cards and direct-load through `/profile/:handleOrDid/post/:rkey`. Verified example: `/profile/suewho82.bsky.social/post/3mnpjvwbxq22b` rendered the root post plus nested replies through the static app shell.
-- Signed-out public post search is implemented at `/search?q=...`, including Top/Latest sort, post-card results, pagination, profile links, thread links, and browser-local recent search entries. Search typing does not issue a request until the form is submitted.
+- Signed-out public search is implemented at `/search?q=...`, including Posts/People/Feeds tabs, Top/Latest post sort, post language filtering, post-card results, public actor search results, local Feed destination results, pagination where supported, profile links, thread links, and browser-local recent search entries. Search typing does not issue a request until the form is submitted.
 - Feed selector filtering is implemented as local browser filtering over known feed sources; it does not make network requests per keystroke.
 - Per-feed density memory is implemented in localStorage under `bigbsky:density-by-context`; recent feed/profile/thread/search trail is implemented in localStorage under `bigbsky:recent`.
 - Feed image cards use Bluesky `thumb` URLs, display without cropping or forced aspect ratios, and constrain only to container width and viewport height. Clicking an image opens the Bluesky `fullsize` URL in an in-app viewer constrained to the viewport.
@@ -349,7 +349,7 @@ Public reads:
   - Feed generator output.
   - Post/thread lookup.
   - Search, if public endpoint behavior is acceptable.
-- Search endpoint finding: `https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts` returned `403 Forbidden` during browser/static testing, while `https://api.bsky.app/xrpc/app.bsky.feed.searchPosts` returned CORS-enabled public results. Current app keeps feed/profile/thread reads on `public.api.bsky.app` and uses `api.bsky.app` only for public post search.
+- Search endpoint finding: `https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts` returned `403 Forbidden` during browser/static testing, while `https://api.bsky.app/xrpc/app.bsky.feed.searchPosts` returned CORS-enabled public results. Current app keeps feed/profile/thread/feed-metadata/profile-search reads on `public.api.bsky.app` and uses `api.bsky.app` only for public post search.
 
 Authenticated reads/actions:
 
@@ -969,7 +969,7 @@ Request budget mindset:
 - Add public timeline/feed/profile/thread data loading. Status: implemented.
 - Add standalone post-thread data loading for `/profile/:handleOrDid/post/:rkey`, including direct-open support for Bluesky-style copied post URLs. Status: implemented.
 - Render standalone post routes as full threaded conversation pages: root post first, then nested replies/comments, with branch expansion for additional replies when Bluesky truncates the initial thread response. Status: partial; nested replies render and loaded reply branches can now expand/collapse locally, deeper Bluesky branch fetches for API-truncated branches still pending.
-- Add normalized in-memory entities for loaded posts, authors, embeds, and Feed metadata before building right-rail previews. Status: first pass implemented for loaded posts, author profiles, link URLs, media previews, and local smart-group summaries.
+- Add normalized in-memory entities for loaded posts, authors, embeds, and Feed metadata before building right-rail previews. Status: first pass implemented for loaded posts, author profiles, active Feed Generator metadata, link URLs, media previews, and local smart-group summaries.
 - Add request cancellation and source-level cache retention so switching Feeds or previews does not produce stale renders or repeated first-page fetches. Status: implemented for feed/profile/search/thread first-page loads with session cache and route scroll restoration.
 - Support client-side URL routes served by the single static app shell:
   - `/` Status: implemented.
@@ -1021,9 +1021,9 @@ Request budget mindset:
 - 300-character-per-post limit counter and validation.
 - Menu destination views for Explore, Notifications, Feeds, Lists, Saved, Profile, and Settings. Status: first pass implemented with static SPA routes for Explore/Search plus signed-in placeholder destinations for Notifications, Lists, Saved, Profile, and Settings.
 - Chat entry point and empty/message-list state, with full DM behavior deferred until privacy/API handling is clear. Status: first pass implemented as a static SPA placeholder route that explicitly defers DM behavior.
-- Feed detail header with Feed name, creator, count, options, and active Feed timeline below.
+- Feed detail header with Feed name, creator, count, options, and active Feed timeline below. Status: first pass implemented for public Feed Generator metadata, creator handle, like count, Feed URI key, description, avatar, and active timeline below; feed options remain pending.
 - Post/thread detail view with reply composer, stats, repost/quote/like/save links, and reply permissions.
-- Search result view with query, clear action, language selector, and Top/Latest/People/Feeds filters. Status: public post search implemented with query plus Top/Latest post results; People/Feeds tabs and language selector still pending.
+- Search result view with query, clear action, language selector, and Top/Latest/People/Feeds filters. Status: first pass implemented with query form, Posts/People/Feeds tabs, Top/Latest post results, language selector for post search, public actor search for People, and local Feed destination results for Feeds; explicit clear-query button still pending.
 - Profile view variants for self-profile and other-user profiles.
 - Media, GIF/video, alt text, and content-label rendering states. Status: partial; image alt badges, video thumbnail/placeholder cards, and content-label chips now render from loaded AppView data, with full GIF/video playback controls and richer moderation states still pending.
 - Muted/blocked content handling as exposed by APIs.

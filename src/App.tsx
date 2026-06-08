@@ -25,7 +25,9 @@ import {
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
+  type ActorSearchResponse,
   type FeedItem,
+  type FeedGeneratorView,
   type FeedPost,
   type Profile,
   type RecordEmbedView,
@@ -35,10 +37,12 @@ import {
   getEmbedImages,
   getExternalEmbed,
   getFeed,
+  getFeedGenerator,
   getPostThread,
   getProfile,
   getRecordEmbed,
   getVideoEmbed,
+  searchActors,
   searchPosts,
 } from "./api";
 import { getRouteState, type RouteState } from "./router";
@@ -55,6 +59,13 @@ type FeedState = {
 
 type SearchState = {
   posts: FeedPost[];
+  cursor?: string;
+  status: "idle" | "loading" | "ready" | "error" | "rate-limit";
+  error?: string;
+};
+
+type ActorSearchState = {
+  actors: Profile[];
   cursor?: string;
   status: "idle" | "loading" | "ready" | "error" | "rate-limit";
   error?: string;
@@ -102,6 +113,15 @@ type DevMetrics = {
 };
 
 const densityModes = ["comfortable", "compact", "media"];
+const searchTabs = ["posts", "people", "feeds"] as const;
+const searchLanguages = [
+  { label: "Any language", value: "" },
+  { label: "English", value: "en" },
+  { label: "Spanish", value: "es" },
+  { label: "Japanese", value: "ja" },
+  { label: "German", value: "de" },
+  { label: "French", value: "fr" },
+];
 const recentStorageKey = "bigbsky:recent";
 const estimatedPostHeights: Record<string, number> = {
   comfortable: 310,
@@ -110,6 +130,7 @@ const estimatedPostHeights: Record<string, number> = {
 };
 const emptyFeedState: FeedState = { items: [], status: "idle" };
 const emptySearchState: SearchState = { posts: [], status: "idle" };
+const emptyActorSearchState: ActorSearchState = { actors: [], status: "idle" };
 const initialDevMetrics: DevMetrics = {
   apiRequests: 0,
   cacheHits: 0,
@@ -209,9 +230,13 @@ export function App() {
     return initialRoute.kind === "search" ? initialRoute.query || "" : "";
   });
   const [searchSort, setSearchSort] = useState<"top" | "latest">("top");
+  const [searchTab, setSearchTab] = useState<(typeof searchTabs)[number]>("posts");
+  const [searchLanguage, setSearchLanguage] = useState("");
   const [feedState, setFeedState] = useState<FeedState>(emptyFeedState);
   const [searchState, setSearchState] = useState<SearchState>(emptySearchState);
+  const [actorSearchState, setActorSearchState] = useState<ActorSearchState>(emptyActorSearchState);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [feedMetadata, setFeedMetadata] = useState<FeedGeneratorView | null>(null);
   const [composerText, setComposerText] = useState("");
   const [imageViewer, setImageViewer] = useState<ImageViewerState>(null);
   const [densityByContext, setDensityByContext] = useState<Record<string, string>>(() => readDensityPreferences());
@@ -223,8 +248,10 @@ export function App() {
   });
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const feedCacheRef = useRef<Record<string, FeedState>>({});
+  const feedMetadataCacheRef = useRef<Record<string, FeedGeneratorView>>({});
   const profileCacheRef = useRef<Record<string, { feed: FeedState; profile: Profile | null }>>({});
   const searchCacheRef = useRef<Record<string, SearchState>>({});
+  const actorSearchCacheRef = useRef<Record<string, ActorSearchState>>({});
   const threadCacheRef = useRef<Record<string, ThreadNode>>({});
   const scrollCacheRef = useRef<Record<string, number>>({});
 
@@ -405,8 +432,8 @@ export function App() {
     }
   }, []);
 
-  const loadSearch = useCallback(async (query: string, sort: "top" | "latest", cursor?: string, signal?: AbortSignal) => {
-    const cacheKey = `search:${sort}:${query}`;
+  const loadSearch = useCallback(async (query: string, sort: "top" | "latest", lang: string, cursor?: string, signal?: AbortSignal) => {
+    const cacheKey = `search:${sort}:${lang || "any"}:${query}`;
     if (!cursor) {
       const cached = searchCacheRef.current[cacheKey];
       if (cached?.status === "ready") {
@@ -423,7 +450,7 @@ export function App() {
     }));
 
     try {
-      const response: SearchPostsResponse = await searchPosts(query, sort, cursor, signal);
+      const response: SearchPostsResponse = await searchPosts(query, sort, lang || undefined, cursor, signal);
       setSearchState((current) => {
         const next = {
           posts: cursor ? [...current.posts, ...response.posts] : response.posts,
@@ -436,6 +463,45 @@ export function App() {
     } catch (error) {
       if (!signal?.aborted) {
         setSearchState((current) => ({
+          ...current,
+          status: isRateLimit(error) ? "rate-limit" : "error",
+          error: rateLimitMessage(error),
+        }));
+      }
+    }
+  }, []);
+
+  const loadActorSearch = useCallback(async (query: string, cursor?: string, signal?: AbortSignal) => {
+    const cacheKey = `actors:${query}`;
+    if (!cursor) {
+      const cached = actorSearchCacheRef.current[cacheKey];
+      if (cached?.status === "ready") {
+        setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
+        setActorSearchState(cached);
+        return;
+      }
+    }
+
+    setActorSearchState((current) => ({
+      ...current,
+      status: cursor ? current.status : "loading",
+      error: undefined,
+    }));
+
+    try {
+      const response: ActorSearchResponse = await searchActors(query, cursor, signal);
+      setActorSearchState((current) => {
+        const next = {
+          actors: cursor ? [...current.actors, ...response.actors] : response.actors,
+          cursor: response.cursor,
+          status: "ready" as const,
+        };
+        actorSearchCacheRef.current[cacheKey] = next;
+        return next;
+      });
+    } catch (error) {
+      if (!signal?.aborted) {
+        setActorSearchState((current) => ({
           ...current,
           status: isRateLimit(error) ? "rate-limit" : "error",
           error: rateLimitMessage(error),
@@ -464,19 +530,58 @@ export function App() {
   useEffect(() => {
     if (route.kind !== "search") {
       setSearchState(emptySearchState);
+      setActorSearchState(emptyActorSearchState);
       return undefined;
     }
 
     setGlobalSearchText(route.query || "");
     if (!route.query) {
       setSearchState(emptySearchState);
+      setActorSearchState(emptyActorSearchState);
       return undefined;
     }
 
     const controller = new AbortController();
-    void loadSearch(route.query, searchSort, undefined, controller.signal);
+    if (searchTab === "posts") {
+      setActorSearchState(emptyActorSearchState);
+      void loadSearch(route.query, searchSort, searchLanguage, undefined, controller.signal);
+    } else if (searchTab === "people") {
+      setSearchState(emptySearchState);
+      void loadActorSearch(route.query, undefined, controller.signal);
+    } else {
+      setSearchState(emptySearchState);
+      setActorSearchState(emptyActorSearchState);
+    }
     return () => controller.abort();
-  }, [loadSearch, route, searchSort]);
+  }, [loadActorSearch, loadSearch, route, searchLanguage, searchSort, searchTab]);
+
+  useEffect(() => {
+    if (route.kind === "post" || route.kind === "search" || route.kind === "surface" || route.kind === "profile") {
+      setFeedMetadata(null);
+      return undefined;
+    }
+
+    const cached = feedMetadataCacheRef.current[activeSource.uri];
+    if (cached) {
+      setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
+      setFeedMetadata(cached);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    setFeedMetadata(null);
+    getFeedGenerator(activeSource.uri, controller.signal)
+      .then((response) => {
+        feedMetadataCacheRef.current[activeSource.uri] = response.view;
+        setFeedMetadata(response.view);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setFeedMetadata(null);
+        }
+      });
+    return () => controller.abort();
+  }, [activeSource, route.kind]);
 
   useEffect(() => {
     const onPopState = () => setRoute(getRouteState());
@@ -647,18 +752,24 @@ export function App() {
           ? route.name.charAt(0).toUpperCase() + route.name.slice(1)
         : isProfileRoute
           ? displayName(profile ?? undefined)
-          : activeSource.label;
+          : feedMetadata?.displayName || activeSource.label;
   const activeScrollKey = route.kind === "profile" ? `profile:${route.actor}` : route.kind === "feed" ? `feed:${activeSource.id}` : "";
   const renderedRows =
     route.kind === "post"
       ? countThreadRows(thread.node)
       : route.kind === "search"
-        ? searchState.posts.length
+        ? searchTab === "people"
+          ? actorSearchState.actors.length
+          : searchState.posts.length
         : route.kind === "surface"
           ? 0
           : virtualRenderedRows;
   const loadedPages =
-    route.kind === "post" ? (thread.node ? 1 : 0) : Math.ceil((route.kind === "search" ? searchState.posts.length : feedState.items.length) / 30);
+    route.kind === "post"
+      ? thread.node
+        ? 1
+        : 0
+      : Math.ceil((route.kind === "search" ? searchState.posts.length + actorSearchState.actors.length : feedState.items.length) / 30);
 
   useEffect(() => {
     const timeline = timelineRef.current;
@@ -678,8 +789,11 @@ export function App() {
 
   const loadMore = () => {
     if (route.kind === "search") {
-      if (route.query && searchState.cursor) {
-        void loadSearch(route.query, searchSort, searchState.cursor);
+      if (route.query && searchTab === "posts" && searchState.cursor) {
+        void loadSearch(route.query, searchSort, searchLanguage, searchState.cursor);
+      }
+      if (route.query && searchTab === "people" && actorSearchState.cursor) {
+        void loadActorSearch(route.query, actorSearchState.cursor);
       }
       return;
     }
@@ -851,22 +965,40 @@ export function App() {
           <SurfaceView name={route.name} />
         ) : route.kind === "search" ? (
           <SearchView
+            actorSearchState={actorSearchState}
+            feedSources={feedSources}
+            language={searchLanguage}
             query={globalSearchText}
             searchState={searchState}
             sort={searchSort}
+            tab={searchTab}
             onLoadMore={loadMore}
             onOpenImage={setImageViewer}
             onOpenPost={openPost}
             onOpenProfile={openProfile}
             onQueryChange={setGlobalSearchText}
             onSearch={submitSearch}
+            onLanguageChange={setSearchLanguage}
             onSortChange={setSearchSort}
+            onTabChange={setSearchTab}
+            onOpenFeed={(source) => {
+              setActiveSourceId(source.id);
+              remember({
+                label: source.label,
+                detail: source.description,
+                path: feedRoutePath(source),
+                route: { kind: "feed", uri: source.id },
+                sourceId: source.id,
+              });
+              navigate({ kind: "feed", uri: source.id }, feedRoutePath(source));
+            }}
           />
         ) : (
           <div
             className={`timeline ${density}`}
             ref={timelineRef}
           >
+            <FeedDetailHeader source={activeSource} metadata={feedMetadata} />
             <Composer
               remainingChars={remainingChars}
               text={composerText}
@@ -901,7 +1033,7 @@ export function App() {
         {route.kind === "profile" ? (
           <ProfileContextPanel actor={route.actor} profile={profile ?? entityCache.profiles[route.actor] ?? null} />
         ) : (
-          <FeedContextPanel source={activeSource} entityCache={entityCache} />
+          <FeedContextPanel source={activeSource} metadata={feedMetadata} entityCache={entityCache} />
         )}
         <FeedMapPanel groups={feedMapSummary} />
         <SmartGroupsPanel groups={entityCache.smartGroups} />
@@ -1106,28 +1238,53 @@ function SearchBox({
 }
 
 function SearchView({
+  actorSearchState,
+  feedSources,
+  language,
   query,
   searchState,
   sort,
+  tab,
   onLoadMore,
+  onLanguageChange,
+  onOpenFeed,
   onOpenImage,
   onOpenPost,
   onOpenProfile,
   onQueryChange,
   onSearch,
   onSortChange,
+  onTabChange,
 }: {
+  actorSearchState: ActorSearchState;
+  feedSources: FeedSource[];
+  language: string;
   query: string;
   searchState: SearchState;
   sort: "top" | "latest";
+  tab: (typeof searchTabs)[number];
   onLoadMore: () => void;
+  onLanguageChange: (language: string) => void;
+  onOpenFeed: (source: FeedSource) => void;
   onOpenImage: (image: ImageViewerState) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
   onQueryChange: (query: string) => void;
   onSearch: (query: string) => void;
   onSortChange: (sort: "top" | "latest") => void;
+  onTabChange: (tab: (typeof searchTabs)[number]) => void;
 }) {
+  const feedResults = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return feedSources;
+    }
+
+    return feedSources.filter((source) =>
+      `${source.label} ${source.description} ${source.group}`.toLowerCase().includes(normalizedQuery),
+    );
+  }, [feedSources, query]);
+
   return (
     <div className="timeline comfortable">
       <form
@@ -1139,51 +1296,154 @@ function SearchView({
       >
         <Search size={18} />
         <input
-          aria-label="Search posts"
+          aria-label="Search Bluesky"
           placeholder="Search posts, hashtags, or paste a post URL"
           value={query}
           onInput={(event) => onQueryChange(event.currentTarget.value)}
         />
-        <div className="segmented" aria-label="Search sort">
-          {(["top", "latest"] as const).map((mode) => (
+        <div className="segmented" aria-label="Search tabs">
+          {searchTabs.map((mode) => (
             <button
-              className={sort === mode ? "selected" : ""}
+              className={tab === mode ? "selected" : ""}
               key={mode}
               type="button"
-              onClick={() => onSortChange(mode)}
+              onClick={() => onTabChange(mode)}
             >
               {mode}
             </button>
           ))}
         </div>
+        {tab === "posts" && (
+          <div className="search-options">
+            <div className="segmented" aria-label="Search sort">
+              {(["top", "latest"] as const).map((mode) => (
+                <button
+                  className={sort === mode ? "selected" : ""}
+                  key={mode}
+                  type="button"
+                  onClick={() => onSortChange(mode)}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+            <select aria-label="Search language" value={language} onChange={(event) => onLanguageChange(event.currentTarget.value)}>
+              {searchLanguages.map((option) => (
+                <option key={option.value || "any"} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </form>
 
-      {searchState.status === "idle" && <EmptyState title="Search public posts" message="Enter a term to search Bluesky without signing in." />}
-      {searchState.status === "loading" && <LoadingState label="Searching public Bluesky posts" />}
-      {searchState.status === "error" && <ErrorState message={searchState.error || "Search failed to load."} />}
-      {searchState.status === "rate-limit" && <RateLimitState message={searchState.error} />}
-      {searchState.status === "ready" && searchState.posts.length === 0 && (
-        <EmptyState title="No posts found" message="Try a broader query or switch between top and latest results." />
+      {tab === "feeds" && (
+        <section className="search-results-list" aria-label="Feed search results">
+          {feedResults.length === 0 ? (
+            <EmptyState title="No Feeds found" message="Try another term or clear the search to see all local Feed destinations." />
+          ) : (
+            feedResults.map((source) => (
+              <button className="feed-result-card" key={source.id} type="button" onClick={() => onOpenFeed(source)}>
+                <span>{source.group}</span>
+                <strong>{source.label}</strong>
+                <small>{source.description}</small>
+              </button>
+            ))
+          )}
+        </section>
       )}
-      {searchState.status === "ready" && searchState.posts.length > 0 && (
+
+      {tab === "people" && (
         <>
-          {searchState.posts.map((post) => (
-            <PostCard
-              item={{ post }}
-              key={post.uri}
-              onOpenImage={onOpenImage}
-              onOpenPost={onOpenPost}
-              onOpenProfile={onOpenProfile}
-            />
-          ))}
-          {searchState.cursor && (
-            <button className="load-more" type="button" onClick={onLoadMore}>
-              Load more
-            </button>
+          {actorSearchState.status === "idle" && <EmptyState title="Search people" message="Enter a handle, name, or keyword to search public profiles." />}
+          {actorSearchState.status === "loading" && <LoadingState label="Searching public profiles" />}
+          {actorSearchState.status === "error" && <ErrorState message={actorSearchState.error || "Profile search failed to load."} />}
+          {actorSearchState.status === "rate-limit" && <RateLimitState message={actorSearchState.error} />}
+          {actorSearchState.status === "ready" && actorSearchState.actors.length === 0 && (
+            <EmptyState title="No people found" message="Try a broader name or handle." />
+          )}
+          {actorSearchState.status === "ready" && actorSearchState.actors.length > 0 && (
+            <section className="search-results-list" aria-label="People search results">
+              {actorSearchState.actors.map((actor) => (
+                <button className="profile-result-card" key={actor.did} type="button" onClick={() => onOpenProfile(actor)}>
+                  <Avatar profile={actor} />
+                  <span>
+                    <strong>{displayName(actor)}</strong>
+                    <small>@{actor.handle}</small>
+                    {actor.description && <em>{actor.description}</em>}
+                  </span>
+                </button>
+              ))}
+              {actorSearchState.cursor && (
+                <button className="load-more" type="button" onClick={onLoadMore}>
+                  Load more
+                </button>
+              )}
+            </section>
+          )}
+        </>
+      )}
+
+      {tab === "posts" && (
+        <>
+          {searchState.status === "idle" && <EmptyState title="Search public posts" message="Enter a term to search Bluesky without signing in." />}
+          {searchState.status === "loading" && <LoadingState label="Searching public Bluesky posts" />}
+          {searchState.status === "error" && <ErrorState message={searchState.error || "Search failed to load."} />}
+          {searchState.status === "rate-limit" && <RateLimitState message={searchState.error} />}
+          {searchState.status === "ready" && searchState.posts.length === 0 && (
+            <EmptyState title="No posts found" message="Try a broader query or switch between top and latest results." />
+          )}
+          {searchState.status === "ready" && searchState.posts.length > 0 && (
+            <>
+              {searchState.posts.map((post) => (
+                <PostCard
+                  item={{ post }}
+                  key={post.uri}
+                  onOpenImage={onOpenImage}
+                  onOpenPost={onOpenPost}
+                  onOpenProfile={onOpenProfile}
+                />
+              ))}
+              {searchState.cursor && (
+                <button className="load-more" type="button" onClick={onLoadMore}>
+                  Load more
+                </button>
+              )}
+            </>
           )}
         </>
       )}
     </div>
+  );
+}
+
+function FeedDetailHeader({ source, metadata }: { source: FeedSource; metadata: FeedGeneratorView | null }) {
+  return (
+    <section className="feed-detail-header">
+      <div className="feed-detail-avatar">
+        {metadata?.avatar ? <img src={metadata.avatar} alt="" loading="lazy" /> : <Hash size={24} />}
+      </div>
+      <div>
+        <span>{source.group} Feed</span>
+        <h2>{metadata?.displayName || source.label}</h2>
+        <p>{metadata?.description || source.description}</p>
+        <dl>
+          <div>
+            <dt>Creator</dt>
+            <dd>{metadata?.creator ? `@${metadata.creator.handle}` : "Public AppView"}</dd>
+          </div>
+          <div>
+            <dt>Likes</dt>
+            <dd>{(metadata?.likeCount ?? metadata?.likedByCount)?.toLocaleString() ?? "-"}</dd>
+          </div>
+          <div>
+            <dt>URI</dt>
+            <dd>{source.uri.split("/").pop()}</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
   );
 }
 
@@ -1758,22 +2018,38 @@ function DevInspector({
   );
 }
 
-function FeedContextPanel({ source, entityCache }: { source: FeedSource; entityCache: EntityCache }) {
+function FeedContextPanel({
+  source,
+  metadata,
+  entityCache,
+}: {
+  source: FeedSource;
+  metadata: FeedGeneratorView | null;
+  entityCache: EntityCache;
+}) {
   return (
     <section className="profile-panel">
-      <span className="feed-glyph">
-        <Hash size={22} />
-      </span>
-      <h2>{source.label}</h2>
-      <p>{source.description}</p>
+      {metadata?.avatar ? (
+        <img className="avatar" src={metadata.avatar} alt="" loading="lazy" />
+      ) : (
+        <span className="feed-glyph">
+          <Hash size={22} />
+        </span>
+      )}
+      <h2>{metadata?.displayName || source.label}</h2>
+      <p>{metadata?.description || source.description}</p>
       <dl>
         <div>
           <dt>Type</dt>
           <dd>Feed</dd>
         </div>
         <div>
-          <dt>Source</dt>
-          <dd>Public</dd>
+          <dt>Creator</dt>
+          <dd>{metadata?.creator ? `@${metadata.creator.handle}` : "Public"}</dd>
+        </div>
+        <div>
+          <dt>Likes</dt>
+          <dd>{(metadata?.likeCount ?? metadata?.likedByCount)?.toLocaleString() ?? "-"}</dd>
         </div>
         <div>
           <dt>Cached posts</dt>
