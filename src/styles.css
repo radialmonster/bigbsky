@@ -1142,6 +1142,11 @@ button.surface-action {
   background: var(--app-surface);
 }
 
+.local-list-card.selected {
+  border-color: rgba(117, 175, 255, 0.56);
+  background: rgba(5, 96, 255, 0.12);
+}
+
 .local-list-card small {
   color: var(--app-text-soft);
   font-size: 12px;
@@ -1152,6 +1157,43 @@ button.surface-action {
   margin-top: 4px;
   background: var(--app-surface-2);
   color: var(--app-text);
+}
+
+.local-list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.local-list-timeline {
+  max-width: 980px;
+  margin-top: 16px;
+}
+
+.local-list-timeline-header {
+  margin-bottom: 12px;
+  padding: 15px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface);
+}
+
+.local-list-timeline-header span {
+  color: var(--app-text-soft);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.local-list-timeline-header h3 {
+  margin: 7px 0 5px;
+}
+
+.local-list-timeline-header p {
+  margin: 0;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  line-height: 1.42;
 }
 
 .feed-directory-grid {
@@ -1767,6 +1809,7 @@ button.surface-action {
 
 .post-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 24px;
   color: var(--app-text-muted);
   font-size: 14px;
@@ -1790,6 +1833,53 @@ button.surface-action {
 }
 
 .post-actions button.saved {
+  color: var(--bsky-blue-soft);
+}
+
+.post-list-menu {
+  position: relative;
+}
+
+.post-list-menu summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.post-list-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.post-list-menu div {
+  position: absolute;
+  z-index: 6;
+  right: 0;
+  bottom: 26px;
+  display: grid;
+  width: min(240px, 78vw);
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
+}
+
+.post-list-menu div button {
+  justify-content: flex-start;
+  min-height: 32px;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: var(--app-surface-2);
+  color: var(--app-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.post-list-menu div button.listed {
   color: var(--bsky-blue-soft);
 }
 
@@ -2032,6 +2122,61 @@ button.surface-action {
   color: var(--app-text);
   text-align: left;
   padding: 0 10px;
+}
+
+.secondary-source-picker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+.secondary-source-picker button {
+  min-height: 30px;
+  margin-top: 0;
+  padding: 0 6px;
+  text-align: center;
+  text-transform: capitalize;
+}
+
+.secondary-source-picker .selected {
+  background: var(--bsky-blue);
+  color: #fff;
+}
+
+.secondary-post-list {
+  display: grid;
+  gap: 10px;
+}
+
+.secondary-post-list .post-card {
+  margin: 0;
+  padding: 12px;
+}
+
+.secondary-post-list .post-header {
+  grid-template-columns: 34px minmax(0, 1fr) 28px;
+}
+
+.secondary-post-list .avatar {
+  width: 34px;
+  height: 34px;
+}
+
+.secondary-post-list .post-text {
+  font-size: 13px;
+  line-height: 1.38;
+}
+
+.secondary-post-list .post-actions {
+  gap: 12px;
+  font-size: 12px;
+}
+
+.secondary-post-list .image-grid img,
+.secondary-post-list .video-card img,
+.secondary-post-list .video-placeholder {
+  min-height: 130px;
 }
 
 .context-panel button small {

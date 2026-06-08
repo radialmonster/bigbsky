@@ -112,6 +112,7 @@ type LocalList = {
   name: string;
   description: string;
   createdAt: string;
+  posts?: FeedPost[];
 };
 
 type EntityCache = {
@@ -155,6 +156,7 @@ const pinnedFeedsStorageKey = "bigbsky:pinned-feeds";
 const pinnedSearchesStorageKey = "bigbsky:pinned-searches";
 const pinnedProfilesStorageKey = "bigbsky:pinned-profiles";
 const collapsedFeedGroupsStorageKey = "bigbsky:collapsed-feed-groups";
+const secondaryColumnStorageKey = "bigbsky:secondary-column";
 const replyDraftPrefix = "bigbsky:reply-draft:";
 const emptyFeedState: FeedState = { items: [], status: "idle" };
 const emptySearchState: SearchState = { posts: [], status: "idle" };
@@ -170,6 +172,8 @@ const initialAuthState: AuthState = {
   status: looksLikeOAuthCallback() ? "callback" : "checking",
   session: null,
 };
+
+const secondaryColumnSources = ["off", "active", "saved", "search"] as const;
 
 function countBigbskyLocalKeys() {
   try {
@@ -211,6 +215,12 @@ function readLocalLists() {
     return Array.isArray(lists)
       ? lists
           .filter((list) => list && typeof list.id === "string" && typeof list.name === "string")
+          .map((list) => ({
+            ...list,
+            posts: Array.isArray(list.posts)
+              ? list.posts.filter((post) => post && typeof post.uri === "string").slice(0, 100)
+              : [],
+          }))
           .slice(0, 20)
       : [];
   } catch {
@@ -280,6 +290,17 @@ function readCollapsedFeedGroups() {
     return stored && typeof stored === "object" ? stored : {};
   } catch {
     return {};
+  }
+}
+
+function readSecondaryColumnPreference() {
+  try {
+    const stored = localStorage.getItem(secondaryColumnStorageKey);
+    return secondaryColumnSources.includes(stored as (typeof secondaryColumnSources)[number])
+      ? (stored as (typeof secondaryColumnSources)[number])
+      : "off";
+  } catch {
+    return "off";
   }
 }
 
@@ -384,6 +405,8 @@ export function App() {
   const [pinnedSearches, setPinnedSearches] = useState<string[]>(() => readPinnedSearches());
   const [pinnedProfiles, setPinnedProfiles] = useState<Profile[]>(() => readPinnedProfiles());
   const [collapsedFeedGroups, setCollapsedFeedGroups] = useState<Record<string, boolean>>(() => readCollapsedFeedGroups());
+  const [secondaryColumnSource, setSecondaryColumnSource] =
+    useState<(typeof secondaryColumnSources)[number]>(() => readSecondaryColumnPreference());
   const [recentItems, setRecentItems] = useState<RecentItem[]>(() => readRecentItems());
   const [devMetrics, setDevMetrics] = useState<DevMetrics>(initialDevMetrics);
   const [authState, setAuthState] = useState<AuthState>(initialAuthState);
@@ -952,6 +975,7 @@ export function App() {
     setPinnedSearches([]);
     setPinnedProfiles([]);
     setCollapsedFeedGroups({});
+    setSecondaryColumnSource("off");
     feedCacheRef.current = {};
     feedMetadataCacheRef.current = {};
     profileCacheRef.current = {};
@@ -1049,6 +1073,25 @@ export function App() {
     });
   }
 
+  function togglePostInLocalList(listId: string, post: FeedPost) {
+    setLocalLists((current) => {
+      const next = current.map((list) => {
+        if (list.id !== listId) {
+          return list;
+        }
+
+        const posts = list.posts ?? [];
+        const exists = posts.some((listPost) => listPost.uri === post.uri);
+        return {
+          ...list,
+          posts: exists ? posts.filter((listPost) => listPost.uri !== post.uri) : [post, ...posts].slice(0, 100),
+        };
+      });
+      localStorage.setItem(localListsStorageKey, JSON.stringify(next));
+      return next;
+    });
+  }
+
   function togglePinnedFeed(source: FeedSource) {
     setPinnedFeedIds((current) => {
       const next = current.includes(source.id) ? current.filter((id) => id !== source.id) : [source.id, ...current].slice(0, 12);
@@ -1092,6 +1135,11 @@ export function App() {
       localStorage.setItem(collapsedFeedGroupsStorageKey, JSON.stringify(next));
       return next;
     });
+  }
+
+  function updateSecondaryColumnSource(nextSource: (typeof secondaryColumnSources)[number]) {
+    setSecondaryColumnSource(nextSource);
+    localStorage.setItem(secondaryColumnStorageKey, nextSource);
   }
 
   function navigate(nextRoute: RouteState, path = "/") {
@@ -1188,6 +1236,7 @@ export function App() {
         ? 1
         : 0
       : Math.ceil((route.kind === "search" ? searchState.posts.length + actorSearchState.actors.length : feedState.items.length) / 30);
+  const savedUriSet = new Set(savedPosts.map((post) => post.uri));
 
   useEffect(() => {
     const timeline = timelineRef.current;
@@ -1430,18 +1479,22 @@ export function App() {
             onOpenLinkPreview={openLinkPreview}
             onLoadBranch={loadThreadBranch}
             onToggleSaved={toggleSavedPost}
-            savedUris={new Set(savedPosts.map((post) => post.uri))}
+            savedUris={savedUriSet}
+            localLists={localLists}
+            onToggleListPost={togglePostInLocalList}
           />
         ) : route.kind === "surface" && route.name === "saved" ? (
           <SavedPostsView
             posts={savedPosts}
-            savedUris={new Set(savedPosts.map((post) => post.uri))}
+            savedUris={savedUriSet}
             currentDid={authState.session?.did}
             onOpenImage={setImageViewer}
             onOpenPost={openPost}
             onOpenProfile={openProfile}
             onOpenLinkPreview={openLinkPreview}
             onToggleSaved={toggleSavedPost}
+            localLists={localLists}
+            onToggleListPost={togglePostInLocalList}
           />
         ) : route.kind === "surface" ? (
           <SurfaceView
@@ -1461,6 +1514,7 @@ export function App() {
             onClearLocalData={clearLocalReaderData}
             onCreateLocalList={createLocalList}
             onDeleteLocalList={deleteLocalList}
+            onToggleListPost={togglePostInLocalList}
             onOpenFeed={(source) => {
               setActiveSourceId(source.id);
               remember({
@@ -1478,6 +1532,12 @@ export function App() {
             onSignOut={handleSignOut}
             onTogglePinnedFeed={togglePinnedFeed}
             onWorkspaceWidthChange={updateWorkspaceWidth}
+            currentDid={authState.session?.did}
+            savedUris={savedUriSet}
+            onOpenImage={setImageViewer}
+            onOpenPost={openPost}
+            onOpenLinkPreview={openLinkPreview}
+            onToggleSaved={toggleSavedPost}
           />
         ) : route.kind === "search" ? (
           <SearchView
@@ -1495,8 +1555,10 @@ export function App() {
             onOpenPost={openPost}
             onOpenProfile={openProfile}
             onOpenLinkPreview={openLinkPreview}
-            savedUris={new Set(savedPosts.map((post) => post.uri))}
+            savedUris={savedUriSet}
             onToggleSaved={toggleSavedPost}
+            localLists={localLists}
+            onToggleListPost={togglePostInLocalList}
             onQueryChange={setGlobalSearchText}
             onSearch={submitSearch}
             onClearSearch={clearSearch}
@@ -1541,9 +1603,11 @@ export function App() {
                 onOpenPost={openPost}
                 onOpenProfile={openProfile}
                 onOpenLinkPreview={openLinkPreview}
-                savedUris={new Set(savedPosts.map((post) => post.uri))}
+                savedUris={savedUriSet}
                 currentDid={authState.session?.did}
                 onToggleSaved={toggleSavedPost}
+                localLists={localLists}
+                onToggleListPost={togglePostInLocalList}
                 onRenderedRowsChange={setVirtualRenderedRows}
               >
                 {feedState.cursor && <AutoLoadMoreButton label="Load more profile posts" onLoadMore={loadMore} />}
@@ -1577,9 +1641,11 @@ export function App() {
                 onOpenPost={openPost}
                 onOpenProfile={openProfile}
                 onOpenLinkPreview={openLinkPreview}
-                savedUris={new Set(savedPosts.map((post) => post.uri))}
+                savedUris={savedUriSet}
                 currentDid={authState.session?.did}
                 onToggleSaved={toggleSavedPost}
+                localLists={localLists}
+                onToggleListPost={togglePostInLocalList}
                 onRenderedRowsChange={setVirtualRenderedRows}
               >
                 {feedState.cursor && <AutoLoadMoreButton label="Load more feed posts" onLoadMore={loadMore} />}
@@ -1591,6 +1657,22 @@ export function App() {
 
       <aside className="right-rail" aria-label="Context">
         <SearchBox value={globalSearchText} onChange={setGlobalSearchText} onSearch={submitSearch} />
+        <SecondaryColumnPanel
+          currentDid={authState.session?.did}
+          source={secondaryColumnSource}
+          activePosts={feedState.items.map((item) => item.post)}
+          savedPosts={savedPosts}
+          searchPosts={searchState.posts}
+          savedUris={savedUriSet}
+          localLists={localLists}
+          onSourceChange={updateSecondaryColumnSource}
+          onOpenImage={setImageViewer}
+          onOpenLinkPreview={openLinkPreview}
+          onOpenPost={openPost}
+          onOpenProfile={openProfile}
+          onToggleSaved={toggleSavedPost}
+          onToggleListPost={togglePostInLocalList}
+        />
         <AccountPanel auth={authState} onSignIn={handleSignIn} onSignOut={handleSignOut} />
         {route.kind === "profile" ? (
           <ProfileContextPanel actor={route.actor} profile={profile ?? entityCache.profiles[route.actor] ?? null} />
@@ -1667,10 +1749,12 @@ function VirtualPostList({
   currentDid,
   density,
   items,
+  localLists,
   onOpenImage,
   onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
+  onToggleListPost,
   onToggleSaved,
   onRenderedRowsChange,
   savedUris,
@@ -1680,10 +1764,12 @@ function VirtualPostList({
   currentDid?: string;
   density: string;
   items: FeedItem[];
+  localLists: LocalList[];
   onOpenImage: (image: ImageViewerState) => void;
   onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
+  onToggleListPost: (listId: string, post: FeedPost) => void;
   onToggleSaved: (post: FeedPost) => void;
   onRenderedRowsChange: (count: number) => void;
   savedUris: Set<string>;
@@ -1804,6 +1890,8 @@ function VirtualPostList({
             onOpenProfile={onOpenProfile}
             isSaved={savedUris.has(item.post.uri)}
             onToggleSaved={onToggleSaved}
+            localLists={localLists}
+            onToggleListPost={onToggleListPost}
           />
         </MeasuredPostRow>
       ))}
@@ -1898,13 +1986,20 @@ function SurfaceView({
   onClearLocalData,
   onCreateLocalList,
   onDeleteLocalList,
+  onToggleListPost,
   onOpenFeed,
+  onOpenImage,
+  onOpenLinkPreview,
   onOpenProfile,
+  onOpenPost,
   onOpenSearch,
   onSignIn,
   onSignOut,
+  onToggleSaved,
   onTogglePinnedFeed,
   onWorkspaceWidthChange,
+  currentDid,
+  savedUris,
 }: {
   auth: AuthState;
   name: string;
@@ -1922,13 +2017,20 @@ function SurfaceView({
   onClearLocalData: () => void | Promise<void>;
   onCreateLocalList: (name: string, description: string) => void;
   onDeleteLocalList: (id: string) => void;
+  onToggleListPost: (listId: string, post: FeedPost) => void;
   onOpenFeed: (source: FeedSource) => void;
+  onOpenImage: (image: ImageViewerState) => void;
+  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
   onOpenProfile: (profile: Profile) => void;
+  onOpenPost: (post: FeedPost) => void;
   onOpenSearch: () => void;
   onSignIn: (handle: string) => void | Promise<void>;
   onSignOut: () => void | Promise<void>;
+  onToggleSaved: (post: FeedPost) => void;
   onTogglePinnedFeed: (source: FeedSource) => void;
   onWorkspaceWidthChange: (width: (typeof widthModes)[number]) => void;
+  currentDid?: string;
+  savedUris: Set<string>;
 }) {
   const title = name.charAt(0).toUpperCase() + name.slice(1);
   const surfaces: Record<string, { copy: string; cards: Array<{ title: string; detail: string; status: string }> }> = {
@@ -2144,8 +2246,16 @@ function SurfaceView({
     return (
       <ListsSurface
         lists={localLists}
+        currentDid={currentDid}
+        savedUris={savedUris}
         onCreateList={onCreateLocalList}
         onDeleteList={onDeleteLocalList}
+        onToggleListPost={onToggleListPost}
+        onOpenImage={onOpenImage}
+        onOpenLinkPreview={onOpenLinkPreview}
+        onOpenPost={onOpenPost}
+        onOpenProfile={onOpenProfile}
+        onToggleSaved={onToggleSaved}
       />
     );
   }
@@ -2333,15 +2443,33 @@ function NotificationsSurface({
 
 function ListsSurface({
   lists,
+  currentDid,
+  savedUris,
   onCreateList,
   onDeleteList,
+  onToggleListPost,
+  onOpenImage,
+  onOpenLinkPreview,
+  onOpenPost,
+  onOpenProfile,
+  onToggleSaved,
 }: {
   lists: LocalList[];
+  currentDid?: string;
+  savedUris: Set<string>;
   onCreateList: (name: string, description: string) => void;
   onDeleteList: (id: string) => void;
+  onToggleListPost: (listId: string, post: FeedPost) => void;
+  onOpenImage: (image: ImageViewerState) => void;
+  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
+  onOpenPost: (post: FeedPost) => void;
+  onOpenProfile: (profile: Profile) => void;
+  onToggleSaved: (post: FeedPost) => void;
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [selectedListId, setSelectedListId] = useState("");
+  const selectedList = lists.find((list) => list.id === selectedListId) ?? lists[0];
 
   return (
     <div className="timeline comfortable">
@@ -2381,16 +2509,50 @@ function ListsSurface({
       ) : (
         <section className="local-list-grid" aria-label="Local lists">
           {lists.map((list) => (
-            <article className="local-list-card" key={list.id}>
+            <article className={selectedList?.id === list.id ? "local-list-card selected" : "local-list-card"} key={list.id}>
               <span>Local</span>
               <h3>{list.name}</h3>
               <p>{list.description || "No description yet."}</p>
+              <small>{(list.posts?.length ?? 0).toLocaleString()} post{list.posts?.length === 1 ? "" : "s"}</small>
               <small>Created {formatPostTime(list.createdAt)}</small>
-              <button type="button" onClick={() => onDeleteList(list.id)}>
-                Delete
-              </button>
+              <div className="local-list-actions">
+                <button type="button" onClick={() => setSelectedListId(list.id)}>
+                  Open
+                </button>
+                <button type="button" onClick={() => onDeleteList(list.id)}>
+                  Delete
+                </button>
+              </div>
             </article>
           ))}
+        </section>
+      )}
+      {selectedList && (
+        <section className="local-list-timeline" aria-label={`${selectedList.name} posts`}>
+          <div className="local-list-timeline-header">
+            <span>Local list timeline</span>
+            <h3>{selectedList.name}</h3>
+            <p>{selectedList.posts?.length ? "Posts added from loaded reader cards render here." : "Use a post card's Lists control to add loaded posts here."}</p>
+          </div>
+          {(selectedList.posts ?? []).length === 0 ? (
+            <EmptyState title="No posts in this local list" message="Add loaded posts from any timeline post card." />
+          ) : (
+            selectedList.posts?.map((post) => (
+              <PostCard
+                currentDid={currentDid}
+                isSaved={savedUris.has(post.uri)}
+                item={{ post }}
+                key={post.uri}
+                localLists={lists}
+                onOpenImage={onOpenImage}
+                onOpenLinkPreview={onOpenLinkPreview}
+                onOpenPost={onOpenPost}
+                onOpenProfile={onOpenProfile}
+                onToggleListPost={onToggleListPost}
+                onToggleSaved={onToggleSaved}
+              />
+            ))
+          )}
         </section>
       )}
     </div>
@@ -2687,23 +2849,104 @@ function SearchBox({
   );
 }
 
+function SecondaryColumnPanel({
+  activePosts,
+  currentDid,
+  localLists,
+  onOpenImage,
+  onOpenLinkPreview,
+  onOpenPost,
+  onOpenProfile,
+  onSourceChange,
+  onToggleListPost,
+  onToggleSaved,
+  savedPosts,
+  savedUris,
+  searchPosts: secondarySearchPosts,
+  source,
+}: {
+  activePosts: FeedPost[];
+  currentDid?: string;
+  localLists: LocalList[];
+  onOpenImage: (image: ImageViewerState) => void;
+  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
+  onOpenPost: (post: FeedPost) => void;
+  onOpenProfile: (profile: Profile) => void;
+  onSourceChange: (source: (typeof secondaryColumnSources)[number]) => void;
+  onToggleListPost: (listId: string, post: FeedPost) => void;
+  onToggleSaved: (post: FeedPost) => void;
+  savedPosts: FeedPost[];
+  savedUris: Set<string>;
+  searchPosts: FeedPost[];
+  source: (typeof secondaryColumnSources)[number];
+}) {
+  const sourcePosts =
+    source === "active" ? activePosts : source === "saved" ? savedPosts : source === "search" ? secondarySearchPosts : [];
+  const sourceLabel = source === "active" ? "Active feed" : source === "saved" ? "Saved" : source === "search" ? "Search" : "Off";
+
+  return (
+    <section className="context-panel secondary-column-panel">
+      <h2>Second Column</h2>
+      <div className="secondary-source-picker" aria-label="Secondary column source">
+        {secondaryColumnSources.map((option) => (
+          <button
+            className={source === option ? "selected" : ""}
+            key={option}
+            type="button"
+            onClick={() => onSourceChange(option)}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+      {source === "off" ? (
+        <p>Pick a source to keep a compact secondary reader in the right rail.</p>
+      ) : sourcePosts.length === 0 ? (
+        <p>{sourceLabel} has no loaded posts available for the secondary reader yet.</p>
+      ) : (
+        <div className="secondary-post-list" aria-label={`${sourceLabel} secondary posts`}>
+          {sourcePosts.slice(0, 3).map((post) => (
+            <PostCard
+              currentDid={currentDid}
+              isSaved={savedUris.has(post.uri)}
+              item={{ post }}
+              key={`${source}:${post.uri}`}
+              localLists={localLists}
+              onOpenImage={onOpenImage}
+              onOpenLinkPreview={onOpenLinkPreview}
+              onOpenPost={onOpenPost}
+              onOpenProfile={onOpenProfile}
+              onToggleListPost={onToggleListPost}
+              onToggleSaved={onToggleSaved}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function SavedPostsView({
   currentDid,
+  localLists,
   posts,
   savedUris,
   onOpenImage,
   onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
+  onToggleListPost,
   onToggleSaved,
 }: {
   posts: FeedPost[];
   currentDid?: string;
+  localLists: LocalList[];
   savedUris: Set<string>;
   onOpenImage: (image: ImageViewerState) => void;
   onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
+  onToggleListPost: (listId: string, post: FeedPost) => void;
   onToggleSaved: (post: FeedPost) => void;
 }) {
   return (
@@ -2726,6 +2969,8 @@ function SavedPostsView({
               onOpenLinkPreview={onOpenLinkPreview}
               onOpenPost={onOpenPost}
               onOpenProfile={onOpenProfile}
+              localLists={localLists}
+              onToggleListPost={onToggleListPost}
               onToggleSaved={onToggleSaved}
             />
           ))}
@@ -2740,6 +2985,7 @@ function SearchView({
   currentDid,
   feedSources,
   language,
+  localLists,
   onToggleSaved,
   query,
   searchState,
@@ -2760,11 +3006,13 @@ function SearchView({
   onSortChange,
   onTabChange,
   onTogglePinnedSearch,
+  onToggleListPost,
 }: {
   actorSearchState: ActorSearchState;
   currentDid?: string;
   feedSources: FeedSource[];
   language: string;
+  localLists: LocalList[];
   query: string;
   searchState: SearchState;
   sort: "top" | "latest";
@@ -2773,6 +3021,7 @@ function SearchView({
   onLoadMore: () => void;
   onLanguageChange: (language: string) => void;
   onToggleSaved: (post: FeedPost) => void;
+  onToggleListPost: (listId: string, post: FeedPost) => void;
   onOpenFeed: (source: FeedSource) => void;
   onOpenImage: (image: ImageViewerState) => void;
   onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
@@ -2926,6 +3175,8 @@ function SearchView({
                   onOpenLinkPreview={onOpenLinkPreview}
                   onOpenPost={onOpenPost}
                   onOpenProfile={onOpenProfile}
+                  localLists={localLists}
+                  onToggleListPost={onToggleListPost}
                   isSaved={savedUris.has(post.uri)}
                   onToggleSaved={onToggleSaved}
                 />
@@ -3004,19 +3255,23 @@ function PostCard({
   currentDid,
   isSaved = false,
   item,
+  localLists = [],
   onOpenImage,
   onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
+  onToggleListPost,
   onToggleSaved,
 }: {
   currentDid?: string;
   isSaved?: boolean;
   item: FeedItem;
+  localLists?: LocalList[];
   onOpenImage?: (image: ImageViewerState) => void;
   onOpenLinkPreview?: (link: NonNullable<LinkPreviewState>) => void;
   onOpenPost?: (post: FeedPost) => void;
   onOpenProfile?: (profile: Profile) => void;
+  onToggleListPost?: (listId: string, post: FeedPost) => void;
   onToggleSaved?: (post: FeedPost) => void;
 }) {
   const post = item.post;
@@ -3161,6 +3416,28 @@ function PostCard({
         >
           <Bookmark size={16} /> {isSaved ? "Saved" : "Save"}
         </button>
+        {localLists.length > 0 && (
+          <details className="post-list-menu">
+            <summary title="Add post to local lists">
+              <List size={16} /> Lists
+            </summary>
+            <div>
+              {localLists.map((list) => {
+                const isListed = !!list.posts?.some((listPost) => listPost.uri === post.uri);
+                return (
+                  <button
+                    className={isListed ? "listed" : ""}
+                    key={list.id}
+                    type="button"
+                    onClick={() => onToggleListPost?.(list.id, post)}
+                  >
+                    {isListed ? "Remove from" : "Add to"} {list.name}
+                  </button>
+                );
+              })}
+            </div>
+          </details>
+        )}
       </footer>
     </article>
   );
@@ -3306,6 +3583,7 @@ function replyPermissionLabel(post: FeedPost) {
 
 function ThreadView({
   currentDid,
+  localLists,
   thread,
   loadingBranches,
   onOpenImage,
@@ -3313,10 +3591,12 @@ function ThreadView({
   onLoadBranch,
   onOpenPost,
   onOpenProfile,
+  onToggleListPost,
   onToggleSaved,
   savedUris,
 }: {
   currentDid?: string;
+  localLists: LocalList[];
   thread: { status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string };
   loadingBranches: Record<string, boolean>;
   onOpenImage: (image: ImageViewerState) => void;
@@ -3324,6 +3604,7 @@ function ThreadView({
   onLoadBranch: (uri: string) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
+  onToggleListPost: (listId: string, post: FeedPost) => void;
   onToggleSaved: (post: FeedPost) => void;
   savedUris: Set<string>;
 }) {
@@ -3413,7 +3694,7 @@ function ThreadView({
         setExpandedBranches((current) => ({ ...current, [uri]: !current[uri] })),
         { loadingBranches, onLoadBranch, onOpenImage, onOpenPost, onOpenProfile },
         onOpenLinkPreview,
-        { currentDid, onToggleSaved, savedUris },
+        { currentDid, localLists, onToggleListPost, onToggleSaved, savedUris },
       )}
     </div>
   );
@@ -3612,6 +3893,8 @@ function renderThreadNode(
   onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void,
   savedState: {
     currentDid?: string;
+    localLists: LocalList[];
+    onToggleListPost: (listId: string, post: FeedPost) => void;
     onToggleSaved: (post: FeedPost) => void;
     savedUris: Set<string>;
   },
@@ -3642,6 +3925,8 @@ function renderThreadNode(
         onOpenPost={handlers.onOpenPost}
         onOpenProfile={handlers.onOpenProfile}
         isSaved={savedState.savedUris.has(node.post.uri)}
+        localLists={savedState.localLists}
+        onToggleListPost={savedState.onToggleListPost}
         onToggleSaved={savedState.onToggleSaved}
       />
       {visibleReplies.map((reply) =>
