@@ -149,7 +149,7 @@ BigBSky should make the active Feed timeline feel native to desktop monitors wit
 - Media-aware layout: render image/video-heavy posts with larger previews, better side-by-side image grids, clear alt-text affordances, and less wasted vertical scrolling.
 - Inline thread expansion: allow a post/thread to expand inline or in an adjacent context area while preserving the active Feed scroll position.
 - Feed selector drawer: replace the horizontal top Feed bar with a grouped, searchable Feed selector for pinned Feeds, recent Feeds, Discover, Following, Mentions, topic groups, and Feed search.
-- Reading density modes: support Comfortable, Compact, and Media-heavy modes so users can choose between readability, fast scanning, and visual browsing.
+- Reading density modes: support Comfortable, Compact, and Media-heavy modes so users can choose between readable full-width cards, faster two-column scanning for rich posts, and visual browsing.
 - Sticky active Feed header: show current Feed name, creator, description/count, sort/filter controls, and composer access without consuming too much vertical space.
 - Contextual right rail: adapt the right rail to the current Feed or selected post, showing Feed info, related Feeds, trending topics, author previews, thread summaries, or search/discovery.
 - Preview side panel: show profile previews, quote posts, link cards, image details, or thread context without full navigation away from the active Feed.
@@ -162,7 +162,7 @@ The biggest design win is to make the active Feed timeline a desktop reading sur
 Useful creative ideas that fit the Feed-first product direction:
 
 - Feed magazine mode: keep the endless Feed, but give media/link-heavy Feeds a more editorial layout with larger lead media, compact text-only posts, and stronger visual grouping. Static path: compute layout in the browser from currently loaded Feed items and local display preferences.
-- Per-Feed layout memory: remember layout/density preferences per Feed, such as media-heavy for design/art Feeds, compact for trading/news Feeds, and comfortable for Following. Static path: store browser-locally by Feed URI. Defer cross-device sync.
+- Per-Feed layout memory: remember layout/density preferences per Feed, such as media-heavy for design/art Feeds, compact for fast rich-post scanning, and comfortable for readable full-width Following. Static path: store browser-locally by Feed URI. Defer cross-device sync.
 - Author/profile preview in the right rail: selecting an author can show profile details, follow controls, recent posts, and related Feeds without leaving the active Feed. Static path: fetch live profile and author-feed data on demand, then cache locally.
 - Link preview reader: expand Bluesky-provided link-card metadata into a side panel with source, title, thumbnail, description, and source-post actions. Do not crawl third-party pages or summarize related discussion.
 - Feed map: show saved/pinned Feeds grouped by topic/community-style categories while still calling them Feeds. Static path: use user-created browser-local groups plus client-side grouping from Feed names/descriptions. Defer shared/global Feed taxonomy.
@@ -1020,7 +1020,7 @@ Request budget mindset:
 - Post/thread detail view with reply composer, stats, repost/quote/like/save links, and reply permissions. Status: partial; standalone threads now show conversation metadata, reply/repost/quote/like counts, timestamp, reply-permission text, local save actions, and a browser-local 300-character reply draft per thread; authenticated reply/write actions remain pending.
 - Search result view with query, clear action, language selector, and Top/Latest/People/Feeds filters. Status: first pass implemented with query form, clear-query button, Posts/People/Feeds tabs, Top/Latest post results, language selector for post search, public actor search for People, and local Feed destination results for Feeds.
 - Profile view variants for self-profile and other-user profiles. Status: partial; public other-user profile routes now render a profile-specific header with stats, disabled follow/action controls, Open on Bluesky/Copy link actions, and local Posts/Replies/Media/Videos tabs over loaded public posts. Self-profile now uses the restored OAuth identity for display/stats/sign-out and can open the signed-in user's public profile reader, while account-only tabs and edit controls remain pending.
-- Media, GIF/video, alt text, and content-label rendering states. Status: partial; image alt badges, image-viewer alt text, video thumbnail/placeholder cards, and content-label chips now render from loaded AppView data, with full GIF/video playback controls and richer moderation states still pending.
+- Media, GIF/video, alt text, and content-label rendering states. Status: partial; image alt badges, overflow image-count badges when more than four images are present, image-viewer alt text, video thumbnail/placeholder cards, and content-label chips now render from loaded AppView data, with full GIF/video playback controls and richer moderation states still pending.
 - Muted/blocked content handling as exposed by APIs.
 - Account-aware post rendering.
 - Wider active Feed timeline formatting while preserving endless-scroll behavior.
@@ -1047,8 +1047,8 @@ Request budget mindset:
 - Optional multiple timelines side by side for users who want it, not as the default requirement.
 - Pinned feeds/profiles/searches/notifications. Status: partial; known Feeds and searches can be pinned locally in the browser, while profile and notification pins remain pending.
 - Feed grouping, filtering, ordering, and quick switching. Status: partial; the selector supports grouped browsing, local filtering, group collapse/expand state, local Pinned shortcuts, and one-click switching without a horizontal tab strip. Manual account-backed ordering remains pending.
-- Wide post-card layout variants. Status: first pass implemented; post cards are classified as text-only, media, link, or quote variants, and wide desktop viewports can split rich embeds beside author/text/action context instead of simply stretching the card.
-- Media-heavy and compact reading modes. Status: first pass implemented; density modes persist per Feed/surface, compact text-only cards use a denser two-zone desktop layout, and media mode gives image/video posts larger stable media space.
+- Wide post-card layout variants. Status: first pass implemented; post cards are classified as text-only, media, link, or quote variants. Comfortable now keeps rich posts in a readable full-width flow, while Compact splits media/link/quote embeds beside author/text/action context on wide desktop viewports.
+- Media-heavy and compact reading modes. Status: first pass implemented; density modes persist per Feed/surface, compact cards use denser text styling, compact text-only posts use a two-zone desktop layout, compact rich posts use a two-column desktop layout, and media mode gives image/video posts larger stable media space.
 - Sticky active Feed header.
 - Contextual right rail and preview side panel. Status: partial; the right rail adapts between Feed/profile context, link previews, recent history, Feed Map, local pinned searches, and loaded-post hashtag trends.
 - Thread reader with parent/reply context.
@@ -1131,7 +1131,7 @@ Request budget mindset:
 - Desktop screenshot at 1920x1080 shows the intended wide layout. Status: fallback Puppeteer screenshot captured on 2026-06-08 after the auto-pagination/trending/pinned-search changes; wide rails, active timeline, right context, composer, and loaded-data trending panel rendered correctly.
 - Mobile viewport remains usable enough, even though desktop is the priority.
 - Scrolling a long Feed keeps DOM node count bounded and does not degrade after several loaded pages. Status: partial; measured-row virtualization is implemented for feed/profile timelines, and fallback Puppeteer verification confirmed 29 loaded rows with only 2-3 mounted post cards after scrolling. Several loaded-page degradation testing remains pending.
-- Media-heavy Feed cards avoid visible layout jumps by reserving stable image/video/link-card space. Status: partial; media and comfortable layouts now reserve larger stable media regions, but cumulative layout-shift measurement is still pending.
+- Media-heavy Feed cards avoid visible layout jumps by reserving stable image/video/link-card space. Status: partial; media layouts reserve larger stable media regions, compact rich posts use a bounded two-column embed area on wide screens, and cumulative layout-shift measurement is still pending.
 - Opening profile and thread previews reuses already-loaded post/author data before making detail requests.
 - Switching between Feeds restores cached pages and scroll position without refetching the visible page from scratch.
 - Search and Feed selector input do not send a network request for every keystroke.
