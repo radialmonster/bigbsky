@@ -977,13 +977,15 @@ Request budget mindset:
   - `/profile/:handleOrDid/post/:rkey` Status: implemented.
   - `/feed/:uri` Status: implemented for known Feed source IDs and matching Feed URIs.
   - `/search` Status: implemented with `q` query parameter for post search.
+  - `/explore` Status: implemented as a static SPA placeholder surface linked to public search/discovery.
+  - `/feeds` Status: implemented as a static SPA placeholder surface linked to the desktop Feed selector.
 - Add loading, empty, error, and rate-limit states. Status: implemented for current public feed/search surfaces; additional labeled/blocked/deleted states still pending.
 - Add local layout preferences. Status: implemented for density.
 - Apply local density/layout preferences before initial timeline paint. Status: implemented for per-feed/default density.
 - Add service worker/app-shell caching once the shell stabilizes. Status: implemented as a static `public/sw.js` app-shell cache for `/`, `/index.html`, and hashed assets; `/sw.js` is served with must-revalidate caching.
 - Verify repeat visits and in-app navigation do not depend on Cloudflare document reloads or paid/quota-triggering Cloudflare requests. Static asset update checks are allowed only as deliberate background checks. Status: local preview serves `/` and `/sw.js` as static assets; production Cloudflare dashboard verification still pending.
 - Verify DOM size remains bounded after scrolling multiple timeline pages. Status: partial; active Feed rendering is now windowed so only the visible overscan range mounts, but browser-driven multi-page scroll verification is still pending.
-- Verify all clean routes and OAuth callback routes are served by static SPA fallback, not by server-side handlers.
+- Verify all clean routes and OAuth callback routes are served by static SPA fallback, not by server-side handlers. Status: local preview verified `/`, `/search`, `/explore`, `/feeds`, and `/profile/suewho82.bsky.social/post/3mnpjvwbxq22b` return the static SPA shell; OAuth callback route still pending.
 - Verify a direct standalone post route such as `/profile/suewho82.bsky.social/post/3mnpjvwbxq22b` renders through the static SPA shell, makes only direct Bluesky/AT Protocol data calls after load, shows the root post plus threaded replies/comments, and triggers zero Pages Function/Worker invocations. Status: local static-shell/thread rendering verified; Cloudflare dashboard zero-invocation verification still pending.
 
 ### Phase 2: OAuth Login
@@ -1019,11 +1021,11 @@ Request budget mindset:
 - Multi-post/thread composition from the inline composer.
 - Drafts and Post All support where feasible.
 - 300-character-per-post limit counter and validation.
-- Menu destination views for Explore, Notifications, Feeds, Lists, Saved, Profile, and Settings. Status: first pass implemented with static SPA routes for Explore/Search plus signed-in placeholder destinations for Notifications, Lists, Saved, Profile, and Settings.
+- Menu destination views for Explore, Notifications, Feeds, Lists, Saved, Profile, and Settings. Status: first pass implemented with static SPA routes/placeholders for Explore, Feeds, Notifications, Chat, Lists, Saved, Profile, and Settings, with Explore linking into public search.
 - Chat entry point and empty/message-list state, with full DM behavior deferred until privacy/API handling is clear. Status: first pass implemented as a static SPA placeholder route that explicitly defers DM behavior.
 - Feed detail header with Feed name, creator, count, options, and active Feed timeline below. Status: first pass implemented for public Feed Generator metadata, creator handle, like count, Feed URI key, description, avatar, and active timeline below; feed options remain pending.
-- Post/thread detail view with reply composer, stats, repost/quote/like/save links, and reply permissions.
-- Search result view with query, clear action, language selector, and Top/Latest/People/Feeds filters. Status: first pass implemented with query form, Posts/People/Feeds tabs, Top/Latest post results, language selector for post search, public actor search for People, and local Feed destination results for Feeds; explicit clear-query button still pending.
+- Post/thread detail view with reply composer, stats, repost/quote/like/save links, and reply permissions. Status: partial; standalone threads now show conversation metadata, reply/repost/quote/like counts, timestamp, reply-permission text, and a local 300-character reply composer placeholder; authenticated reply/write actions remain pending.
+- Search result view with query, clear action, language selector, and Top/Latest/People/Feeds filters. Status: first pass implemented with query form, clear-query button, Posts/People/Feeds tabs, Top/Latest post results, language selector for post search, public actor search for People, and local Feed destination results for Feeds.
 - Profile view variants for self-profile and other-user profiles.
 - Media, GIF/video, alt text, and content-label rendering states. Status: partial; image alt badges, video thumbnail/placeholder cards, and content-label chips now render from loaded AppView data, with full GIF/video playback controls and richer moderation states still pending.
 - Muted/blocked content handling as exposed by APIs.

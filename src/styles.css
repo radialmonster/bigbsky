@@ -307,7 +307,7 @@ button {
 
 .search-workspace {
   display: grid;
-  grid-template-columns: 22px minmax(180px, 1fr) auto auto;
+  grid-template-columns: 22px minmax(180px, 1fr) 34px auto auto;
   align-items: center;
   gap: 12px;
   margin-bottom: 18px;
@@ -325,6 +325,21 @@ button {
 
 .search-workspace .segmented button {
   min-width: 76px;
+}
+
+.clear-search-button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--app-surface-2);
+  color: var(--app-text-muted);
+}
+
+.clear-search-button:disabled {
+  cursor: default;
+  opacity: 0.38;
 }
 
 .search-options {
@@ -484,6 +499,19 @@ button {
   margin: 0;
   color: var(--app-text-muted);
   line-height: 1.5;
+}
+
+.surface-action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  margin-top: 16px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: var(--bsky-blue);
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
 }
 
 .search-results-list {
@@ -885,6 +913,77 @@ button {
 
 .post-actions button:hover {
   color: var(--bsky-blue-soft);
+}
+
+.thread-detail-header,
+.reply-composer {
+  margin-bottom: 14px;
+  padding: 16px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface);
+}
+
+.thread-detail-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+}
+
+.thread-detail-header span {
+  color: var(--app-text-soft);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.thread-detail-header h2 {
+  margin: 2px 0 5px;
+  font-size: 20px;
+}
+
+.thread-detail-header p {
+  margin: 0;
+  color: var(--app-text-muted);
+}
+
+.thread-detail-header dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(64px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.thread-detail-header dt {
+  color: var(--app-text-soft);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.thread-detail-header dd {
+  margin: 2px 0 0;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.thread-permissions {
+  display: inline-flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 7px;
+  color: var(--app-text-muted);
+  font-size: 13px;
+}
+
+.reply-composer textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--app-text);
 }
 
 .load-more {
@@ -1305,7 +1404,7 @@ button {
   }
 
   .search-workspace {
-    grid-template-columns: 22px minmax(0, 1fr);
+    grid-template-columns: 22px minmax(0, 1fr) 34px;
   }
 
   .search-workspace .segmented,
@@ -1328,5 +1427,13 @@ button {
 
   .feed-detail-header dl {
     grid-template-columns: 1fr;
+  }
+
+  .thread-detail-header {
+    grid-template-columns: 1fr;
+  }
+
+  .thread-detail-header dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

@@ -28,7 +28,7 @@ export function getRouteState(pathname = window.location.pathname): RouteState {
     return { kind: "search", query: new URLSearchParams(window.location.search).get("q") || undefined };
   }
 
-  const surfaces = new Set(["notifications", "chat", "lists", "saved", "settings"]);
+  const surfaces = new Set(["explore", "feeds", "notifications", "chat", "lists", "saved", "settings"]);
   if (parts[0] && surfaces.has(parts[0])) {
     return { kind: "surface", name: parts[0] };
   }

@@ -42,6 +42,12 @@ export type FeedPost = {
     text?: string;
     createdAt?: string;
     embed?: unknown;
+    reply?: {
+      root?: { uri?: string; cid?: string };
+      parent?: { uri?: string; cid?: string };
+    };
+    langs?: string[];
+    labels?: unknown;
   };
   embed?: unknown;
   replyCount?: number;

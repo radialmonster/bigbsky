@@ -21,6 +21,7 @@ import {
   Send,
   Settings,
   User,
+  Users,
 } from "lucide-react";
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -708,13 +709,27 @@ export function App() {
     }
 
     if (item === "Explore") {
-      navigate({ kind: "search" }, "/search");
+      const routeState = { kind: "surface", name: "explore" } as const;
+      remember({
+        label: "Explore",
+        detail: "Search, trending, and feed discovery",
+        path: "/explore",
+        route: routeState,
+      });
+      navigate(routeState, "/explore");
       return;
     }
 
     if (item === "Feeds") {
-      setFeedSearch("");
-      document.querySelector<HTMLInputElement>(".feed-search")?.focus();
+      const routeState = { kind: "surface", name: "feeds" } as const;
+      remember({
+        label: "Feeds",
+        detail: "Saved and discoverable Feed destinations",
+        path: "/feeds",
+        route: routeState,
+      });
+      navigate(routeState, "/feeds");
+      requestAnimationFrame(() => document.querySelector<HTMLInputElement>(".feed-search")?.focus());
       return;
     }
 
@@ -865,6 +880,12 @@ export function App() {
     });
     navigate(routeState, path);
   };
+  const clearSearch = () => {
+    setGlobalSearchText("");
+    setSearchState(emptySearchState);
+    setActorSearchState(emptyActorSearchState);
+    navigate({ kind: "search" }, "/search");
+  };
 
   return (
     <div className="app-shell">
@@ -978,6 +999,7 @@ export function App() {
             onOpenProfile={openProfile}
             onQueryChange={setGlobalSearchText}
             onSearch={submitSearch}
+            onClearSearch={clearSearch}
             onLanguageChange={setSearchLanguage}
             onSortChange={setSearchSort}
             onTabChange={setSearchTab}
@@ -1163,6 +1185,8 @@ function SurfaceView({ name }: { name: string }) {
   const title = name.charAt(0).toUpperCase() + name.slice(1);
   const copy: Record<string, string> = {
     chat: "Direct messages stay deferred until the API and privacy posture are handled.",
+    explore: "Explore is the public discovery doorway for search, trending topics, people, and Feed discovery while signed-in recommendations wait on OAuth.",
+    feeds: "Feeds are available in the desktop selector now. Signed-in saved feeds, pin controls, and feed editing will attach here after OAuth.",
     lists: "Lists will become timeline sources after signed-in reads are available.",
     notifications: "Notifications need OAuth, account context, and local session restore.",
     profile: "Self-profile needs OAuth before edit controls, likes, feeds, starter packs, and lists can be shown.",
@@ -1175,6 +1199,15 @@ function SurfaceView({ name }: { name: string }) {
       <section className="surface-placeholder">
         <h2>{title}</h2>
         <p>{copy[name] || "This signed-in destination has a stable static route and is ready for OAuth-backed data."}</p>
+        {name === "explore" && (
+          <a className="surface-action" href="/search" onClick={(event) => {
+            event.preventDefault();
+            window.history.pushState(null, "", "/search");
+            window.dispatchEvent(new PopStateEvent("popstate"));
+          }}>
+            Open search
+          </a>
+        )}
       </section>
     </div>
   );
@@ -1253,6 +1286,7 @@ function SearchView({
   onOpenProfile,
   onQueryChange,
   onSearch,
+  onClearSearch,
   onSortChange,
   onTabChange,
 }: {
@@ -1271,6 +1305,7 @@ function SearchView({
   onOpenProfile: (profile: Profile) => void;
   onQueryChange: (query: string) => void;
   onSearch: (query: string) => void;
+  onClearSearch: () => void;
   onSortChange: (sort: "top" | "latest") => void;
   onTabChange: (tab: (typeof searchTabs)[number]) => void;
 }) {
@@ -1301,6 +1336,9 @@ function SearchView({
           value={query}
           onInput={(event) => onQueryChange(event.currentTarget.value)}
         />
+        <button className="clear-search-button" type="button" onClick={onClearSearch} disabled={!query.trim()} aria-label="Clear search">
+          <X size={16} />
+        </button>
         <div className="segmented" aria-label="Search tabs">
           {searchTabs.map((mode) => (
             <button
@@ -1703,6 +1741,38 @@ function QuotedPostCard({
   );
 }
 
+function findFirstThreadPost(node?: ThreadNode): FeedPost | null {
+  if (!node || !("post" in node)) {
+    return null;
+  }
+
+  return node.post;
+}
+
+function formatPostTime(value?: string) {
+  if (!value) {
+    return "Unknown time";
+  }
+
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
+}
+
+function replyPermissionLabel(post: FeedPost) {
+  const labels = post.labels?.map((label) => label.val).filter(Boolean);
+  if (labels?.some((label) => label?.includes("!warn") || label?.includes("adult"))) {
+    return "Reply permissions may be limited by content labels";
+  }
+
+  return "Everybody can reply";
+}
+
 function ThreadView({
   thread,
   onOpenImage,
@@ -1715,6 +1785,9 @@ function ThreadView({
   onOpenProfile: (profile: Profile) => void;
 }) {
   const [expandedBranches, setExpandedBranches] = useState<Record<string, boolean>>({});
+  const [replyText, setReplyText] = useState("");
+  const rootPost = findFirstThreadPost(thread.node);
+  const remainingReplyChars = 300 - replyText.length;
 
   if (thread.status === "loading") {
     return <LoadingState label="Loading thread" />;
@@ -1730,6 +1803,52 @@ function ThreadView({
 
   return (
     <div className="thread-view">
+      {rootPost && (
+        <section className="thread-detail-header">
+          <div>
+            <span>Conversation</span>
+            <h2>{displayName(rootPost.author)}</h2>
+            <p>
+              @{rootPost.author.handle} · {formatPostTime(rootPost.record.createdAt || rootPost.indexedAt)}
+            </p>
+          </div>
+          <dl>
+            <div>
+              <dt>Replies</dt>
+              <dd>{(rootPost.replyCount ?? 0).toLocaleString()}</dd>
+            </div>
+            <div>
+              <dt>Reposts</dt>
+              <dd>{(rootPost.repostCount ?? 0).toLocaleString()}</dd>
+            </div>
+            <div>
+              <dt>Quotes</dt>
+              <dd>{(rootPost.quoteCount ?? 0).toLocaleString()}</dd>
+            </div>
+            <div>
+              <dt>Likes</dt>
+              <dd>{(rootPost.likeCount ?? 0).toLocaleString()}</dd>
+            </div>
+          </dl>
+          <div className="thread-permissions">
+            <Users size={15} />
+            <span>{replyPermissionLabel(rootPost)}</span>
+          </div>
+        </section>
+      )}
+      <section className="reply-composer" aria-label="Reply composer">
+        <textarea
+          placeholder="Write your reply after OAuth is added."
+          value={replyText}
+          onChange={(event) => setReplyText(event.currentTarget.value)}
+        />
+        <div className="composer-actions">
+          <span className={remainingReplyChars < 0 ? "over-limit" : ""}>{remainingReplyChars}</span>
+          <button type="button" disabled={remainingReplyChars < 0 || replyText.trim().length === 0}>
+            Reply
+          </button>
+        </div>
+      </section>
       {renderThreadNode(thread.node, 0, expandedBranches, (uri) =>
         setExpandedBranches((current) => ({ ...current, [uri]: !current[uri] })),
         { onOpenImage, onOpenPost, onOpenProfile },
