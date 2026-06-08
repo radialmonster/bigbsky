@@ -1,0 +1,38 @@
+Log the start time immediately and record the current date with `Get-Date -Format o`.
+
+You are running the Bigbsky GitHub release creation loop from the current repo/worktree. Do not switch to `N:\Projects\bigbsky-github` when this prompt is running from a lane worktree.
+
+Goal:
+- Create one GitHub Release from closed issues labeled `ai:ready-for-release`.
+- Compile release notes from `changelog/unreleased/issue-N.md` fragments.
+- Mark included issues `ai:released`.
+- Stop after one release attempt.
+
+Rules:
+- Do not deploy in this mode.
+- Do not edit application code.
+- Do not manually edit top-level `CHANGELOG.md`; `scripts/github-loop/release.ps1 -Mode Apply` owns the generated changelog update.
+- Read `CLAUDE.md` only for the current deploy handoff instructions. Bigbsky deploys to Cloudflare Pages; do not duplicate operational details into release automation; `CLAUDE.md` is the source of truth and may change over time.
+- Do not create a release from unroasted changelog fragments unless explicitly instructed.
+
+Process:
+1. Prepare a release plan:
+   ```powershell
+   .\scripts\github-loop\release.ps1 -Mode Prepare
+   ```
+2. Read:
+   - `out/release/release-plan.json`
+   - `out/release/release-notes.md`
+   - `out/release/changelog-entry.md`
+3. If the plan reports changelog blockers, stop and report that the fragment roast loop should run first.
+4. If there are no blockers, apply:
+   ```powershell
+   .\scripts\github-loop\release.ps1 -Mode Apply
+   ```
+5. Verify the GitHub Release exists with GitHub CLI and verify the matching release entry was prepended to `CHANGELOG.md`.
+
+End:
+- Log end time and elapsed minutes.
+- Print release tag, included issues, release URL, and the deploy handoff command:
+  `cd web && pnpm install && pnpm run build && pnpm exec wrangler pages deploy .svelte-kit/cloudflare --project-name bigbsky --branch main`
+- Remind that `CLAUDE.md` must be read before deploying (Cloudflare Pages account/project must already be configured and `wrangler login` must have been run).

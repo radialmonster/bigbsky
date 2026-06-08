@@ -1,0 +1,55 @@
+Log the start time immediately and record the current date with `Get-Date -Format o`.
+
+You are working in the current Bigbsky GitHub workflow repo/worktree. Do not switch to `N:\Projects\bigbsky-github` when this prompt is running from a lane worktree.
+
+Mission:
+- Roast one changelog fragment under `changelog/unreleased/`.
+- This replaces the old workflow that roasted entries in the giant internal changelog.
+- Do not edit `changelog/internal/CHANGELOG.md`.
+- Do not implement application code.
+
+Fragment workflow:
+- Implementation issues create fragments such as `changelog/unreleased/issue-23.md`.
+- New fragments should include hidden metadata:
+  `<!-- bigbsky:changelog {"issue":23,"status":"needs-roast"} -->`
+- This prompt reviews and improves one fragment.
+- If the fragment is accurate and useful, mark metadata status `ready`.
+- If it is incomplete, fix the fragment directly and keep status `needs-roast`.
+- Required sections (the `-Mode Verify` step throws if any are missing as either an `##` heading or a `**Section:**` bold label): `Done`, `Public Notes`, `Verified`, `Files touched`. The fragment must also contain a `bigbsky:changelog` metadata comment.
+- The `## Public Notes` section is the only source for the app-facing `/changelog` page and must contain only shipped, completed, user-facing features, bug fixes, or improvements. Use `None` for internal-only work, workflow/tooling changes, investigations, failures, admin-only operational details, upcoming features, or anything not appropriate for ordinary users.
+- If the roast finds real follow-up work, create a GitHub Issue labeled `ai:needs-roast` and `ai:follow-up`, attach it as a GitHub sub-issue of the original issue, then link that issue in the fragment.
+- Follow-up issues must start with `Follow-up from Issue #N`, include `Original issue: #N`, and include the changelog fragment path. The helper script creates the GitHub Relationships/sub-issue link when it creates the follow-up.
+- Follow-up issue type should be `Bug` for failed verification, broken behavior, or incomplete prior work; `Feature` for newly discovered capability; and `Task` for docs/specs/workflow/refactor/tests/investigation.
+- Reopen or keep the original issue only when the original acceptance criteria were not actually met. Use a new follow-up issue for adjacent improvements.
+
+Roast checks:
+- Does the fragment clearly say what changed?
+- Does it match the linked GitHub issue and commit?
+- Are verification commands/results real and specific?
+- Are files touched accurate enough for future readers?
+- Are follow-ups explicit if the implementation was partial?
+- Does it avoid secrets, raw logs, credentials, and irrelevant implementation noise?
+- Is the text useful for future release notes?
+- Is `## Public Notes` customer-safe and free of internal workflow, verification, admin, blocker, and future-promise details?
+
+Process:
+1. Run:
+   ```powershell
+   .\scripts\github-loop\changelog-fragment.ps1 -Mode Prepare
+   ```
+2. Read the generated prompt under `out/changelog-fragment/`.
+3. Edit the selected changelog fragment directly.
+4. Run:
+   ```powershell
+   .\scripts\github-loop\changelog-fragment.ps1 -Mode Verify
+   ```
+5. If follow-up work was found, create the follow-up GitHub Issue with:
+   ```powershell
+   .\scripts\github-loop\changelog-fragment.ps1 -Mode CreateFollowUp -Title "..." -BodyFile path\to\body.md
+   ```
+   Then add its URL to the fragment Follow-up section.
+6. Commit and push only changelog workflow/fragment changes.
+
+End:
+- Log end time and elapsed minutes.
+- Print the fragment path, final metadata status, and any linked issue/follow-up.

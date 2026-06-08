@@ -1,0 +1,104 @@
+Log the start time immediately and record the current date with `Get-Date -Format o`.
+
+You are working in the current Bigbsky GitHub workflow repo/worktree. Do not switch to `N:\Projects\bigbsky-github` when this prompt is running from a lane worktree.
+
+Mission:
+- Implement one GitHub Issue labeled `ai:fully-roasted`.
+- Use GitHub Issues as the source of truth.
+- Stop after one coherent implementation slice.
+
+Selection:
+- Use the deterministic selector:
+  ```powershell
+  .\scripts\github-loop\work-issue.ps1 -Mode Prepare
+  ```
+- The selector ranks eligible `ai:fully-roasted` issues using these sort keys in order:
+  1. `priority:urgent` ahead of non-urgent.
+  2. Issues with an already-open implementation PR (repair runs) ahead of fresh implementations.
+  3. `ai:blocks-release` ahead of non-blockers.
+  4. Issues that unblock other open issues (have native `blocks` dependents), preferring the issue that unblocks the most others.
+  5. Horizon: `short-term` before neutral before `long-term`.
+  6. Oldest `createdAt` first as the final tie-breaker.
+- It skips issues with open native `blocked by` dependencies that are still open, and skips issues labeled `ai:claimed`, `ai:blocked`, `ai:needs-user-answer`, or `ai:implemented`.
+- Before implementation, it checks for non-workflow human activity after the last full roast. If found, it removes `ai:fully-roasted`, adds `ai:needs-roast`, comments, and stops that issue from being worked until it is roasted again.
+- It adds `ai:claimed` and writes `out/issue-work/issue-N/prompt.md`.
+- Read the generated prompt, full issue body, and comments before coding.
+- If a new non-workflow user comment appears after you started, stop and refresh context before continuing.
+- Use the branch named in the generated prompt. Create it from current `origin/main` or reuse it if it already exists for that issue.
+- If an open PR already exists for this issue, this is a repair run. Read the PR comments AND the local `out/pr-verify/pr-N/result.json` file (where N is the PR number) to get the structured list of gaps the previous verification pass rejected. Fix every gap listed — do not stop after fixing one. Before pushing, confirm each listed gap is addressed. Do not create a new branch or a new PR -- push a repair commit to the existing branch so the same PR is re-verified.
+- Repair-run no-progress guard. Before claiming the repair complete, you MUST verify a new commit landed on the PR branch. Run `git log --oneline origin/main..HEAD -n 5` and confirm the top commit's SHA is different from the SHA recorded in the PR's most recent `Workflow update: PR verification result` comment. If the PR HEAD is unchanged from the prior verification, you have made no real progress — the repair must continue. NEVER post "Implementation complete" or set `ai:implemented`/`ai:needs-verify` when the PR HEAD is the same SHA pr-verify saw last time it failed. If you cannot identify any concrete code change that closes at least one unmet acceptance criterion, stop and leave the issue with `ai:needs-roast` plus a `Workflow update:` comment explaining which AC could not be implemented and why.
+- Repair-run AC-coverage requirement. For every unmet acceptance criterion listed in the previous verification's comment or `result.json`, the repair commit must touch a file path that plausibly implements that AC (e.g. an AC about a profile view requires editing the relevant Svelte route/component under `web/src/`). If your diff doesn't touch any file that maps to a listed gap, you have not actually addressed it.
+
+Rules:
+- Do not edit `changelog/internal/CHANGELOG.md`.
+- Do not implement outside the issue's first implementation slice unless needed to make the slice work.
+- Prefer existing code patterns and specs.
+- Treat GitHub Issues as the live task contract and `planning/specs/*.md` as durable product/architecture contracts. If the issue changes behavior, API/schema contracts, permissions, workflow rules, billing/inventory/payment logic, routes, or user-facing UX promises, update the relevant specs in the same PR.
+- If the issue body lists likely specs, read them and either update them or explicitly explain in the PR/issue comment why no spec change was needed.
+- No secrets in code, logs, issues, comments, or generated artifacts.
+- Do not make destructive git changes.
+- Do not leave dev servers or background processes running.
+
+Implementation discipline:
+- Search and read relevant code/specs before editing.
+- Keep changes tightly scoped to the issue.
+- Add or update tests when the risk warrants it.
+- Do not let implementation make specs stale. If code intentionally diverges from a referenced spec, update the spec or stop and return the issue to roast/verification with the drift called out.
+- Read the `CLAUDE.md` verification baseline before marking work ready.
+- Run focused verification first, then broader checks when practical.
+- Default local baseline (run inside `web/`):
+  ```powershell
+  cd web
+  pnpm install --frozen-lockfile
+  pnpm run check
+  pnpm run build
+  ```
+  `pnpm run check` runs `svelte-kit sync && svelte-check` (TypeScript + Svelte type validation). `pnpm run build` exercises the Cloudflare adapter.
+- Add relevant tests, `pnpm test`, or browser checks based on files touched and risk. There is no backend, database, or migration step.
+- If any baseline command cannot run, clearly report the command, reason, and whether it is blocking. Do not hide missing tooling.
+
+GitHub update:
+- After implementation and verification, comment on the issue with:
+  - Summary of changes
+  - Verification run and result
+  - Files touched
+  - Pull request URL
+  - Any remaining follow-up
+- Remove `ai:claimed`.
+- If the issue's PR is open and ready for verification, remove `ai:fully-roasted` and add `ai:implemented`, `ai:needs-verify`, and `ai:pr-open`. Note that this is the only loop where label transitions are model-driven via `gh issue edit` — issue-roast and pr-verify use their apply scripts to mutate labels, so do not duplicate label edits in those loops.
+- Do not close the issue. Closure happens only after the post-implementation verification loop confirms the acceptance criteria were met.
+
+Changelog fragment:
+- Create or update `changelog/unreleased/issue-N.md` for the implemented issue.
+- Include:
+  - Issue number/title and GitHub URL
+  - Commit hash
+  - Done bullets
+  - Public Notes section with user-facing shipped features, bug fixes, or improvements only; use `None` for internal-only work, tooling, investigations, admin-only operations, failures, upcoming features, or anything not completed and shipped
+  - Verified bullets with real command results
+  - Files touched
+  - Follow-up section, using `None` if no follow-up is known
+  - Hidden metadata:
+    `<!-- bigbsky:changelog {"issue":N,"status":"needs-roast"} -->`
+- Do not edit top-level `CHANGELOG.md`.
+
+Commit:
+- Commit and push one focused commit to the issue branch.
+- Use a clear conventional-style message with the issue number, for example:
+  `feat(admin): expand platform admin navigation (#23)`
+
+Pull request:
+- Open or update a PR from the issue branch to `main`.
+- Duplicate-PR guard. BEFORE running `gh pr create`, run:
+  ```powershell
+  gh pr list --repo radialmonster/bigbsky-dev --state open --search "issue-N in:head" --json number,headRefName,state
+  gh pr list --repo radialmonster/bigbsky-dev --state open --search "in:title #N" --json number,headRefName,state
+  ```
+  (substitute N with the issue number). If either call returns any PR, an open implementation PR already exists for this issue. Do NOT create a new PR. Either push your commit to that existing branch (this is a repair run -- see the rule above) or stop and post a `Workflow update:` comment on the issue explaining the conflict. Creating a parallel PR for an issue that already has one is forbidden -- it produced ghost PRs #347/#348/#349 against #111 in the past.
+- Use `Refs #N` in the PR body, not `Fixes #N`, so GitHub does not close the issue before verification.
+- Include the verification commands/results and changelog fragment path in the PR body.
+- Do not merge the PR in implementation mode.
+
+End:
+- Log end time and elapsed minutes.
+- Print issue number, branch, PR URL, commit hash, changelog fragment path, verification result, and final labels.

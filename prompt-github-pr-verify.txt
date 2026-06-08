@@ -1,0 +1,115 @@
+Log the start time immediately and record the current date with `Get-Date -Format o`.
+
+You are running the Bigbsky GitHub PR verification loop from the current repo/worktree. Do not switch to `N:\Projects\bigbsky-github` when this prompt is running from a lane worktree.
+
+Goal:
+
+- Verify one open pull request linked to an issue labeled `ai:needs-verify` and `ai:pr-open`.
+- Roast the PR against the linked issue acceptance criteria.
+- Apply one of four decisions: `pass`, `fail`, `needs-user-answer`, `blocked`.
+- Stop after one PR.
+
+Rules:
+
+- Do not edit application code in this mode.
+- Do not edit `changelog/internal/CHANGELOG.md`.
+- Do not deploy.
+- Do not merge a PR unless verification passes.
+- Read the `CLAUDE.md` verification baseline before deciding pass/fail.
+- Bootstrap before running any baseline command (run inside `web/`):
+  ```powershell
+  cd web
+  pnpm install --frozen-lockfile
+  ```
+  This step is required. A command that fails because install was skipped is not genuinely unavailable.
+- Default local baseline (run after bootstrap, still inside `web/`):
+  - `pnpm run check` — runs `svelte-kit sync && svelte-check`. This is the type-check gate.
+  - `pnpm run build` — exercises the Cloudflare Pages adapter end-to-end.
+- A command is genuinely unavailable only when it still cannot run after the required bootstrap has completed, or when the repository/worktree context truly does not provide that command. Skipping `pnpm install --frozen-lockfile` is not a valid reason to treat `pnpm run check` as unavailable.
+- Add relevant tests, `pnpm test`, or browser checks based on files touched and risk. There is no backend, database, or migration step.
+- Verify spec alignment. If the issue or PR changes behavior, API/schema contracts, permissions, workflow rules, billing/inventory/payment logic, routes, or user-facing UX promises, the relevant `planning/specs/*.md` files should be updated in the same PR or the PR must clearly explain why no spec change is needed.
+- Treat missing required spec updates as a verification gap. If the PR implements behavior that makes a referenced spec stale, fail the PR or create a release-blocking follow-up when the spec drift is separate but must be fixed before release.
+- If acceptance criteria are unmet by the PR's own implementation, fail the PR and return the issue to `ai:needs-roast`. Do NOT use `ai:fully-roasted` for a code failure -- the roast loop needs to confirm the spec is still current before re-implementation repairs the PR. Leave the PR open so the repair loop can see what was already attempted.
+- If acceptance criteria are unmet because verification exposed a separate release-blocking failure outside the PR's implementation slice, fail the PR and include a `follow_up_issues` entry for that separate blocker. Check for an existing duplicate/same-scope issue first; the apply script will reuse or amend it when possible. Mark that follow-up `blocks_release: true` and include `ai:blocks-release`; the apply script will add `priority:urgent` and a native `blocked by` relationship from the parent issue.
+- If acceptance criteria are met but adjacent non-blocking work is found, pass the PR and create follow-up issues.
+- If a follow-up must be completed before the original issue can safely release, either fail the PR or mark that follow-up `ai:blocks-release`.
+- Follow-up issues that gate or repair the parent PR must include `priority:urgent` in their `labels` array (in addition to `ai:blocks-release` when release-blocking). The roast queue sorts by `createdAt` oldest-first; without `priority:urgent` the newly-created follow-up will queue behind every older needs-roast issue and the parent PR stalls. Follow-ups for non-blocking adjacent improvements do NOT get `priority:urgent` — those queue normally.
+- If the model/provider/tooling is unavailable due to capacity, quota, usage cap, authentication, or rate limit, do not fail the product issue. Let the loop mark the issue `ai:infra-blocked` and retry deliberately later.
+- If any verification command cannot run, record it in `verification_gaps`.
+- Passing with a missing command/tool is allowed only when the gap is non-blocking and a follow-up issue is created for any repo/tooling problem.
+- Use neutral GitHub comments such as `Workflow update:`.
+- When referencing acceptance criteria by number in GitHub comments, write "criterion N" or "AC N" (no hash symbol). Never write "AC #N" or "#N" for acceptance criteria -- GitHub auto-links bare `#N` to issues, PRs, or discussions with that number, creating misleading cross-references to unrelated items.
+
+Prerequisite:
+
+- From the same PowerShell shell, `gh` must be callable by command name and authenticated for `github.com`.
+- Check setup before preparing verification:
+  ```powershell
+  gh --version
+  gh auth status --hostname github.com
+  gh pr view <number> --repo radialmonster/bigbsky-dev
+  gh issue view <number> --repo radialmonster/bigbsky-dev
+  ```
+- Do not paste tokens, credential details, or full authentication output into generated artifacts or GitHub comments.
+
+Process:
+
+1. Prepare one PR verification bundle:
+   ```powershell
+   .\scripts\github-loop\pr-verify.ps1 -Mode Prepare
+   ```
+2. Read the generated `out/pr-verify/pr-N/prompt.md`.
+3. Produce JSON only using the shape requested in that prompt.
+4. Write the JSON to `out/pr-verify/pr-N/result.json`.
+5. Validate it:
+   ```powershell
+   Get-Content out\pr-verify\pr-N\result.json -Raw | ConvertFrom-Json
+   ```
+6. Apply it:
+   ```powershell
+   .\scripts\github-loop\pr-verify.ps1 -Mode Apply -PullRequestNumber N
+   ```
+7. If apply reports a stale issue comment, rerun prepare and regenerate the result from fresh context.
+8. Verify PR and issue state with GitHub CLI.
+
+Decision outcomes (the apply script enforces these label transitions automatically; do not duplicate them by editing labels yourself):
+
+Decision `pass`:
+
+- PR is merged with the chosen `merge_method` (default `squash`) and the PR branch is deleted.
+- PR body is rewritten from `Refs #N` to `Closes #N` before merge so GitHub's Development section links the primary issue.
+- Issue removes `ai:claimed`, `ai:pr-open`, `ai:needs-verify`, `ai:fully-roasted`, `ai:implemented`, `priority:urgent`, and `ai:blocks-release`.
+- Issue gains `ai:ready-for-release`.
+- Issue closes with a verification comment.
+- Release creation will block if an included issue has an open follow-up labeled `ai:blocks-release`.
+
+Decision `fail` (ordinary code/spec failure):
+
+- PR remains open. The issue keeps `ai:pr-open` so the repair loop can find the existing PR — do not expect that label to be removed on fail.
+- Issue removes `ai:claimed`, `ai:implemented`, `ai:needs-verify`, and `ai:fully-roasted`.
+- Issue gains `ai:needs-roast` (not `ai:fully-roasted`) so the roast loop re-confirms the spec before re-implementation repairs the PR.
+
+Decision `fail` (separate release-blocking failure outside the PR's slice — set when `follow_up_issues` includes an entry with `blocks_release: true` or `ai:blocks-release` and the failure description identifies an out-of-scope blocker):
+
+- PR remains open. The issue stays in implemented state but is marked blocked, waiting on the release-blocking follow-up.
+- Issue gains `ai:blocked` and retains `ai:implemented`, `ai:needs-verify`, `ai:pr-open`.
+- Issue removes `ai:claimed`, `ai:fully-roasted`, and `ai:blocks-release`.
+- The PR itself gets the `ai:blocked` workflow label.
+- A linked follow-up issue exists (or an existing same-scope issue was amended/reused) and that follow-up carries `ai:blocks-release` plus a native `blocked by` relationship from the parent issue.
+
+Decision `needs-user-answer` (verification needs a product/scope decision the model cannot make):
+
+- PR remains open and gets the `ai:needs-user-answer` workflow label.
+- Issue gains `ai:needs-user-answer`.
+- Issue removes `ai:claimed`, `ai:implemented`, `ai:needs-verify`, `ai:pr-open`.
+
+Decision `blocked` (verification cannot proceed because of an unrelated repo/tooling problem that is not the PR's fault and not a release blocker the PR introduced):
+
+- PR remains open and gets the `ai:blocked` workflow label.
+- Issue gains `ai:blocked`.
+- Issue removes `ai:claimed`, `ai:implemented`, `ai:needs-verify`, `ai:pr-open`.
+
+End:
+
+- Log end time and elapsed minutes.
+- Print PR number, issue number, decision, merge status, labels changed, and any follow-up issue URLs.

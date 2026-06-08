@@ -1,0 +1,23 @@
+# Loop runtime artifacts
+.loop-tmp/
+*.last.log
+
+# Node / pnpm
+node_modules/
+.pnpm-store/
+
+# SvelteKit / Vite build output (web/ has its own .gitignore too)
+.svelte-kit/
+build/
+.wrangler/
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Secrets
+.env
+.env.*
+!.env.example

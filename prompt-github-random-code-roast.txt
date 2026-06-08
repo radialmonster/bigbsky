@@ -1,0 +1,41 @@
+Log the start time immediately and record the current date with `Get-Date -Format o`.
+
+You are running the Bigbsky random code roast loop from the current repo/worktree. Do not switch to `N:\Projects\bigbsky-github` when this prompt is running from a lane worktree.
+
+Goal:
+- Pick one random target from the existing repository code/docs/spec surface.
+- Deeply inspect that file, route, URL, function, class, or script.
+- Create GitHub Issues labeled `ai:needs-roast` for concrete actionable findings.
+- Stop after one random target.
+
+Rules:
+- Do not edit application code.
+- Do not edit top-level `CHANGELOG.md`.
+- Do not deploy.
+- Do not create speculative or duplicate issues.
+- Check the open issue list included in the prepared prompt before creating anything.
+- If an existing open issue already covers the finding, update/comment on that issue instead of creating a duplicate.
+- New issues must be specific enough for the normal issue-roast loop to refine next.
+- Use neutral GitHub comments such as `Workflow update:`.
+
+Process:
+1. Prepare one random roast bundle:
+   ```powershell
+   .\scripts\github-loop\random-code-roast.ps1 -Mode Prepare
+   ```
+2. Read the generated `out/random-code-roast/<stamp>/prompt.md`.
+3. Produce JSON only using the shape requested in that prompt.
+4. Write that JSON to the matching `result.json`.
+5. Validate it:
+   ```powershell
+   Get-Content out\random-code-roast\<stamp>\result.json -Raw | ConvertFrom-Json
+   ```
+6. Apply it:
+   ```powershell
+   .\scripts\github-loop\random-code-roast.ps1 -Mode Apply -ResultFile out\random-code-roast\<stamp>\result.json
+   ```
+7. Verify any created/updated GitHub Issues with GitHub CLI.
+
+End:
+- Log end time and elapsed minutes.
+- Print the roasted target and any created or updated issue URLs.

@@ -1,0 +1,72 @@
+Log the start time immediately and record the current date with `Get-Date -Format o`.
+
+You are running the Bigbsky GitHub release/deploy loop from the current repo/worktree.
+
+Goal:
+- Deploy a verified GitHub Release tag or `main` to Cloudflare Pages (project `bigbsky`).
+- Verify production after deploy.
+- Stop after one deploy attempt.
+
+Deployment model:
+- Read `CLAUDE.md` first for the current production deploy instructions. Those instructions are the source of truth and may change over time.
+- Bigbsky is a SvelteKit app under `web/` built with `@sveltejs/adapter-cloudflare`. Production is Cloudflare Pages on the free tier; there is no VM, no Docker, no SSH.
+- Preferred deploy command is `pnpm exec wrangler pages deploy .svelte-kit/cloudflare --project-name bigbsky --branch <ref>` from inside `web/`, but confirm in `CLAUDE.md` before running.
+- The `wrangler` binary must already be authenticated (`wrangler login`) and the `bigbsky` Pages project must already exist in the Cloudflare account.
+- For GitHub CLI commands, prefer `C:\Program Files\GitHub CLI\gh.exe` when it exists. Do not assume bare `gh` is on PATH inside loop sessions.
+
+Rules:
+- Do not deploy an open PR branch.
+- Do not treat unrelated open or blocked PRs as global deploy blockers. Deploy only the selected release tag or safe merged ref.
+- Prefer deploying a GitHub Release tag (checkout, then build, then `wrangler pages deploy`).
+- Deploy `main` only for explicit operator-directed deploys while release automation is still being built.
+- Do not fall back to the latest existing release after a release-creation failure. If release creation failed or no intended release tag is known, stop and create/update a GitHub issue.
+- Treat build or deploy failures as deploy failures. The build (`pnpm run build`) must finish 0 and `wrangler pages deploy` must print a deployment URL.
+- Do not put secrets into issues, logs, release notes, prompts, or generated artifacts. The Cloudflare API token must live only in the local environment or `wrangler` config.
+- Do not edit `changelog/internal/CHANGELOG.md` in this GitHub workflow unless explicitly requested.
+- Every deploy failure must create, update, or reference a GitHub Issue before the loop continues. Do not leave deploy failures only in local logs.
+
+Process:
+1. Confirm repo state:
+   ```powershell
+   git status --short --branch
+   git fetch --prune origin
+   git fetch --tags origin
+   ```
+2. Choose the deploy ref:
+   - Prefer the latest intended release tag from the successful release creation step in this workflow cycle.
+   - If release creation failed, do not deploy an older/latest tag as a substitute.
+   - If no release tag is ready and the operator explicitly wants current main, use `main`.
+3. Confirm wrangler is logged in:
+   ```powershell
+   cd web
+   pnpm exec wrangler whoami
+   ```
+   Stop and surface a setup issue if this prints "You are not authenticated".
+4. Checkout the deploy ref, then install + build + deploy:
+   ```powershell
+   git checkout <tag-or-main>
+   cd web
+   pnpm install --frozen-lockfile
+   pnpm run build
+   pnpm exec wrangler pages deploy .svelte-kit/cloudflare --project-name bigbsky --branch <tag-or-main>
+   ```
+   - If any step fails, classify the failure and create or update a GitHub issue using:
+     ```powershell
+     .\scripts\github-loop\deploy-followup.ps1 -DeployRef <tag-or-main> -Title "Deploy failure: short title" -BodyFile path\to\deploy-failure.md
+     ```
+   - Add `-InfraBlocked` only for transient infrastructure/provider/tooling failures such as Cloudflare API outage, network outage, provider quota, or capacity.
+   - For code/config/build failures, do not use `-InfraBlocked`; the helper labels the issue `ai:needs-roast`, `ai:follow-up`, `ai:blocks-release`, and `priority:urgent`.
+   - If the deploy loop fixes the problem immediately, still create/update the issue and comment with the failure, fix, verification, and deployed ref.
+5. Verify production:
+   - Capture the Pages deployment URL printed by `wrangler pages deploy`.
+   - `curl.exe -I` that URL (and the production domain if one is bound to the project).
+   - Expect `HTTP/1.1 200 OK` or `HTTP/2 200`.
+6. Update GitHub issue labels for included work when known:
+   - Add `ai:deployed` only after `wrangler pages deploy` exits 0 and production HTTP verification passes.
+   - Ensure the `ai:deployed` label exists before adding it.
+   - Use `C:\Program Files\GitHub CLI\gh.exe` if bare `gh` is unavailable.
+   - Keep failed deploy follow-ups as GitHub issues labeled `Bug` or `Task` plus `ai:needs-roast`, `ai:follow-up`, `ai:blocks-release`, and `priority:urgent`.
+
+End:
+- Log end time and elapsed minutes.
+- Print deploy ref, deploy exit code, deployment URL, production HTTP result, and any follow-up issue URLs.
