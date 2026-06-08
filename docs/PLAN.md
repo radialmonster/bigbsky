@@ -958,7 +958,7 @@ Request budget mindset:
 - Add a manual Cloudflare verification step after deploy: normal reader browsing should show zero Pages Function/Worker invocations.
 - Establish the primary layout regions: left sidebar, improved feed selector, right sidebar, and central endless-scroll feed. Status: implemented.
 - Build the active Feed timeline as the central product surface. Status: implemented.
-- Implement timeline virtualization before large-feed polish so card/layout choices are tested against the real scrolling model.
+- Implement timeline virtualization before large-feed polish so card/layout choices are tested against the real scrolling model. Status: first pass implemented for the active Feed timeline with estimated row windows, overscan, and development inspector rendered-row counts.
 - Reserve stable media/embed dimensions in post cards to reduce layout shift during image, video, GIF, and link-card loading. Status: partial; image cards apply Bluesky aspect-ratio metadata and stable minimum space, video embeds now render stable thumbnail/placeholder cards, and link-card sizing is stable; richer GIF/video controls still pending.
 - Include the signed-in inline composer/input at the top of the active Feed timeline. Status: UI placeholder implemented for signed-out/static shell.
 - Include composer image attachment UI and upload/posting flow.
@@ -982,7 +982,7 @@ Request budget mindset:
 - Apply local density/layout preferences before initial timeline paint. Status: implemented for per-feed/default density.
 - Add service worker/app-shell caching once the shell stabilizes. Status: implemented as a static `public/sw.js` app-shell cache for `/`, `/index.html`, and hashed assets; `/sw.js` is served with must-revalidate caching.
 - Verify repeat visits and in-app navigation do not depend on Cloudflare document reloads or paid/quota-triggering Cloudflare requests. Static asset update checks are allowed only as deliberate background checks. Status: local preview serves `/` and `/sw.js` as static assets; production Cloudflare dashboard verification still pending.
-- Verify DOM size remains bounded after scrolling multiple timeline pages.
+- Verify DOM size remains bounded after scrolling multiple timeline pages. Status: partial; active Feed rendering is now windowed so only the visible overscan range mounts, but browser-driven multi-page scroll verification is still pending.
 - Verify all clean routes and OAuth callback routes are served by static SPA fallback, not by server-side handlers.
 - Verify a direct standalone post route such as `/profile/suewho82.bsky.social/post/3mnpjvwbxq22b` renders through the static SPA shell, makes only direct Bluesky/AT Protocol data calls after load, shows the root post plus threaded replies/comments, and triggers zero Pages Function/Worker invocations. Status: local static-shell/thread rendering verified; Cloudflare dashboard zero-invocation verification still pending.
 
@@ -1019,8 +1019,8 @@ Request budget mindset:
 - Multi-post/thread composition from the inline composer.
 - Drafts and Post All support where feasible.
 - 300-character-per-post limit counter and validation.
-- Menu destination views for Explore, Notifications, Feeds, Lists, Saved, Profile, and Settings.
-- Chat entry point and empty/message-list state, with full DM behavior deferred until privacy/API handling is clear.
+- Menu destination views for Explore, Notifications, Feeds, Lists, Saved, Profile, and Settings. Status: first pass implemented with static SPA routes for Explore/Search plus signed-in placeholder destinations for Notifications, Lists, Saved, Profile, and Settings.
+- Chat entry point and empty/message-list state, with full DM behavior deferred until privacy/API handling is clear. Status: first pass implemented as a static SPA placeholder route that explicitly defers DM behavior.
 - Feed detail header with Feed name, creator, count, options, and active Feed timeline below.
 - Post/thread detail view with reply composer, stats, repost/quote/like/save links, and reply permissions.
 - Search result view with query, clear action, language selector, and Top/Latest/People/Feeds filters. Status: public post search implemented with query plus Top/Latest post results; People/Feeds tabs and language selector still pending.
@@ -1062,7 +1062,7 @@ Request budget mindset:
 - Per-column source selection: Home, Discover, Following, feed, list, search, profile, mentions, notifications, saved.
 - Per-Feed layout memory. Status: implemented for density mode.
 - Smart post grouping by repeated link/topic/quote activity. Status: first pass implemented in the right rail from already-loaded posts by repeated links, quoted post URIs, reply roots, and normalized text.
-- Feed map grouped by topic/community-style categories.
+- Feed map grouped by topic/community-style categories. Status: first pass implemented from the local Feed source groups with left-panel group counts and a right-rail Feed Map summary.
 - Link preview reader.
 - Session history trail. Status: implemented as a browser-local recent trail for feeds, profiles, threads, and searches.
 - Optional media strip/panel for visual Feeds. Status: first pass implemented in the right rail from already-loaded image/video thumbnails, with in-app navigation back to the source post.
@@ -1112,7 +1112,7 @@ Request budget mindset:
 - Static app deploys successfully to Cloudflare Pages.
 - App works without D1, KV, R2, Durable Objects, Workers, Pages Functions, or a custom backend.
 - Pages Function/Worker request count remains zero during normal v1 usage.
-- Build output contains no `functions/`, `_worker.js`, SSR server chunks, middleware, API routes, or edge runtime artifacts. Status: verified locally by `npm run build` static-output audit on 2026-06-08.
+- Build output contains no `functions/`, `_worker.js`, SSR server chunks, middleware, API routes, or edge runtime artifacts. Status: verified locally by `npm run build` static-output audit on 2026-06-08 after the virtualized feed and static surface-route changes.
 - Cloudflare project has no Worker routes, Pages Functions, Pages Plugins, service bindings, KV/D1/R2/Durable Object bindings, queues, scheduled jobs, Web Analytics/Zaraz, Image Resizing/Images, or server-side redirect rules enabled for v1 normal traffic.
 - Cloudflare dashboard shows zero Pages Function/Worker invocations while testing first load, in-app navigation, Feed scrolling, profile previews, thread previews, search, OAuth callback, and sign-out.
 - App ships as one static document plus a small number of cached hashed assets. Status: local `dist` contains `index.html`, `sw.js`, `_headers`, `_redirects`, and one hashed JS/CSS asset pair.
@@ -1130,7 +1130,7 @@ Request budget mindset:
 - Sign-out does not clear static app-shell/service-worker cache unless the user explicitly clears site data.
 - Public profile/thread/feed pages work while signed out.
 - Home timeline and notifications work while signed in.
-- Signed-in layout exposes the same core surfaces as `bsky.app`: Home, Explore/Discover, Following, Notifications, Chat entry point, Feeds, Lists, Saved, Profile, Settings, Search, Trending, Composer, and pinned/custom feeds.
+- Signed-in layout exposes the same core surfaces as `bsky.app`: Home, Explore/Discover, Following, Notifications, Chat entry point, Feeds, Lists, Saved, Profile, Settings, Search, Trending, Composer, and pinned/custom feeds. Status: partial; primary rail controls now open Home, Explore/Search, Feeds focus, and static placeholder routes for Notifications, Chat, Lists, Saved, Profile, and Settings.
 - At 1920px, the active endless-scroll Feed timeline uses width better than `bsky.app`'s narrow mobile column.
 - At 2560px, the feed presentation becomes richer or more useful instead of expanding empty gutters.
 - No user data is sent to a backend we control.

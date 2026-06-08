@@ -22,7 +22,7 @@ import {
   Settings,
   User,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   type FeedItem,
@@ -103,6 +103,11 @@ type DevMetrics = {
 
 const densityModes = ["comfortable", "compact", "media"];
 const recentStorageKey = "bigbsky:recent";
+const estimatedPostHeights: Record<string, number> = {
+  comfortable: 310,
+  compact: 238,
+  media: 390,
+};
 const emptyFeedState: FeedState = { items: [], status: "idle" };
 const emptySearchState: SearchState = { posts: [], status: "idle" };
 const initialDevMetrics: DevMetrics = {
@@ -212,6 +217,7 @@ export function App() {
   const [densityByContext, setDensityByContext] = useState<Record<string, string>>(() => readDensityPreferences());
   const [recentItems, setRecentItems] = useState<RecentItem[]>(() => readRecentItems());
   const [devMetrics, setDevMetrics] = useState<DevMetrics>(initialDevMetrics);
+  const [virtualRenderedRows, setVirtualRenderedRows] = useState(0);
   const [thread, setThread] = useState<{ status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string }>({
     status: "idle",
   });
@@ -245,6 +251,14 @@ export function App() {
         return groups;
       }, {}),
     [visibleSources],
+  );
+  const feedMapSummary = useMemo(
+    () =>
+      feedSources.reduce<Record<string, number>>((groups, source) => {
+        groups[source.group] = (groups[source.group] ?? 0) + 1;
+        return groups;
+      }, {}),
+    [],
   );
   const entityCache = useMemo<EntityCache>(() => {
     const posts: Record<string, FeedPost> = {};
@@ -431,7 +445,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (route.kind === "post" || route.kind === "search") {
+    if (route.kind === "post" || route.kind === "search" || route.kind === "surface") {
       return undefined;
     }
 
@@ -580,10 +594,48 @@ export function App() {
     setRoute(nextRoute);
   }
 
+  function openNavigation(item: string) {
+    if (item === "Home") {
+      const source = feedSources[0];
+      setActiveSourceId(source.id);
+      navigate({ kind: "feed", uri: source.id }, feedRoutePath(source));
+      return;
+    }
+
+    if (item === "Explore") {
+      navigate({ kind: "search" }, "/search");
+      return;
+    }
+
+    if (item === "Feeds") {
+      setFeedSearch("");
+      document.querySelector<HTMLInputElement>(".feed-search")?.focus();
+      return;
+    }
+
+    const path = `/${item.toLowerCase()}`;
+    const routeState = { kind: "surface", name: item.toLowerCase() } as const;
+    remember({
+      label: item,
+      detail: "Signed-in surface placeholder",
+      path,
+      route: routeState,
+    });
+    navigate(routeState, path);
+  }
+
   const remainingChars = 300 - composerText.length;
   const isProfileRoute = route.kind === "profile";
   const workspaceLabel =
-    route.kind === "post" ? "Thread" : route.kind === "search" ? "Search" : isProfileRoute ? "Profile Feed" : "Active Feed";
+    route.kind === "post"
+      ? "Thread"
+      : route.kind === "search"
+        ? "Search"
+        : route.kind === "surface"
+          ? "Signed-In Surface"
+          : isProfileRoute
+            ? "Profile Feed"
+            : "Active Feed";
   const workspaceTitle =
     route.kind === "post"
       ? "Post Conversation"
@@ -591,12 +643,20 @@ export function App() {
         ? route.query
           ? `Search: ${route.query}`
           : "Search Bluesky"
+        : route.kind === "surface"
+          ? route.name.charAt(0).toUpperCase() + route.name.slice(1)
         : isProfileRoute
           ? displayName(profile ?? undefined)
           : activeSource.label;
   const activeScrollKey = route.kind === "profile" ? `profile:${route.actor}` : route.kind === "feed" ? `feed:${activeSource.id}` : "";
   const renderedRows =
-    route.kind === "post" ? countThreadRows(thread.node) : route.kind === "search" ? searchState.posts.length : feedState.items.length;
+    route.kind === "post"
+      ? countThreadRows(thread.node)
+      : route.kind === "search"
+        ? searchState.posts.length
+        : route.kind === "surface"
+          ? 0
+          : virtualRenderedRows;
   const loadedPages =
     route.kind === "post" ? (thread.node ? 1 : 0) : Math.ceil((route.kind === "search" ? searchState.posts.length : feedState.items.length) / 30);
 
@@ -702,7 +762,7 @@ export function App() {
           {navigationItems.map((item, index) => {
             const Icon = navIcons[index];
             return (
-              <button key={item} className="rail-button" type="button" title={item}>
+              <button key={item} className="rail-button" type="button" title={item} onClick={() => openNavigation(item)}>
                 <Icon size={20} />
                 <span>{item}</span>
               </button>
@@ -730,7 +790,10 @@ export function App() {
         />
         {Object.entries(groupedSources).map(([group, sources]) => (
           <section className="feed-group" key={group}>
-            <h2>{group}</h2>
+            <h2>
+              {group}
+              <span>{sources.length}</span>
+            </h2>
             {sources?.map((source) => (
               <button
                 className={source.id === activeSource.id ? "feed-source active" : "feed-source"}
@@ -784,6 +847,8 @@ export function App() {
             onOpenPost={openPost}
             onOpenProfile={openProfile}
           />
+        ) : route.kind === "surface" ? (
+          <SurfaceView name={route.name} />
         ) : route.kind === "search" ? (
           <SearchView
             query={globalSearchText}
@@ -811,22 +876,21 @@ export function App() {
             {feedState.status === "error" && <ErrorState message={feedState.error || "Feed failed to load."} />}
             {feedState.status === "rate-limit" && <RateLimitState message={feedState.error} />}
             {feedState.status === "ready" && (
-              <>
-                {feedState.items.map((item) => (
-                  <PostCard
-                    item={item}
-                    key={item.post.uri}
-                    onOpenImage={setImageViewer}
-                    onOpenPost={openPost}
-                    onOpenProfile={openProfile}
-                  />
-                ))}
+              <VirtualPostList
+                containerRef={timelineRef}
+                density={density}
+                items={feedState.items}
+                onOpenImage={setImageViewer}
+                onOpenPost={openPost}
+                onOpenProfile={openProfile}
+                onRenderedRowsChange={setVirtualRenderedRows}
+              >
                 {feedState.cursor && (
                   <button className="load-more" type="button" onClick={loadMore}>
                     Load more
                   </button>
                 )}
-              </>
+              </VirtualPostList>
             )}
           </div>
         )}
@@ -839,6 +903,7 @@ export function App() {
         ) : (
           <FeedContextPanel source={activeSource} entityCache={entityCache} />
         )}
+        <FeedMapPanel groups={feedMapSummary} />
         <SmartGroupsPanel groups={entityCache.smartGroups} />
         <MediaStripPanel mediaPosts={entityCache.mediaPosts} posts={entityCache.posts} onOpenPost={openPost} />
         <RecentPanel
@@ -876,6 +941,109 @@ export function App() {
       </aside>
 
       {imageViewer && <ImageViewer image={imageViewer} onChange={setImageViewer} onClose={() => setImageViewer(null)} />}
+    </div>
+  );
+}
+
+function VirtualPostList({
+  children,
+  containerRef,
+  density,
+  items,
+  onOpenImage,
+  onOpenPost,
+  onOpenProfile,
+  onRenderedRowsChange,
+}: {
+  children?: React.ReactNode;
+  containerRef: RefObject<HTMLDivElement | null>;
+  density: string;
+  items: FeedItem[];
+  onOpenImage: (image: ImageViewerState) => void;
+  onOpenPost: (post: FeedPost) => void;
+  onOpenProfile: (profile: Profile) => void;
+  onRenderedRowsChange: (count: number) => void;
+}) {
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [viewport, setViewport] = useState({ height: 900, top: 0 });
+  const estimatedHeight = estimatedPostHeights[density] ?? estimatedPostHeights.comfortable;
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return undefined;
+    }
+
+    let frame = 0;
+    const updateViewport = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const listTop = listRef.current?.offsetTop ?? 0;
+        setViewport({
+          height: container.clientHeight,
+          top: Math.max(0, container.scrollTop - listTop),
+        });
+      });
+    };
+
+    updateViewport();
+    container.addEventListener("scroll", updateViewport, { passive: true });
+    window.addEventListener("resize", updateViewport);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      container.removeEventListener("scroll", updateViewport);
+      window.removeEventListener("resize", updateViewport);
+    };
+  }, [containerRef, items.length]);
+
+  const overscan = 8;
+  const startIndex = Math.max(0, Math.floor(viewport.top / estimatedHeight) - overscan);
+  const visibleCount = Math.ceil(viewport.height / estimatedHeight) + overscan * 2;
+  const endIndex = Math.min(items.length, startIndex + visibleCount);
+  const visibleItems = items.slice(startIndex, endIndex);
+  const beforeHeight = startIndex * estimatedHeight;
+  const afterHeight = Math.max(0, (items.length - endIndex) * estimatedHeight);
+
+  useEffect(() => {
+    onRenderedRowsChange(visibleItems.length);
+  }, [onRenderedRowsChange, visibleItems.length]);
+
+  return (
+    <div className="virtual-list" ref={listRef} data-total-rows={items.length} data-rendered-rows={visibleItems.length}>
+      <div style={{ height: beforeHeight }} />
+      {visibleItems.map((item) => (
+        <PostCard
+          item={item}
+          key={item.post.uri}
+          onOpenImage={onOpenImage}
+          onOpenPost={onOpenPost}
+          onOpenProfile={onOpenProfile}
+        />
+      ))}
+      <div style={{ height: afterHeight }} />
+      {children}
+    </div>
+  );
+}
+
+function SurfaceView({ name }: { name: string }) {
+  const title = name.charAt(0).toUpperCase() + name.slice(1);
+  const copy: Record<string, string> = {
+    chat: "Direct messages stay deferred until the API and privacy posture are handled.",
+    lists: "Lists will become timeline sources after signed-in reads are available.",
+    notifications: "Notifications need OAuth, account context, and local session restore.",
+    profile: "Self-profile needs OAuth before edit controls, likes, feeds, starter packs, and lists can be shown.",
+    saved: "Saved posts need authenticated reads and account-aware rendering.",
+    settings: "Settings will start with local preferences, sign-out, and account/session controls.",
+  };
+
+  return (
+    <div className="timeline comfortable">
+      <section className="surface-placeholder">
+        <h2>{title}</h2>
+        <p>{copy[name] || "This signed-in destination has a stable static route and is ready for OAuth-backed data."}</p>
+      </section>
     </div>
   );
 }
@@ -1620,6 +1788,20 @@ function FeedContextPanel({ source, entityCache }: { source: FeedSource; entityC
           <dd>{entityCache.smartGroups.length.toLocaleString()}</dd>
         </div>
       </dl>
+    </section>
+  );
+}
+
+function FeedMapPanel({ groups }: { groups: Record<string, number> }) {
+  return (
+    <section className="context-panel feed-map-panel">
+      <h2>Feed Map</h2>
+      {Object.entries(groups).map(([group, count]) => (
+        <div key={group}>
+          <span>{group}</span>
+          <strong>{count}</strong>
+        </div>
+      ))}
     </section>
   );
 }

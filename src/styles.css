@@ -177,6 +177,18 @@ button {
   text-transform: uppercase;
 }
 
+.feed-group h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.feed-group h2 span {
+  color: var(--app-text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
 .feed-source {
   display: block;
   width: 100%;
@@ -362,6 +374,29 @@ button {
   contain: content;
   margin-bottom: 14px;
   padding: 16px;
+}
+
+.virtual-list {
+  min-height: 1px;
+}
+
+.surface-placeholder {
+  max-width: 760px;
+  padding: 22px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface);
+}
+
+.surface-placeholder h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+.surface-placeholder p {
+  margin: 0;
+  color: var(--app-text-muted);
+  line-height: 1.5;
 }
 
 .compact .post-card {
@@ -830,6 +865,30 @@ button {
   color: var(--app-text);
   text-align: left;
   padding: 0 10px;
+}
+
+.feed-map-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.feed-map-panel div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--app-surface-2);
+}
+
+.feed-map-panel span {
+  color: var(--app-text-muted);
+  font-size: 13px;
+}
+
+.feed-map-panel strong {
+  font-variant-numeric: tabular-nums;
 }
 
 .recent-panel button {
