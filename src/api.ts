@@ -35,7 +35,31 @@ export type FeedPost = {
   repostCount?: number;
   likeCount?: number;
   quoteCount?: number;
+  labels?: Array<{
+    val?: string;
+    src?: string;
+    uri?: string;
+  }>;
   indexedAt?: string;
+};
+
+export type RecordEmbedView = {
+  uri: string;
+  cid?: string;
+  author?: Profile;
+  value?: {
+    text?: string;
+    createdAt?: string;
+    embed?: unknown;
+  };
+  embeds?: unknown[];
+  labels?: unknown[];
+  replyCount?: number;
+  repostCount?: number;
+  likeCount?: number;
+  quoteCount?: number;
+  indexedAt?: string;
+  $type?: string;
 };
 
 export type FeedItem = {
@@ -178,4 +202,43 @@ export function getExternalEmbed(embed: unknown) {
     external?: { uri?: string; title?: string; description?: string; thumb?: string };
   };
   return candidate.external ?? null;
+}
+
+export function getVideoEmbed(embed: unknown) {
+  if (!embed || typeof embed !== "object") {
+    return null;
+  }
+
+  const candidate = embed as {
+    playlist?: string;
+    thumbnail?: string;
+    aspectRatio?: { width?: number; height?: number };
+    alt?: string;
+  };
+  if (!candidate.playlist && !candidate.thumbnail) {
+    return null;
+  }
+
+  return {
+    playlist: candidate.playlist,
+    thumbnail: candidate.thumbnail,
+    aspectRatio: candidate.aspectRatio,
+    alt: candidate.alt,
+  };
+}
+
+export function getRecordEmbed(embed: unknown) {
+  if (!embed || typeof embed !== "object") {
+    return null;
+  }
+
+  const candidate = embed as {
+    record?: RecordEmbedView | { $type?: string; message?: string };
+  };
+  const record = candidate.record;
+  if (!record || typeof record !== "object" || !("uri" in record)) {
+    return null;
+  }
+
+  return record as RecordEmbedView;
 }

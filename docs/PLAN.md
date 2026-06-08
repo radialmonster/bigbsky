@@ -167,7 +167,7 @@ Useful creative ideas that fit the Feed-first product direction:
 - Feed map: show saved/pinned Feeds grouped by topic/community-style categories while still calling them Feeds. Static path: use user-created browser-local groups plus client-side grouping from Feed names/descriptions. Defer shared/global Feed taxonomy.
 - Session history trail: keep a small recent trail of viewed Feeds, profiles, posts, and searches so desktop browsing has better wayfinding. Static path: browser-local recent history only.
 - Media strip: optional visual strip/panel of recent images/videos from the active Feed for art, design, photography, video, and music-related Feeds. Static path: derive from currently loaded Feed items.
-- Post density markers: subtle signals for high-discussion, high-like, high-repost, or fast-moving posts to improve scanning. Static path: compute from reply/repost/like counts and timestamps already present on loaded posts. Defer server-side velocity/trend scoring.
+- Post density markers: subtle signals for high-discussion, high-like, high-repost, or fast-moving posts to improve scanning. Static path: compute from reply/repost/like counts and timestamps already present on loaded posts. Defer server-side velocity/trend scoring. Status: first pass implemented with local active-discussion and high-activity chips.
 - Context-preserving profile peek: open profile previews in-place first, with full profile navigation only when the user chooses it. Static path: live API fetch on demand and browser-local cache.
 
 Highest-priority creative ideas:
@@ -959,17 +959,17 @@ Request budget mindset:
 - Establish the primary layout regions: left sidebar, improved feed selector, right sidebar, and central endless-scroll feed. Status: implemented.
 - Build the active Feed timeline as the central product surface. Status: implemented.
 - Implement timeline virtualization before large-feed polish so card/layout choices are tested against the real scrolling model.
-- Reserve stable media/embed dimensions in post cards to reduce layout shift during image, video, GIF, and link-card loading. Status: partial; image cards now apply Bluesky aspect-ratio metadata and stable minimum space, link/video/GIF coverage still pending.
+- Reserve stable media/embed dimensions in post cards to reduce layout shift during image, video, GIF, and link-card loading. Status: partial; image cards apply Bluesky aspect-ratio metadata and stable minimum space, video embeds now render stable thumbnail/placeholder cards, and link-card sizing is stable; richer GIF/video controls still pending.
 - Include the signed-in inline composer/input at the top of the active Feed timeline. Status: UI placeholder implemented for signed-out/static shell.
 - Include composer image attachment UI and upload/posting flow.
 - Include multi-post/thread composer UI.
 - Include per-post media attachment UI and upload/posting flow.
 - Include 300-character counter and validation per post in composer UI. Status: implemented for the current placeholder composer.
-- Experiment with wider post/card formats for text, media, link cards, quote posts, and threads. Status: implemented as first pass; needs more embed/quote/content-label coverage.
+- Experiment with wider post/card formats for text, media, link cards, quote posts, and threads. Status: implemented as first pass; quote-post cards, quoted media/link/video previews, alt badges, content-label chips, and engagement density markers now render from loaded post data.
 - Add public timeline/feed/profile/thread data loading. Status: implemented.
 - Add standalone post-thread data loading for `/profile/:handleOrDid/post/:rkey`, including direct-open support for Bluesky-style copied post URLs. Status: implemented.
 - Render standalone post routes as full threaded conversation pages: root post first, then nested replies/comments, with branch expansion for additional replies when Bluesky truncates the initial thread response. Status: partial; nested replies render and loaded reply branches can now expand/collapse locally, deeper Bluesky branch fetches for API-truncated branches still pending.
-- Add normalized in-memory entities for loaded posts, authors, embeds, and Feed metadata before building right-rail previews. Status: first pass implemented for loaded posts, author profiles, link URLs, and media-post indexes.
+- Add normalized in-memory entities for loaded posts, authors, embeds, and Feed metadata before building right-rail previews. Status: first pass implemented for loaded posts, author profiles, link URLs, media previews, and local smart-group summaries.
 - Add request cancellation and source-level cache retention so switching Feeds or previews does not produce stale renders or repeated first-page fetches. Status: implemented for feed/profile/search/thread first-page loads with session cache and route scroll restoration.
 - Support client-side URL routes served by the single static app shell:
   - `/` Status: implemented.
@@ -1025,7 +1025,7 @@ Request budget mindset:
 - Post/thread detail view with reply composer, stats, repost/quote/like/save links, and reply permissions.
 - Search result view with query, clear action, language selector, and Top/Latest/People/Feeds filters. Status: public post search implemented with query plus Top/Latest post results; People/Feeds tabs and language selector still pending.
 - Profile view variants for self-profile and other-user profiles.
-- Media, GIF/video, alt text, and content-label rendering states.
+- Media, GIF/video, alt text, and content-label rendering states. Status: partial; image alt badges, video thumbnail/placeholder cards, and content-label chips now render from loaded AppView data, with full GIF/video playback controls and richer moderation states still pending.
 - Muted/blocked content handling as exposed by APIs.
 - Account-aware post rendering.
 - Wider active Feed timeline formatting while preserving endless-scroll behavior.
@@ -1061,11 +1061,11 @@ Request budget mindset:
 - Saved local workspaces.
 - Per-column source selection: Home, Discover, Following, feed, list, search, profile, mentions, notifications, saved.
 - Per-Feed layout memory. Status: implemented for density mode.
-- Smart post grouping by repeated link/topic/quote activity.
+- Smart post grouping by repeated link/topic/quote activity. Status: first pass implemented in the right rail from already-loaded posts by repeated links, quoted post URIs, reply roots, and normalized text.
 - Feed map grouped by topic/community-style categories.
 - Link preview reader.
 - Session history trail. Status: implemented as a browser-local recent trail for feeds, profiles, threads, and searches.
-- Optional media strip/panel for visual Feeds.
+- Optional media strip/panel for visual Feeds. Status: first pass implemented in the right rail from already-loaded image/video thumbnails, with in-app navigation back to the source post.
 - Performance inspector for development builds showing active source, loaded pages, rendered rows, API requests, cache hits, and service-worker state.
 - Quota inspector for development builds showing Cloudflare document/static asset requests separately from Bluesky API requests, with a warning if any Pages Function/Worker route is detected.
 

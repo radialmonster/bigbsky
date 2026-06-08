@@ -3,6 +3,8 @@ import {
   Bookmark,
   Compass,
   Feather,
+  Film,
+  Flame,
   Hash,
   Home,
   Image,
@@ -26,6 +28,7 @@ import {
   type FeedItem,
   type FeedPost,
   type Profile,
+  type RecordEmbedView,
   type SearchPostsResponse,
   type ThreadNode,
   getAuthorFeed,
@@ -34,6 +37,8 @@ import {
   getFeed,
   getPostThread,
   getProfile,
+  getRecordEmbed,
+  getVideoEmbed,
   searchPosts,
 } from "./api";
 import { getRouteState, type RouteState } from "./router";
@@ -75,7 +80,17 @@ type EntityCache = {
   posts: Record<string, FeedPost>;
   profiles: Record<string, Profile>;
   linkUrls: string[];
-  mediaPostUris: string[];
+  mediaPosts: Array<{
+    uri: string;
+    authorHandle: string;
+    thumb: string;
+    alt: string;
+  }>;
+  smartGroups: Array<{
+    key: string;
+    label: string;
+    count: number;
+  }>;
 };
 
 const densityModes = ["comfortable", "compact", "media"];
@@ -134,6 +149,29 @@ function rateLimitMessage(error: unknown) {
   return error instanceof Error ? error.message : "Bluesky rate limit reached.";
 }
 
+function normalizeGroupText(text?: string) {
+  return text
+    ?.toLowerCase()
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/[^\p{L}\p{N}#\s]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 96);
+}
+
+function groupLabel(key: string) {
+  if (key.startsWith("link:")) {
+    return `Link: ${key.slice(5)}`;
+  }
+  if (key.startsWith("quote:")) {
+    return "Quoted post discussion";
+  }
+  if (key.startsWith("reply:")) {
+    return "Thread activity";
+  }
+  return `Topic: ${key.slice(5)}`;
+}
+
 export function App() {
   const [route, setRoute] = useState<RouteState>(() => getRouteState());
   const [activeSourceId, setActiveSourceId] = useState(feedSources[0].id);
@@ -188,7 +226,8 @@ export function App() {
     const posts: Record<string, FeedPost> = {};
     const profiles: Record<string, Profile> = {};
     const linkUrls: string[] = [];
-    const mediaPostUris: string[] = [];
+    const mediaPosts: EntityCache["mediaPosts"] = [];
+    const groupCounts = new Map<string, number>();
 
     for (const post of [...feedState.items.map((item) => item.post), ...searchState.posts]) {
       posts[post.uri] = post;
@@ -198,14 +237,46 @@ export function App() {
       const external = getExternalEmbed(post.embed);
       if (external?.uri) {
         linkUrls.push(external.uri);
+        groupCounts.set(`link:${external.uri}`, (groupCounts.get(`link:${external.uri}`) ?? 0) + 1);
       }
 
-      if (getEmbedImages(post.embed).length > 0) {
-        mediaPostUris.push(post.uri);
+      const record = getRecordEmbed(post.embed);
+      if (record?.uri) {
+        groupCounts.set(`quote:${record.uri}`, (groupCounts.get(`quote:${record.uri}`) ?? 0) + 1);
+      }
+
+      const replyRoot = feedState.items.find((item) => item.post.uri === post.uri)?.reply?.root?.uri;
+      if (replyRoot) {
+        groupCounts.set(`reply:${replyRoot}`, (groupCounts.get(`reply:${replyRoot}`) ?? 0) + 1);
+      }
+
+      const normalizedText = normalizeGroupText(post.record.text);
+      if (normalizedText && normalizedText.length > 28) {
+        groupCounts.set(`text:${normalizedText}`, (groupCounts.get(`text:${normalizedText}`) ?? 0) + 1);
+      }
+
+      const images = getEmbedImages(post.embed);
+      const video = getVideoEmbed(post.embed);
+      const imageThumb = images[0]?.thumb || images[0]?.fullsize;
+      const videoThumb = video?.thumbnail;
+      const thumb = imageThumb || videoThumb;
+      if (thumb) {
+        mediaPosts.push({
+          uri: post.uri,
+          authorHandle: post.author.handle,
+          thumb,
+          alt: images[0]?.alt || video?.alt || "",
+        });
       }
     }
 
-    return { posts, profiles, linkUrls, mediaPostUris };
+    const smartGroups = [...groupCounts.entries()]
+      .filter(([, count]) => count > 1)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([key, count]) => ({ key, count, label: groupLabel(key) }));
+
+    return { posts, profiles, linkUrls, mediaPosts: mediaPosts.slice(0, 8), smartGroups };
   }, [feedState.items, searchState.posts]);
 
   const loadFeed = useCallback(async (source: FeedSource, cursor?: string, signal?: AbortSignal) => {
@@ -681,6 +752,8 @@ export function App() {
         ) : (
           <FeedContextPanel source={activeSource} entityCache={entityCache} />
         )}
+        <SmartGroupsPanel groups={entityCache.smartGroups} />
+        <MediaStripPanel mediaPosts={entityCache.mediaPosts} posts={entityCache.posts} onOpenPost={openPost} />
         <RecentPanel
           items={recentItems}
           onOpen={(item) => {
@@ -860,8 +933,14 @@ function PostCard({
   const post = item.post;
   const images = getEmbedImages(post.embed);
   const external = getExternalEmbed(post.embed);
-  const text = post.record.text || "Post has no plain text.";
+  const recordEmbed = getRecordEmbed(post.embed);
+  const video = getVideoEmbed(post.embed);
+  const text = post.record.text?.trim() || "";
   const preservesLineBreaks = text.includes("\n");
+  const hasRichContent = images.length > 0 || !!external || !!recordEmbed || !!video;
+  const engagementTotal = (post.replyCount ?? 0) + (post.repostCount ?? 0) + (post.likeCount ?? 0) + (post.quoteCount ?? 0);
+  const hasDiscussion = (post.replyCount ?? 0) >= 10 || (post.quoteCount ?? 0) >= 8;
+  const hasHighReach = engagementTotal >= 100;
 
   return (
     <article className="post-card">
@@ -877,7 +956,30 @@ function PostCard({
       </header>
       {item.reason?.by && <p className="reason">Reposted by {displayName(item.reason.by)}</p>}
       {item.reply?.parent && <p className="reason">Replying in a thread from @{item.reply.parent.author.handle}</p>}
-      <p className={preservesLineBreaks ? "post-text has-line-breaks" : "post-text"}>{text}</p>
+      {(hasDiscussion || hasHighReach || (post.labels?.length ?? 0) > 0) && (
+        <div className="post-badges" aria-label="Post context">
+          {hasDiscussion && (
+            <span>
+              <MessageCircle size={13} /> Active discussion
+            </span>
+          )}
+          {hasHighReach && (
+            <span>
+              <Flame size={13} /> High activity
+            </span>
+          )}
+          {post.labels?.slice(0, 3).map((label) => (
+            <span key={`${post.uri}:${label.val || label.src || label.uri}`}>
+              {label.val || "Content label"}
+            </span>
+          ))}
+        </div>
+      )}
+      {text ? (
+        <p className={preservesLineBreaks ? "post-text has-line-breaks" : "post-text"}>{text}</p>
+      ) : (
+        !hasRichContent && <p className="post-text muted">Post has no plain text.</p>
+      )}
       {images.length > 0 && (
         <div className={`image-grid count-${Math.min(images.length, 4)}`}>
           {images.slice(0, 4).map((image) => (
@@ -902,24 +1004,55 @@ function PostCard({
                 alt={image.alt || ""}
                 src={image.thumb || image.fullsize}
                 loading="lazy"
+                decoding="async"
                 style={
                   image.aspectRatio?.width && image.aspectRatio?.height
                     ? { aspectRatio: `${image.aspectRatio.width} / ${image.aspectRatio.height}` }
                     : undefined
                 }
               />
+              {image.alt && <span className="alt-badge">ALT</span>}
             </button>
           ))}
         </div>
       )}
+      {video && (
+        <a className="video-card" href={video.playlist || video.thumbnail} target="_blank" rel="noreferrer">
+          {video.thumbnail ? (
+            <img
+              alt={video.alt || ""}
+              src={video.thumbnail}
+              loading="lazy"
+              decoding="async"
+              style={
+                video.aspectRatio?.width && video.aspectRatio?.height
+                  ? { aspectRatio: `${video.aspectRatio.width} / ${video.aspectRatio.height}` }
+                  : undefined
+              }
+            />
+          ) : (
+            <span className="video-placeholder" />
+          )}
+          <span className="video-label">
+            <Film size={16} /> Video
+          </span>
+        </a>
+      )}
       {external && (
         <a className="link-card" href={external.uri} target="_blank" rel="noreferrer">
-          {external.thumb && <img alt="" src={external.thumb} loading="lazy" />}
+          {external.thumb && <img alt="" src={external.thumb} loading="lazy" decoding="async" />}
           <span>
             <strong>{external.title || external.uri}</strong>
             <small>{external.description}</small>
           </span>
         </a>
+      )}
+      {recordEmbed && (
+        <QuotedPostCard
+          record={recordEmbed}
+          onOpenPost={onOpenPost}
+          onOpenProfile={onOpenProfile}
+        />
       )}
       <footer className="post-actions">
         <button type="button" onClick={() => onOpenPost?.(post)} title="Open thread">
@@ -933,6 +1066,112 @@ function PostCard({
         </span>
       </footer>
     </article>
+  );
+}
+
+function QuotedPostCard({
+  record,
+  onOpenPost,
+  onOpenProfile,
+}: {
+  record: RecordEmbedView;
+  onOpenPost?: (post: FeedPost) => void;
+  onOpenProfile?: (profile: Profile) => void;
+}) {
+  const embeddedExternal = getExternalEmbed(record.embeds?.[0] ?? record.value?.embed);
+  const embeddedImages = getEmbedImages(record.embeds?.[0] ?? record.value?.embed);
+  const embeddedVideo = getVideoEmbed(record.embeds?.[0] ?? record.value?.embed);
+  const text = record.value?.text?.trim() || "";
+  const quotedPost = record.author
+    ? ({
+        uri: record.uri,
+        cid: record.cid || "",
+        author: record.author,
+        record: {
+          text: record.value?.text,
+          createdAt: record.value?.createdAt,
+          embed: record.value?.embed,
+        },
+        embed: record.embeds?.[0],
+        replyCount: record.replyCount,
+        repostCount: record.repostCount,
+        likeCount: record.likeCount,
+        quoteCount: record.quoteCount,
+        indexedAt: record.indexedAt,
+      } satisfies FeedPost)
+    : null;
+
+  return (
+    <div className="quote-card">
+      {record.author && (
+        <header className="quote-header">
+          <Avatar profile={record.author} />
+          <button className="author-button" type="button" onClick={() => onOpenProfile?.(record.author as Profile)}>
+            <strong>{displayName(record.author)}</strong>
+            <span>@{record.author.handle}</span>
+          </button>
+        </header>
+      )}
+      {text ? (
+        <p className={text.includes("\n") ? "quote-text has-line-breaks" : "quote-text"}>{text}</p>
+      ) : (
+        <p className="quote-text muted">Quoted post has no plain text.</p>
+      )}
+      {embeddedImages.length > 0 && (
+        <div className={`image-grid quote-images count-${Math.min(embeddedImages.length, 4)}`}>
+          {embeddedImages.slice(0, 4).map((image) => (
+            <img
+              alt={image.alt || ""}
+              key={image.thumb || image.fullsize}
+              src={image.thumb || image.fullsize}
+              loading="lazy"
+              decoding="async"
+              style={
+                image.aspectRatio?.width && image.aspectRatio?.height
+                  ? { aspectRatio: `${image.aspectRatio.width} / ${image.aspectRatio.height}` }
+                  : undefined
+              }
+            />
+          ))}
+        </div>
+      )}
+      {embeddedVideo && (
+        <a className="video-card quote-video-card" href={embeddedVideo.playlist || embeddedVideo.thumbnail} target="_blank" rel="noreferrer">
+          {embeddedVideo.thumbnail ? (
+            <img
+              alt={embeddedVideo.alt || ""}
+              src={embeddedVideo.thumbnail}
+              loading="lazy"
+              decoding="async"
+              style={
+                embeddedVideo.aspectRatio?.width && embeddedVideo.aspectRatio?.height
+                  ? { aspectRatio: `${embeddedVideo.aspectRatio.width} / ${embeddedVideo.aspectRatio.height}` }
+                  : undefined
+              }
+            />
+          ) : (
+            <span className="video-placeholder" />
+          )}
+          <span className="video-label">
+            <Film size={16} /> Video
+          </span>
+        </a>
+      )}
+      {embeddedExternal && (
+        <a className="link-card quote-link-card" href={embeddedExternal.uri} target="_blank" rel="noreferrer">
+          {embeddedExternal.thumb && <img alt="" src={embeddedExternal.thumb} loading="lazy" decoding="async" />}
+          <span>
+            <strong>{embeddedExternal.title || embeddedExternal.uri}</strong>
+            <small>{embeddedExternal.description}</small>
+          </span>
+        </a>
+      )}
+      {quotedPost && (
+        <button className="quote-open-button" type="button" onClick={() => onOpenPost?.(quotedPost)}>
+          Open quoted thread
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -1209,9 +1448,68 @@ function FeedContextPanel({ source, entityCache }: { source: FeedSource; entityC
         </div>
         <div>
           <dt>Media posts</dt>
-          <dd>{entityCache.mediaPostUris.length.toLocaleString()}</dd>
+          <dd>{entityCache.mediaPosts.length.toLocaleString()}</dd>
+        </div>
+        <div>
+          <dt>Smart groups</dt>
+          <dd>{entityCache.smartGroups.length.toLocaleString()}</dd>
         </div>
       </dl>
+    </section>
+  );
+}
+
+function SmartGroupsPanel({ groups }: { groups: EntityCache["smartGroups"] }) {
+  if (groups.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="context-panel smart-groups-panel">
+      <h2>Smart Groups</h2>
+      {groups.map((group) => (
+        <button key={group.key} type="button" title={group.label}>
+          <span>{group.count} posts</span>
+          <small>{group.label}</small>
+        </button>
+      ))}
+    </section>
+  );
+}
+
+function MediaStripPanel({
+  mediaPosts,
+  posts,
+  onOpenPost,
+}: {
+  mediaPosts: EntityCache["mediaPosts"];
+  posts: EntityCache["posts"];
+  onOpenPost: (post: FeedPost) => void;
+}) {
+  if (mediaPosts.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="context-panel media-strip-panel">
+      <h2>Media Strip</h2>
+      <div className="media-strip">
+        {mediaPosts.map((media) => (
+          <button
+            key={`${media.uri}:${media.thumb}`}
+            type="button"
+            onClick={() => {
+              const post = posts[media.uri];
+              if (post) {
+                onOpenPost(post);
+              }
+            }}
+            title={`Open @${media.authorHandle} media post`}
+          >
+            <img src={media.thumb} alt={media.alt} loading="lazy" decoding="async" />
+          </button>
+        ))}
+      </div>
     </section>
   );
 }

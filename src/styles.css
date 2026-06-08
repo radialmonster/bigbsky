@@ -409,6 +409,30 @@ button {
   color: var(--app-text-muted);
 }
 
+.post-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.post-badges span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  max-width: 100%;
+  padding: 3px 8px;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  color: var(--app-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .avatar {
   width: 44px;
   height: 44px;
@@ -427,6 +451,11 @@ button {
   color: var(--app-text);
   font-size: 17px;
   line-height: 1.48;
+}
+
+.post-text.muted,
+.quote-text.muted {
+  color: var(--app-text-muted);
 }
 
 .post-text.has-line-breaks {
@@ -464,6 +493,7 @@ button {
 }
 
 .image-button {
+  position: relative;
   max-width: 100%;
   padding: 0;
   border-radius: 8px;
@@ -485,6 +515,62 @@ button {
 .image-button:active img,
 .image-button:focus:not(:focus-visible) img {
   box-shadow: none;
+}
+
+.alt-badge {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: rgba(11, 17, 28, 0.88);
+  color: var(--app-text);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.video-card {
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  min-width: min(100%, 360px);
+  min-height: 180px;
+  margin: 12px 0;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface-2);
+  color: inherit;
+  text-decoration: none;
+}
+
+.video-card img,
+.video-placeholder {
+  display: block;
+  width: 100%;
+  max-height: calc(100vh - 180px);
+  object-fit: contain;
+  background: var(--app-surface-2);
+}
+
+.video-placeholder {
+  min-height: 180px;
+}
+
+.video-label {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: rgba(11, 17, 28, 0.88);
+  color: var(--app-text);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .link-card {
@@ -520,6 +606,80 @@ button {
   color: var(--app-text-muted);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.quote-card {
+  margin: 12px 0;
+  padding: 12px;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.quote-header {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.quote-header .avatar {
+  width: 34px;
+  height: 34px;
+}
+
+.quote-header strong,
+.quote-header span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quote-header span {
+  color: var(--app-text-muted);
+  font-size: 13px;
+}
+
+.quote-text {
+  margin: 10px 0;
+  color: var(--app-text);
+  font-size: 15px;
+  line-height: 1.42;
+}
+
+.quote-text.has-line-breaks {
+  white-space: pre-wrap;
+}
+
+.quote-images {
+  margin: 10px 0;
+}
+
+.quote-images img {
+  min-height: 84px;
+  max-height: 320px;
+}
+
+.quote-link-card {
+  grid-template-columns: 112px 1fr;
+  min-height: 86px;
+  margin: 10px 0;
+}
+
+.quote-video-card {
+  min-width: min(100%, 280px);
+  min-height: 140px;
+}
+
+.quote-open-button {
+  padding: 0;
+  background: transparent;
+  color: var(--bsky-blue-soft);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .post-actions {
@@ -651,7 +811,9 @@ button {
 }
 
 .recent-panel span,
-.recent-panel small {
+.recent-panel small,
+.smart-groups-panel span,
+.smart-groups-panel small {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -659,9 +821,40 @@ button {
   white-space: nowrap;
 }
 
-.recent-panel small {
+.recent-panel small,
+.smart-groups-panel small {
   margin-top: 2px;
   color: var(--app-text-muted);
+}
+
+.smart-groups-panel button {
+  height: auto;
+  min-height: 48px;
+  padding-block: 8px;
+}
+
+.media-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.media-strip button {
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  background: var(--app-surface-2);
+}
+
+.media-strip img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .state,
