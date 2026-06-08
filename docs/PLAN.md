@@ -254,10 +254,15 @@ Initial performance budgets:
 - Cloudflare Pages preview deployments are public by default.
 - Target Cloudflare Pages Free compatibility for v1.
 - Root Vite/React/TypeScript app is scaffolded at the repository root, so Cloudflare can run `npm run build` and publish `dist`.
-- Current root app includes a desktop reader shell, grouped Feed selector, right context rail, local composer UI with 300-character validation, direct public Bluesky author-feed loading, standalone post-thread route loading, static `_headers`, static `_redirects`, and a build-output audit for forbidden server/runtime artifacts.
+- Current root app includes a desktop reader shell, grouped Feed selector, right context rail, local composer UI with 300-character validation, direct public Bluesky feed-generator loading for Home, direct public author-feed loading for `/profile/:handleOrDid`, standalone post-thread route loading, static `_headers`, static `_redirects`, and a build-output audit for forbidden server/runtime artifacts.
 - Latest local production build passed with `npm run build`; audit result: static-only `dist` output.
 - Default visual theme is dark, using Bluesky brand colors as anchors: Blue `#0560FF`, Light Blue `#75AFFF`, Dark Gray `#232E3E`, and Light Gray `#F9FAFB`.
-- `https://bigbsky.pages.dev/` is serving the static app. `https://bigbsky.com/` currently does not resolve to an address record from local DNS checks, so the custom domain still needs Cloudflare DNS/custom-domain activation before it can serve the Pages app.
+- `https://bigbsky.pages.dev/` and `https://bigbsky.com/` are serving the static app. Clean profile routes such as `https://bigbsky.com/profile/radialmonster.com` return the SPA shell through static fallback.
+- Signed-out Home feed has been tested working against public feed-generator sources. Current default sources intentionally avoid official feed generators that returned `502` signed out, and avoid `What's Hot Classic` because it surfaced NSFW content despite returning `200`.
+- Signed-out profile routes are implemented for Bluesky-style URLs such as `/profile/radialmonster.com`, `/profile/edutopia.org`, `/profile/standardissuecomputing.blog`, `/profile/foxes.hourly.media`, and `/profile/nsiabblog.bsky.social`; these use `app.bsky.actor.getProfile` plus `app.bsky.feed.getAuthorFeed` directly from the browser.
+- Feed image cards use Bluesky `thumb` URLs, display without cropping or forced aspect ratios, and constrain only to container width and viewport height. Clicking an image opens the Bluesky `fullsize` URL in an in-app viewer constrained to the viewport.
+- Multi-image posts support image-viewer navigation with left/right arrow keys, on-screen arrow buttons, and clicking the left/right side of the overlay.
+- The first fixed-height virtual window was removed after natural-height images caused scroll jumps. Current Phase 1 renders loaded posts directly; measured-row virtualization should be added later before large-feed/power-user polish.
 - Treat "Cloudflare Pages Free" as "static assets only." Avoid anything that turns normal app traffic into Pages Function or Worker traffic.
 - Required public files:
   - OAuth client metadata JSON.
