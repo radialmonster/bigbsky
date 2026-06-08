@@ -1508,24 +1508,143 @@ function VirtualPostList({
   onRenderedRowsChange: (count: number) => void;
   savedUris: Set<string>;
 }) {
+  const defaultRowHeight = density === "compact" ? 190 : density === "media" ? 360 : 260;
+  const overscanPixels = defaultRowHeight * 3;
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(720);
+  const [rowHeights, setRowHeights] = useState<Record<string, number>>({});
+  const rowOffsets = useMemo(() => {
+    let offset = 0;
+    return items.map((item) => {
+      const top = offset;
+      offset += rowHeights[item.post.uri] ?? defaultRowHeight;
+      return top;
+    });
+  }, [defaultRowHeight, items, rowHeights]);
+  const totalHeight = useMemo(
+    () => items.reduce((total, item) => total + (rowHeights[item.post.uri] ?? defaultRowHeight), 0),
+    [defaultRowHeight, items, rowHeights],
+  );
+  const findRowIndex = useCallback(
+    (targetOffset: number) => {
+      let low = 0;
+      let high = items.length - 1;
+      let match = 0;
+
+      while (low <= high) {
+        const middle = Math.floor((low + high) / 2);
+        if ((rowOffsets[middle] ?? 0) <= targetOffset) {
+          match = middle;
+          low = middle + 1;
+        } else {
+          high = middle - 1;
+        }
+      }
+
+      return match;
+    },
+    [items.length, rowOffsets],
+  );
+  const startIndex = items.length > 0 ? findRowIndex(Math.max(0, scrollTop - overscanPixels)) : 0;
+  const endIndex =
+    items.length > 0 ? Math.min(items.length - 1, findRowIndex(scrollTop + viewportHeight + overscanPixels) + 1) : -1;
+  const visibleItems = endIndex >= startIndex ? items.slice(startIndex, endIndex + 1) : [];
+  const topSpacerHeight = rowOffsets[startIndex] ?? 0;
+  const renderedHeight = visibleItems.reduce((total, item) => total + (rowHeights[item.post.uri] ?? defaultRowHeight), 0);
+  const bottomSpacerHeight = Math.max(0, totalHeight - topSpacerHeight - renderedHeight);
+
   useEffect(() => {
-    onRenderedRowsChange(items.length);
-  }, [items.length, onRenderedRowsChange]);
+    setRowHeights((current) => {
+      const next = Object.fromEntries(items.map((item) => [item.post.uri, current[item.post.uri]]).filter(([, height]) => !!height));
+      return Object.keys(next).length === Object.keys(current).length ? current : (next as Record<string, number>);
+    });
+  }, [items]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return undefined;
+    }
+
+    const updateViewport = () => {
+      setScrollTop(container.scrollTop);
+      setViewportHeight(container.clientHeight || 720);
+    };
+
+    updateViewport();
+    container.addEventListener("scroll", updateViewport, { passive: true });
+    const observer = "ResizeObserver" in window ? new ResizeObserver(updateViewport) : null;
+    observer?.observe(container);
+
+    return () => {
+      container.removeEventListener("scroll", updateViewport);
+      observer?.disconnect();
+    };
+  }, [containerRef]);
+
+  useEffect(() => {
+    onRenderedRowsChange(visibleItems.length);
+  }, [onRenderedRowsChange, visibleItems.length]);
 
   return (
-    <div className="virtual-list" data-total-rows={items.length} data-rendered-rows={items.length}>
-      {items.map((item) => (
-        <PostCard
+    <div
+      className="virtual-list"
+      data-total-rows={items.length}
+      data-rendered-rows={visibleItems.length}
+    >
+      {topSpacerHeight > 0 && <div className="virtual-spacer" style={{ height: topSpacerHeight }} />}
+      {visibleItems.map((item) => (
+        <MeasuredPostRow
           item={item}
           key={item.post.uri}
-          onOpenImage={onOpenImage}
-          onOpenLinkPreview={onOpenLinkPreview}
-          onOpenPost={onOpenPost}
-          onOpenProfile={onOpenProfile}
-          isSaved={savedUris.has(item.post.uri)}
-          onToggleSaved={onToggleSaved}
-        />
+          onMeasured={(height) => {
+            setRowHeights((current) => (current[item.post.uri] === height ? current : { ...current, [item.post.uri]: height }));
+          }}
+        >
+          <PostCard
+            item={item}
+            onOpenImage={onOpenImage}
+            onOpenLinkPreview={onOpenLinkPreview}
+            onOpenPost={onOpenPost}
+            onOpenProfile={onOpenProfile}
+            isSaved={savedUris.has(item.post.uri)}
+            onToggleSaved={onToggleSaved}
+          />
+        </MeasuredPostRow>
       ))}
+      {bottomSpacerHeight > 0 && <div className="virtual-spacer" style={{ height: bottomSpacerHeight }} />}
+      {children}
+    </div>
+  );
+}
+
+function MeasuredPostRow({
+  children,
+  item,
+  onMeasured,
+}: {
+  children: React.ReactNode;
+  item: FeedItem;
+  onMeasured: (height: number) => void;
+}) {
+  const rowRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const row = rowRef.current;
+    if (!row) {
+      return undefined;
+    }
+
+    const measure = () => onMeasured(Math.ceil(row.getBoundingClientRect().height));
+    measure();
+    const observer = "ResizeObserver" in window ? new ResizeObserver(measure) : null;
+    observer?.observe(row);
+
+    return () => observer?.disconnect();
+  }, [item.post.uri, onMeasured]);
+
+  return (
+    <div className="virtual-row" ref={rowRef}>
       {children}
     </div>
   );

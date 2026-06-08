@@ -201,7 +201,7 @@ Performance should be treated as part of the product design, not a late build st
 Core performance rules:
 
 - Render one primary live timeline by default. Context panels should reuse entities from that timeline before they make their own request.
-- Virtualize timeline rows from the start. Endless scroll should not mean endless DOM growth.
+- Virtualize timeline rows from the start. Endless scroll should not mean endless DOM growth. Status: first pass implemented with measured row windowing, top/bottom spacers, and rendered-row reporting in the development inspector.
 - Keep post cards height-stable. Reserve space for media, link cards, labels, and action rows so images and embeds do not cause major layout shifts as they load.
 - Decode and load media lazily. Feed cards should use Bluesky-provided thumbnails/previews first, with full media loaded only when visible or opened.
 - Avoid masonry layouts for the default Feed timeline. Use predictable rows or bounded media grids so virtualization, keyboard navigation, scroll restoration, and context previews remain reliable.
@@ -813,7 +813,7 @@ Bluesky/API request strategy:
 - Keep timeline page caches scoped by active source and cursor. Route changes should retain loaded pages until the user explicitly refreshes or memory pressure requires pruning.
 - Use stale-while-revalidate behavior for Feed metadata, profile previews, Feed maps, and right-rail panels.
 - Fetch details on demand: author previews, link preview panels, thread expansions, liked-by/reposted-by/quotes pages, and media strips should load only when opened or visible.
-- Virtualize long timelines so rendering more content does not trigger unnecessary detail fetches.
+- Virtualize long timelines so rendering more content does not trigger unnecessary detail fetches. Status: first pass implemented for Feed and profile timelines with measured row windowing.
 - Avoid prefetching every post's author profile, thread, quote context, or media details.
 - Batch or coalesce where APIs support it, especially profile lookups, post lookups, and Feed metadata.
 - Use request cancellation for obsolete source/search/preview requests so late responses do not overwrite the active view.
@@ -842,7 +842,7 @@ Request and quota validation:
 - Measure opening a profile preview, post thread, Feed selector, and right-rail panel.
 - Measure standalone post-thread expansion and confirm each "load more replies/branch" action produces only the expected Bluesky request, no Cloudflare static/document request, no paid/quota-triggering Cloudflare request, and no duplicate request for branches already cached in memory.
 - Measure initial standalone post-thread render and confirm it does not prefetch trending topics, suggested follows, chat, notifications, quote lists, liked-by lists, reposted-by lists, or full author sidebars before the thread is readable.
-- Measure timeline scroll after several pages and confirm DOM node count stays bounded by virtualization.
+- Measure timeline scroll after several pages and confirm DOM node count stays bounded by virtualization. Status: partial; fallback Puppeteer smoke test on 2026-06-08 confirmed a 29-row Discover feed rendered only 2-3 post cards while scrolling, with full several-page stress testing still pending.
 - Measure cumulative layout shift for media-heavy Feed cards and fix unstable media/link-card sizing before release.
 - Set rough budgets before implementation and fail PRs that accidentally multiply requests for common browsing flows.
 
@@ -1138,9 +1138,9 @@ Request budget mindset:
 - At 2560px, the feed presentation becomes richer or more useful instead of expanding empty gutters.
 - No user data is sent to a backend we control.
 - Browser-local preferences/drafts/history can be cleared locally and are not persisted on our infrastructure. Status: implemented for density preferences, recent trail, saved posts, composer draft, reply drafts, and OAuth/local auth markers through the Settings clear-data control.
-- Desktop screenshot at 1920x1080 shows the intended wide layout.
+- Desktop screenshot at 1920x1080 shows the intended wide layout. Status: fallback Puppeteer screenshot captured on 2026-06-08 after virtualized feed scrolling; wide rails, active timeline, right context, and media card layout rendered correctly.
 - Mobile viewport remains usable enough, even though desktop is the priority.
-- Scrolling a long Feed keeps DOM node count bounded and does not degrade after several loaded pages. Status: pending measured-row virtualization; fallback Puppeteer verification confirms the current loaded-row renderer no longer snaps scroll upward after scrolling down.
+- Scrolling a long Feed keeps DOM node count bounded and does not degrade after several loaded pages. Status: partial; measured-row virtualization is implemented for feed/profile timelines, and fallback Puppeteer verification confirmed 29 loaded rows with only 2-3 mounted post cards after scrolling. Several loaded-page degradation testing remains pending.
 - Media-heavy Feed cards avoid visible layout jumps by reserving stable image/video/link-card space.
 - Opening profile and thread previews reuses already-loaded post/author data before making detail requests.
 - Switching between Feeds restores cached pages and scroll position without refetching the visible page from scratch.

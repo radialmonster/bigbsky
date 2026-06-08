@@ -642,6 +642,18 @@ button {
   min-height: 1px;
 }
 
+.virtual-row {
+  padding-bottom: 14px;
+}
+
+.virtual-row .post-card {
+  margin-bottom: 0;
+}
+
+.virtual-spacer {
+  pointer-events: none;
+}
+
 .surface-placeholder {
   max-width: 760px;
   padding: 22px;
