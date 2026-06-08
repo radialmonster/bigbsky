@@ -1,8 +1,0 @@
-{
-  "$comment": "Project values used to instantiate the loop template. The bigbsky install targets Cloudflare Pages, so the SSH/PNPM/WEB_TAR tokens used by the repairforge variant have been removed.",
-  "PROJECT_NAME": "bigbsky",
-  "PROJECT_NAME_PASCAL": "Bigbsky",
-  "PROJECT_NAME_UPPER": "BIGBSKY",
-  "GITHUB_OWNER": "radialmonster",
-  "GITHUB_REPO": "bigbsky-dev"
-}
