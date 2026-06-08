@@ -403,6 +403,24 @@ button {
   background: var(--app-surface-2);
 }
 
+.image-button {
+  max-width: 100%;
+  padding: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.image-button:focus-visible {
+  outline: 2px solid var(--bsky-blue-soft);
+  outline-offset: 3px;
+}
+
+.image-button:hover img {
+  box-shadow: 0 0 0 2px rgba(117, 175, 255, 0.5);
+}
+
 .link-card {
   display: grid;
   grid-template-columns: 148px 1fr;
@@ -547,6 +565,37 @@ button {
   gap: 10px;
   min-height: 160px;
   color: var(--app-text-muted);
+}
+
+.image-viewer {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgba(3, 7, 18, 0.88);
+}
+
+.image-viewer img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
+  object-fit: contain;
+  box-shadow: 0 18px 70px rgba(0, 0, 0, 0.55);
+}
+
+.image-viewer-close {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: rgba(22, 31, 47, 0.92);
+  color: var(--app-text);
 }
 
 .state.error {

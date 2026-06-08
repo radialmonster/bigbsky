@@ -9,6 +9,7 @@ import {
   LayoutList,
   List,
   Loader2,
+  X,
   MessageCircle,
   MoreHorizontal,
   Repeat2,
@@ -42,11 +43,17 @@ type FeedState = {
   error?: string;
 };
 
+type ImageViewerState = {
+  src: string;
+  alt: string;
+} | null;
+
 export function App() {
   const [route, setRoute] = useState<RouteState>(() => getRouteState());
   const [activeSourceId, setActiveSourceId] = useState(feedSources[0].id);
   const [feedState, setFeedState] = useState<FeedState>({ items: [], status: "idle" });
   const [composerText, setComposerText] = useState("");
+  const [imageViewer, setImageViewer] = useState<ImageViewerState>(null);
   const [density, setDensity] = useState(() => localStorage.getItem("bigbsky:density") || "comfortable");
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
@@ -239,7 +246,11 @@ export function App() {
               <>
                 <div style={{ height: virtualWindow.beforeHeight }} />
                 {virtualWindow.indexes.map((index) => (
-                  <PostCard item={feedState.items[index]} key={feedState.items[index].post.uri} />
+                  <PostCard
+                    item={feedState.items[index]}
+                    key={feedState.items[index].post.uri}
+                    onOpenImage={setImageViewer}
+                  />
                 ))}
                 <div style={{ height: virtualWindow.afterHeight }} />
                 {feedState.cursor && (
@@ -270,6 +281,8 @@ export function App() {
           <button type="button">#socialweb</button>
         </section>
       </aside>
+
+      {imageViewer && <ImageViewer image={imageViewer} onClose={() => setImageViewer(null)} />}
     </div>
   );
 }
@@ -303,7 +316,7 @@ function Composer({
   );
 }
 
-function PostCard({ item }: { item: FeedItem }) {
+function PostCard({ item, onOpenImage }: { item: FeedItem; onOpenImage?: (image: ImageViewerState) => void }) {
   const post = item.post;
   const images = getEmbedImages(post.embed);
   const external = getExternalEmbed(post.embed);
@@ -326,7 +339,20 @@ function PostCard({ item }: { item: FeedItem }) {
       {images.length > 0 && (
         <div className={`image-grid count-${Math.min(images.length, 4)}`}>
           {images.slice(0, 4).map((image) => (
-            <img alt={image.alt || ""} key={image.thumb || image.fullsize} src={image.thumb || image.fullsize} loading="lazy" />
+            <button
+              className="image-button"
+              key={image.thumb || image.fullsize}
+              type="button"
+              onClick={() =>
+                onOpenImage?.({
+                  src: image.fullsize || image.thumb || "",
+                  alt: image.alt || "",
+                })
+              }
+              aria-label={image.alt ? "Open image" : "Open full size image"}
+            >
+              <img alt={image.alt || ""} src={image.thumb || image.fullsize} loading="lazy" />
+            </button>
           ))}
         </div>
       )}
@@ -372,6 +398,28 @@ function ThreadView({
   }
 
   return <div className="thread-view">{renderThreadNode(thread.node, 0)}</div>;
+}
+
+function ImageViewer({ image, onClose }: { image: NonNullable<ImageViewerState>; onClose: () => void }) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="image-viewer" role="dialog" aria-modal="true" aria-label="Image viewer" onClick={onClose}>
+      <button className="image-viewer-close" type="button" onClick={onClose} aria-label="Close image viewer">
+        <X size={22} />
+      </button>
+      <img src={image.src} alt={image.alt} onClick={(event) => event.stopPropagation()} />
+    </div>
+  );
 }
 
 function renderThreadNode(node: ThreadNode, depth: number): React.ReactNode {
