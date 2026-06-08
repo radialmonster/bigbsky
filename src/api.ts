@@ -81,6 +81,22 @@ export function getFeed(feed: string, cursor?: string, signal?: AbortSignal) {
   );
 }
 
+export function getAuthorFeed(actor: string, cursor?: string, signal?: AbortSignal) {
+  return getJson<FeedResponse>(
+    "app.bsky.feed.getAuthorFeed",
+    {
+      actor,
+      limit: "30",
+      ...(cursor ? { cursor } : {}),
+    },
+    signal,
+  );
+}
+
+export function getProfile(actor: string, signal?: AbortSignal) {
+  return getJson<Profile>("app.bsky.actor.getProfile", { actor }, signal);
+}
+
 export async function resolveHandle(handleOrDid: string, signal?: AbortSignal) {
   if (handleOrDid.startsWith("did:")) {
     return handleOrDid;

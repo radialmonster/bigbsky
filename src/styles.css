@@ -529,6 +529,11 @@ button {
   line-height: 1.45;
 }
 
+.profile-description {
+  margin-top: 10px;
+  white-space: pre-wrap;
+}
+
 .profile-panel dl {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -26,10 +26,12 @@ import {
   type FeedPost,
   type Profile,
   type ThreadNode,
+  getAuthorFeed,
   getEmbedImages,
   getExternalEmbed,
   getFeed,
   getPostThread,
+  getProfile,
 } from "./api";
 import { getRouteState, type RouteState } from "./router";
 import { displayName, feedSources, navigationItems, type FeedSource } from "./sources";
@@ -55,6 +57,7 @@ export function App() {
   const [route, setRoute] = useState<RouteState>(() => getRouteState());
   const [activeSourceId, setActiveSourceId] = useState(feedSources[0].id);
   const [feedState, setFeedState] = useState<FeedState>({ items: [], status: "idle" });
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [composerText, setComposerText] = useState("");
   const [imageViewer, setImageViewer] = useState<ImageViewerState>(null);
   const [density, setDensity] = useState(() => localStorage.getItem("bigbsky:density") || "comfortable");
@@ -100,13 +103,54 @@ export function App() {
     return () => controller.abort();
   }, []);
 
+  const loadProfileFeed = useCallback(async (actor: string, cursor?: string) => {
+    const controller = new AbortController();
+    setFeedState((current) => ({
+      ...current,
+      status: cursor ? current.status : "loading",
+      error: undefined,
+    }));
+
+    try {
+      const [profileResponse, feedResponse] = await Promise.all([
+        cursor ? Promise.resolve(null) : getProfile(actor, controller.signal),
+        getAuthorFeed(actor, cursor, controller.signal),
+      ]);
+
+      if (profileResponse) {
+        setProfile(profileResponse);
+      }
+      setFeedState((current) => ({
+        items: cursor ? [...current.items, ...feedResponse.feed] : feedResponse.feed,
+        cursor: feedResponse.cursor,
+        status: "ready",
+      }));
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setFeedState((current) => ({
+          ...current,
+          status: "error",
+          error: error instanceof Error ? error.message : String(error),
+        }));
+      }
+    }
+
+    return () => controller.abort();
+  }, []);
+
   useEffect(() => {
     if (route.kind === "post") {
       return undefined;
     }
 
+    if (route.kind === "profile") {
+      setProfile(null);
+      return void loadProfileFeed(route.actor);
+    }
+
+    setProfile(null);
     return void loadFeed(activeSource);
-  }, [activeSource, loadFeed, route.kind]);
+  }, [activeSource, loadFeed, loadProfileFeed, route]);
 
   useEffect(() => {
     const onPopState = () => setRoute(getRouteState());
@@ -143,6 +187,21 @@ export function App() {
   }
 
   const remainingChars = 300 - composerText.length;
+  const isProfileRoute = route.kind === "profile";
+  const workspaceLabel = route.kind === "post" ? "Thread" : isProfileRoute ? "Profile Feed" : "Active Feed";
+  const workspaceTitle = route.kind === "post" ? "Post Conversation" : isProfileRoute ? displayName(profile ?? undefined) : activeSource.label;
+  const loadMore = () => {
+    if (!feedState.cursor) {
+      return;
+    }
+
+    if (route.kind === "profile") {
+      void loadProfileFeed(route.actor, feedState.cursor);
+      return;
+    }
+
+    void loadFeed(activeSource, feedState.cursor);
+  };
 
   return (
     <div className="app-shell">
@@ -198,8 +257,8 @@ export function App() {
       <main className="workspace">
         <header className="workspace-header">
           <div>
-            <p>{route.kind === "post" ? "Thread" : "Active Feed"}</p>
-            <h1>{route.kind === "post" ? "Post Conversation" : activeSource.label}</h1>
+            <p>{workspaceLabel}</p>
+            <h1>{workspaceTitle}</h1>
           </div>
           <div className="segmented" aria-label="Density">
             {["comfortable", "compact", "media"].map((mode) => (
@@ -239,7 +298,7 @@ export function App() {
                   />
                 ))}
                 {feedState.cursor && (
-                  <button className="load-more" type="button" onClick={() => void loadFeed(activeSource, feedState.cursor)}>
+                  <button className="load-more" type="button" onClick={loadMore}>
                     Load more
                   </button>
                 )}
@@ -254,7 +313,7 @@ export function App() {
           <Search size={18} />
           <input aria-label="Search" placeholder="Search Bluesky" />
         </div>
-        <FeedContextPanel source={activeSource} />
+        {route.kind === "profile" ? <ProfileContextPanel actor={route.actor} profile={profile} /> : <FeedContextPanel source={activeSource} />}
         <section className="context-panel">
           <h2>Build Posture</h2>
           <p>Static SPA. No Pages Functions, Workers, bindings, KV, D1, R2, or backend sessions for v1.</p>
@@ -540,6 +599,27 @@ function FeedContextPanel({ source }: { source: FeedSource }) {
         <div>
           <dt>Source</dt>
           <dd>Public</dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
+function ProfileContextPanel({ actor, profile }: { actor: string; profile: Profile | null }) {
+  return (
+    <section className="profile-panel">
+      <Avatar profile={profile ?? undefined} />
+      <h2>{displayName(profile ?? undefined)}</h2>
+      <p>@{profile?.handle || actor}</p>
+      {profile?.description && <p className="profile-description">{profile.description}</p>}
+      <dl>
+        <div>
+          <dt>Followers</dt>
+          <dd>{profile?.followersCount?.toLocaleString() ?? "-"}</dd>
+        </div>
+        <div>
+          <dt>Posts</dt>
+          <dd>{profile?.postsCount?.toLocaleString() ?? "-"}</dd>
         </div>
       </dl>
     </section>
