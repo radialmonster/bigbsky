@@ -53,27 +53,74 @@ type ImageViewerState = {
   index: number;
 } | null;
 
+type RecentItem = {
+  label: string;
+  path: string;
+  route: RouteState;
+  detail: string;
+  sourceId?: string;
+};
+
+const densityModes = ["comfortable", "compact", "media"];
+const recentStorageKey = "bigbsky:recent";
+
+function readDensityPreferences() {
+  try {
+    return JSON.parse(localStorage.getItem("bigbsky:density-by-context") || "{}") as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+function readRecentItems() {
+  try {
+    const items = JSON.parse(localStorage.getItem(recentStorageKey) || "[]") as RecentItem[];
+    return Array.isArray(items) ? items.slice(0, 8) : [];
+  } catch {
+    return [];
+  }
+}
+
+function postPath(post: FeedPost) {
+  const rkey = post.uri.split("/").pop();
+  return rkey ? `/profile/${encodeURIComponent(post.author.handle)}/post/${encodeURIComponent(rkey)}` : null;
+}
+
 export function App() {
   const [route, setRoute] = useState<RouteState>(() => getRouteState());
   const [activeSourceId, setActiveSourceId] = useState(feedSources[0].id);
+  const [feedSearch, setFeedSearch] = useState("");
   const [feedState, setFeedState] = useState<FeedState>({ items: [], status: "idle" });
   const [profile, setProfile] = useState<Profile | null>(null);
   const [composerText, setComposerText] = useState("");
   const [imageViewer, setImageViewer] = useState<ImageViewerState>(null);
-  const [density, setDensity] = useState(() => localStorage.getItem("bigbsky:density") || "comfortable");
+  const [densityByContext, setDensityByContext] = useState<Record<string, string>>(() => readDensityPreferences());
+  const [recentItems, setRecentItems] = useState<RecentItem[]>(() => readRecentItems());
   const [thread, setThread] = useState<{ status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string }>({
     status: "idle",
   });
   const timelineRef = useRef<HTMLDivElement | null>(null);
 
   const activeSource = feedSources.find((source) => source.id === activeSourceId) ?? feedSources[0];
+  const densityKey = route.kind === "feed" ? `feed:${activeSource.id}` : route.kind;
+  const density = densityByContext[densityKey] || densityByContext.default || "comfortable";
+  const visibleSources = useMemo(() => {
+    const query = feedSearch.trim().toLowerCase();
+    if (!query) {
+      return feedSources;
+    }
+
+    return feedSources.filter((source) =>
+      `${source.label} ${source.description} ${source.group}`.toLowerCase().includes(query),
+    );
+  }, [feedSearch]);
   const groupedSources = useMemo(
     () =>
-      feedSources.reduce<Record<string, FeedSource[]>>((groups, source) => {
+      visibleSources.reduce<Record<string, FeedSource[]>>((groups, source) => {
         groups[source.group] = [...(groups[source.group] ?? []), source];
         return groups;
       }, {}),
-    [],
+    [visibleSources],
   );
   const loadFeed = useCallback(async (source: FeedSource, cursor?: string) => {
     const controller = new AbortController();
@@ -159,10 +206,6 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("bigbsky:density", density);
-  }, [density]);
-
-  useEffect(() => {
     if (route.kind !== "post") {
       setThread({ status: "idle" });
       return;
@@ -180,6 +223,24 @@ export function App() {
       );
     return () => controller.abort();
   }, [route]);
+
+  function updateDensity(nextDensity: string) {
+    const nextPreferences = {
+      ...densityByContext,
+      [densityKey]: nextDensity,
+      default: nextDensity,
+    };
+    setDensityByContext(nextPreferences);
+    localStorage.setItem("bigbsky:density-by-context", JSON.stringify(nextPreferences));
+  }
+
+  function remember(item: RecentItem) {
+    setRecentItems((current) => {
+      const next = [item, ...current.filter((existing) => existing.path !== item.path)].slice(0, 8);
+      localStorage.setItem(recentStorageKey, JSON.stringify(next));
+      return next;
+    });
+  }
 
   function navigate(nextRoute: RouteState, path = "/") {
     window.history.pushState(null, "", path);
@@ -228,10 +289,17 @@ export function App() {
       <aside className="feed-map" aria-label="Feeds">
         <div className="feed-map-header">
           <strong>Feeds</strong>
-          <button type="button" title="Search feeds">
+          <button type="button" title="Search feeds" onClick={() => setFeedSearch("")}>
             <Search size={16} />
           </button>
         </div>
+        <input
+          className="feed-search"
+          aria-label="Filter feeds"
+          placeholder="Filter feeds"
+          value={feedSearch}
+          onInput={(event) => setFeedSearch(event.currentTarget.value)}
+        />
         {Object.entries(groupedSources).map(([group, sources]) => (
           <section className="feed-group" key={group}>
             <h2>{group}</h2>
@@ -242,6 +310,13 @@ export function App() {
                 type="button"
                 onClick={() => {
                   setActiveSourceId(source.id);
+                  remember({
+                    label: source.label,
+                    detail: source.description,
+                    path: "/",
+                    route: { kind: "feed" },
+                    sourceId: source.id,
+                  });
                   navigate({ kind: "feed" });
                   timelineRef.current?.scrollTo({ top: 0 });
                 }}
@@ -261,12 +336,12 @@ export function App() {
             <h1>{workspaceTitle}</h1>
           </div>
           <div className="segmented" aria-label="Density">
-            {["comfortable", "compact", "media"].map((mode) => (
+            {densityModes.map((mode) => (
               <button
                 className={density === mode ? "selected" : ""}
                 key={mode}
                 type="button"
-                onClick={() => setDensity(mode)}
+                onClick={() => updateDensity(mode)}
               >
                 {mode}
               </button>
@@ -295,6 +370,31 @@ export function App() {
                     item={item}
                     key={item.post.uri}
                     onOpenImage={setImageViewer}
+                    onOpenPost={(post) => {
+                      const path = postPath(post);
+                      if (!path) {
+                        return;
+                      }
+                      const routeState = { kind: "post", actor: post.author.handle, rkey: path.split("/").pop() || "" } as const;
+                      remember({
+                        label: post.record.text?.slice(0, 72) || "Post conversation",
+                        detail: `@${post.author.handle}`,
+                        path,
+                        route: routeState,
+                      });
+                      navigate(routeState, path);
+                    }}
+                    onOpenProfile={(author) => {
+                      const path = `/profile/${encodeURIComponent(author.handle)}`;
+                      const routeState = { kind: "profile", actor: author.handle } as const;
+                      remember({
+                        label: displayName(author),
+                        detail: `@${author.handle}`,
+                        path,
+                        route: routeState,
+                      });
+                      navigate(routeState, path);
+                    }}
                   />
                 ))}
                 {feedState.cursor && (
@@ -314,6 +414,15 @@ export function App() {
           <input aria-label="Search" placeholder="Search Bluesky" />
         </div>
         {route.kind === "profile" ? <ProfileContextPanel actor={route.actor} profile={profile} /> : <FeedContextPanel source={activeSource} />}
+        <RecentPanel
+          items={recentItems}
+          onOpen={(item) => {
+            if (item.sourceId) {
+              setActiveSourceId(item.sourceId);
+            }
+            navigate(item.route, item.path);
+          }}
+        />
         <section className="context-panel">
           <h2>Build Posture</h2>
           <p>Static SPA. No Pages Functions, Workers, bindings, KV, D1, R2, or backend sessions for v1.</p>
@@ -360,7 +469,17 @@ function Composer({
   );
 }
 
-function PostCard({ item, onOpenImage }: { item: FeedItem; onOpenImage?: (image: ImageViewerState) => void }) {
+function PostCard({
+  item,
+  onOpenImage,
+  onOpenPost,
+  onOpenProfile,
+}: {
+  item: FeedItem;
+  onOpenImage?: (image: ImageViewerState) => void;
+  onOpenPost?: (post: FeedPost) => void;
+  onOpenProfile?: (profile: Profile) => void;
+}) {
   const post = item.post;
   const images = getEmbedImages(post.embed);
   const external = getExternalEmbed(post.embed);
@@ -369,10 +488,10 @@ function PostCard({ item, onOpenImage }: { item: FeedItem; onOpenImage?: (image:
     <article className="post-card">
       <header className="post-header">
         <Avatar profile={post.author} />
-        <div>
+        <button className="author-button" type="button" onClick={() => onOpenProfile?.(post.author)}>
           <strong>{displayName(post.author)}</strong>
           <span>@{post.author.handle}</span>
-        </div>
+        </button>
         <button type="button" title="More">
           <MoreHorizontal size={18} />
         </button>
@@ -415,9 +534,9 @@ function PostCard({ item, onOpenImage }: { item: FeedItem; onOpenImage?: (image:
         </a>
       )}
       <footer className="post-actions">
-        <span>
+        <button type="button" onClick={() => onOpenPost?.(post)} title="Open thread">
           <MessageCircle size={16} /> {post.replyCount ?? 0}
-        </span>
+        </button>
         <span>
           <Repeat2 size={16} /> {post.repostCount ?? 0}
         </span>
@@ -580,6 +699,24 @@ function renderThreadNode(node: ThreadNode, depth: number): React.ReactNode {
       {node.replies?.slice(0, 8).map((reply) => renderThreadNode(reply, depth + 1))}
       {(node.replies?.length ?? 0) > 8 && <button className="load-more">Load more replies</button>}
     </div>
+  );
+}
+
+function RecentPanel({ items, onOpen }: { items: RecentItem[]; onOpen: (item: RecentItem) => void }) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="context-panel recent-panel">
+      <h2>Recent</h2>
+      {items.map((item) => (
+        <button key={item.path} type="button" onClick={() => onOpen(item)}>
+          <span>{item.label}</span>
+          <small>{item.detail}</small>
+        </button>
+      ))}
+    </section>
   );
 }
 
