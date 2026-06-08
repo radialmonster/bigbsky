@@ -620,7 +620,12 @@ export function App() {
         </header>
 
         {route.kind === "post" ? (
-          <ThreadView thread={thread} />
+          <ThreadView
+            thread={thread}
+            onOpenImage={setImageViewer}
+            onOpenPost={openPost}
+            onOpenProfile={openProfile}
+          />
         ) : route.kind === "search" ? (
           <SearchView
             query={globalSearchText}
@@ -933,8 +938,14 @@ function PostCard({
 
 function ThreadView({
   thread,
+  onOpenImage,
+  onOpenPost,
+  onOpenProfile,
 }: {
   thread: { status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string };
+  onOpenImage: (image: ImageViewerState) => void;
+  onOpenPost: (post: FeedPost) => void;
+  onOpenProfile: (profile: Profile) => void;
 }) {
   const [expandedBranches, setExpandedBranches] = useState<Record<string, boolean>>({});
 
@@ -954,6 +965,7 @@ function ThreadView({
     <div className="thread-view">
       {renderThreadNode(thread.node, 0, expandedBranches, (uri) =>
         setExpandedBranches((current) => ({ ...current, [uri]: !current[uri] })),
+        { onOpenImage, onOpenPost, onOpenProfile },
       )}
     </div>
   );
@@ -1023,14 +1035,8 @@ function ImageViewer({
       role="dialog"
       aria-modal="true"
       aria-label="Image viewer"
-      onPointerDown={(event) => {
-        event.preventDefault();
-        clearSelection();
-      }}
-      onMouseDown={(event) => {
-        event.preventDefault();
-        clearSelection();
-      }}
+      onPointerDown={clearSelection}
+      onMouseDown={clearSelection}
       onMouseUp={clearSelection}
       onSelect={clearSelection}
       onDragStart={(event) => {
@@ -1068,6 +1074,10 @@ function ImageViewer({
           <button
             className="image-viewer-nav previous"
             type="button"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              clearSelection();
+            }}
             onClick={(event) => {
               event.stopPropagation();
               goPrevious();
@@ -1080,6 +1090,10 @@ function ImageViewer({
           <button
             className="image-viewer-nav next"
             type="button"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              clearSelection();
+            }}
             onClick={(event) => {
               event.stopPropagation();
               goNext();
@@ -1117,6 +1131,11 @@ function renderThreadNode(
   depth: number,
   expandedBranches: Record<string, boolean>,
   onToggleBranch: (uri: string) => void,
+  handlers: {
+    onOpenImage: (image: ImageViewerState) => void;
+    onOpenPost: (post: FeedPost) => void;
+    onOpenProfile: (profile: Profile) => void;
+  },
 ): React.ReactNode {
   if (!("post" in node)) {
     return (
@@ -1133,8 +1152,13 @@ function renderThreadNode(
 
   return (
     <div className="thread-node" key={node.post.uri} style={{ marginLeft: depth * 22 }}>
-      <PostCard item={{ post: node.post }} />
-      {visibleReplies.map((reply) => renderThreadNode(reply, depth + 1, expandedBranches, onToggleBranch))}
+      <PostCard
+        item={{ post: node.post }}
+        onOpenImage={handlers.onOpenImage}
+        onOpenPost={handlers.onOpenPost}
+        onOpenProfile={handlers.onOpenProfile}
+      />
+      {visibleReplies.map((reply) => renderThreadNode(reply, depth + 1, expandedBranches, onToggleBranch, handlers))}
       {replies.length > 8 && (
         <button className="load-more branch-toggle" type="button" onClick={() => onToggleBranch(node.post.uri)}>
           {isExpanded ? "Show fewer replies" : `Show ${hiddenReplyCount} more replies`}
