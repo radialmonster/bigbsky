@@ -165,6 +165,19 @@ export function getFeedGenerator(feed: string, signal?: AbortSignal) {
   return getJson<{ view: FeedGeneratorView }>("app.bsky.feed.getFeedGenerator", { feed }, signal);
 }
 
+export type PopularFeedsResponse = {
+  cursor?: string;
+  feeds: FeedGeneratorView[];
+};
+
+export function getPopularFeedGenerators(limit = 12, signal?: AbortSignal) {
+  return getJson<PopularFeedsResponse>(
+    "app.bsky.unspecced.getPopularFeedGenerators",
+    { limit: String(limit) },
+    signal,
+  );
+}
+
 export function getAuthorFeed(actor: string, cursor?: string, signal?: AbortSignal) {
   return getJson<FeedResponse>(
     "app.bsky.feed.getAuthorFeed",

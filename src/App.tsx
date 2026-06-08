@@ -43,6 +43,7 @@ import {
   getExternalEmbed,
   getFeed,
   getFeedGenerator,
+  getPopularFeedGenerators,
   getPostThread,
   getPostThreadByUri,
   getProfile,
@@ -597,9 +598,24 @@ export function App() {
     };
   }, []);
 
-  const routeFeedSource =
-    route.kind === "feed" && route.uri ? feedSources.find((source) => source.id === route.uri || source.uri === route.uri) : undefined;
-  const activeSource = routeFeedSource ?? feedSources.find((source) => source.id === activeSourceId) ?? feedSources[0];
+  const activeSource = useMemo<FeedSource>(() => {
+    if (route.kind === "feed" && route.uri) {
+      const known = feedSources.find((source) => source.id === route.uri || source.uri === route.uri);
+      if (known) {
+        return known;
+      }
+      if (route.uri.startsWith("at://")) {
+        return {
+          id: route.uri,
+          uri: route.uri,
+          label: "Public Feed",
+          group: "Project",
+          description: "Public Bluesky feed opened from discovery.",
+        };
+      }
+    }
+    return feedSources.find((source) => source.id === activeSourceId) ?? feedSources[0];
+  }, [route, activeSourceId]);
   const feedRoutePath = (source: FeedSource) => `/feed/${encodeURIComponent(source.id)}`;
   const densityKey = route.kind === "feed" ? `feed:${activeSource.id}` : route.kind;
   const density = densityByContext[densityKey] || densityByContext.default || "comfortable";
@@ -2516,6 +2532,7 @@ function SurfaceView({
           </a>
         )}
       </section>
+      {name === "explore" && <ExploreDiscoverFeeds onOpenFeed={onOpenFeed} />}
       {name === "feeds" && (
         <section className="feed-directory-grid" aria-label="Known Feed destinations">
           {feedSources.map((source) => (
@@ -2546,6 +2563,85 @@ function SurfaceView({
         ))}
       </section>
     </div>
+  );
+}
+
+function ExploreDiscoverFeeds({ onOpenFeed }: { onOpenFeed: (source: FeedSource) => void }) {
+  const [state, setState] = useState<{ status: "loading" | "ready" | "error"; feeds: FeedGeneratorView[] }>({
+    status: "loading",
+    feeds: [],
+  });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getPopularFeedGenerators(12, controller.signal)
+      .then((response) => setState({ status: "ready", feeds: response.feeds }))
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setState({ status: "error", feeds: [] });
+        }
+      });
+    return () => controller.abort();
+  }, []);
+
+  return (
+    <section className="discover-feeds" aria-label="Discover new Feeds">
+      <header className="discover-feeds-header">
+        <h3>Discover New Feeds</h3>
+        <p>Popular public Bluesky Feeds, loaded live. Open one to read it in BigBSky without signing in.</p>
+      </header>
+      {state.status === "loading" && <LoadingState label="Loading popular Feeds" />}
+      {state.status === "error" && <ErrorState message="Popular Feeds could not be loaded right now." />}
+      {state.status === "ready" && state.feeds.length === 0 && (
+        <EmptyState title="No Feeds found" message="Bluesky returned no popular Feeds for this request." />
+      )}
+      {state.status === "ready" && state.feeds.length > 0 && (
+        <div className="discover-feeds-grid">
+          {state.feeds.map((feed) => {
+            const feedRkey = feed.uri.split("/").pop();
+            const bskyUrl =
+              feed.creator?.handle && feedRkey
+                ? `https://bsky.app/profile/${feed.creator.handle}/feed/${feedRkey}`
+                : "https://bsky.app";
+            const likes = feed.likeCount ?? feed.likedByCount;
+            return (
+              <article className="discover-feed-card" key={feed.uri}>
+                <button
+                  type="button"
+                  className="discover-feed-open"
+                  onClick={() =>
+                    onOpenFeed({
+                      id: feed.uri,
+                      uri: feed.uri,
+                      label: feed.displayName || "Public Feed",
+                      group: "Project",
+                      description: feed.description || "Public Bluesky feed opened from discovery.",
+                    })
+                  }
+                >
+                  {feed.avatar ? (
+                    <img className="discover-feed-avatar" src={feed.avatar} alt="" loading="lazy" />
+                  ) : (
+                    <span className="discover-feed-glyph">
+                      <Hash size={20} />
+                    </span>
+                  )}
+                  <span className="discover-feed-body">
+                    <strong>{feed.displayName || "Public Feed"}</strong>
+                    <small>by @{feed.creator?.handle ?? "unknown"}</small>
+                    {feed.description && <span className="discover-feed-desc">{feed.description}</span>}
+                  </span>
+                  {typeof likes === "number" && <span className="discover-feed-likes">{likes.toLocaleString()} likes</span>}
+                </button>
+                <a className="discover-feed-external" href={bskyUrl} target="_blank" rel="noreferrer">
+                  Open on Bluesky
+                </a>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 

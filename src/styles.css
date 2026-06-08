@@ -1352,6 +1352,114 @@ button.surface-action {
   background: rgba(5, 96, 255, 0.12);
 }
 
+.discover-feeds {
+  max-width: 980px;
+  margin-top: 18px;
+}
+
+.discover-feeds-header h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.discover-feeds-header p {
+  margin: 0;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.discover-feeds-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.discover-feed-card {
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface);
+}
+
+.discover-feed-open {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent;
+  color: var(--app-text);
+  text-align: left;
+}
+
+.discover-feed-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.discover-feed-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--app-surface-2);
+  color: var(--app-text-soft);
+}
+
+.discover-feed-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.discover-feed-body strong {
+  font-size: 14px;
+}
+
+.discover-feed-body small {
+  color: var(--app-text-soft);
+  font-size: 12px;
+}
+
+.discover-feed-desc {
+  margin-top: 4px;
+  color: var(--app-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.discover-feed-likes {
+  grid-column: 2;
+  margin-top: 6px;
+  color: var(--app-text-soft);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.discover-feed-external {
+  margin-top: 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.discover-feed-card:hover {
+  border-color: rgba(117, 175, 255, 0.42);
+  background: rgba(5, 96, 255, 0.12);
+}
+
 .profile-detail-header {
   overflow: hidden;
   margin-bottom: 18px;

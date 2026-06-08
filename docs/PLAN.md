@@ -967,9 +967,9 @@ Request budget mindset:
   - `/` Status: implemented.
   - `/profile/:handleOrDid` Status: implemented.
   - `/profile/:handleOrDid/post/:rkey` Status: implemented.
-  - `/feed/:uri` Status: implemented for known Feed source IDs and matching Feed URIs.
+  - `/feed/:uri` Status: implemented for known Feed source IDs, matching Feed URIs, and now any public `at://` Feed generator URI through a synthetic Feed source so discovered Feeds open in-app and load their metadata in the right rail.
   - `/search` Status: implemented with `q` query parameter for post search.
-  - `/explore` Status: implemented as a static SPA placeholder surface linked to public search/discovery.
+  - `/explore` Status: improved; the static SPA Explore surface now loads a live "Discover New Feeds" section from the public `app.bsky.unspecced.getPopularFeedGenerators` endpoint, rendering Feed cards (avatar, name, creator, description, like count) that open in-app without signing in and link out to Bluesky, alongside the public search doorway.
   - `/feeds` Status: implemented as a static SPA surface with a local known-Feed directory that opens Feed destinations without a document reload.
 - Add loading, empty, error, and rate-limit states. Status: implemented for current public feed/search surfaces and standalone thread branches; unavailable thread nodes now distinguish blocked, deleted, not-found, generic unavailable, and rate-limited states with local copy and alert styling. Additional authenticated moderation edge cases remain pending.
 - Add local layout preferences. Status: implemented for density and feed-width mode.
@@ -1014,7 +1014,7 @@ Request budget mindset:
 - Multi-post/thread composition from the inline composer. Status: implemented locally with add/remove post controls and per-post validation.
 - Drafts and Post All support where feasible. Status: partial; composer drafts autosave locally and can be cleared, while authenticated Drafts/Post All write behavior remains disabled until OAuth posting is implemented.
 - 300-character-per-post limit counter and validation. Status: implemented for each local composer post and reply draft.
-- Menu destination views for Explore, Notifications, Feeds, Lists, Saved, Profile, and Settings. Status: expanded; static SPA routes exist for Explore, Feeds, Notifications, Chat, Lists, Saved, Profile, and Settings. Notifications now has a local inbox surface, Lists now supports browser-local list workspaces with create/delete controls, post membership, and local timelines, Explore links into public search, and Settings has local appearance/data/account panels.
+- Menu destination views for Explore, Notifications, Feeds, Lists, Saved, Profile, and Settings. Status: expanded; static SPA routes exist for Explore, Feeds, Notifications, Chat, Lists, Saved, Profile, and Settings. Notifications now has a local inbox surface, Lists now supports browser-local list workspaces with create/delete controls, post membership, and local timelines, Explore links into public search and now lists live popular public Feeds for discovery, and Settings has local appearance/data/account panels.
 - Chat entry point and empty/message-list state, with full DM behavior deferred until privacy/API handling is clear. Status: first pass implemented as a static SPA placeholder route that explicitly defers DM behavior.
 - Feed detail header with Feed name, creator, count, options, and active Feed timeline below. Status: revised; the in-timeline Feed header was removed after UX review because it consumed reader space, and the useful Feed metadata/actions now live in the right-rail Feed context panel with local Pin/Unpin feed, Copy URI, and Open on Bluesky controls.
 - Post/thread detail view with reply composer, stats, repost/quote/like/save links, and reply permissions. Status: partial; standalone threads now show conversation metadata, reply/repost/quote/like counts, timestamp, reply-permission text, local save actions, and a browser-local 300-character reply draft per thread; authenticated reply/write actions remain pending.
