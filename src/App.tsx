@@ -105,6 +105,27 @@ function postPath(post: FeedPost) {
   return rkey ? `/profile/${encodeURIComponent(post.author.handle)}/post/${encodeURIComponent(rkey)}` : null;
 }
 
+function parsePostUrl(value: string) {
+  const trimmed = value.trim();
+  const fallbackBase = window.location.origin;
+
+  try {
+    const url = new URL(trimmed, fallbackBase);
+    const parts = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+    if (parts[0] === "profile" && parts[1] && parts[2] === "post" && parts[3]) {
+      return {
+        actor: parts[1],
+        rkey: parts[3],
+        path: `/profile/${encodeURIComponent(parts[1])}/post/${encodeURIComponent(parts[3])}`,
+      };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 function isRateLimit(error: unknown) {
   return error instanceof ApiError && error.status === 429;
 }
@@ -489,6 +510,19 @@ export function App() {
       return;
     }
 
+    const postUrl = parsePostUrl(trimmed);
+    if (postUrl) {
+      const routeState = { kind: "post", actor: postUrl.actor, rkey: postUrl.rkey } as const;
+      remember({
+        label: "Post conversation",
+        detail: `@${postUrl.actor}`,
+        path: postUrl.path,
+        route: routeState,
+      });
+      navigate(routeState, postUrl.path);
+      return;
+    }
+
     const path = `/search?q=${encodeURIComponent(trimmed)}`;
     const routeState = { kind: "search", query: trimmed } as const;
     remember({
@@ -717,7 +751,7 @@ function SearchBox({
       <Search size={18} />
       <input
         aria-label="Search"
-        placeholder="Search Bluesky"
+        placeholder="Search or paste a post URL"
         value={value}
         onInput={(event) => onChange(event.currentTarget.value)}
       />
@@ -760,7 +794,7 @@ function SearchView({
         <Search size={18} />
         <input
           aria-label="Search posts"
-          placeholder="Search posts, hashtags, or links"
+          placeholder="Search posts, hashtags, or paste a post URL"
           value={query}
           onInput={(event) => onQueryChange(event.currentTarget.value)}
         />
@@ -982,6 +1016,9 @@ function ImageViewer({
       role="dialog"
       aria-modal="true"
       aria-label="Image viewer"
+      onMouseDown={(event) => {
+        event.preventDefault();
+      }}
       onClick={(event) => {
         const halfway = window.innerWidth / 2;
         if (!hasMultiple) {
@@ -1015,6 +1052,7 @@ function ImageViewer({
             onClick={(event) => {
               event.stopPropagation();
               goPrevious();
+              event.currentTarget.blur();
             }}
             aria-label="Previous image"
           >
@@ -1026,6 +1064,7 @@ function ImageViewer({
             onClick={(event) => {
               event.stopPropagation();
               goNext();
+              event.currentTarget.blur();
             }}
             aria-label="Next image"
           >
@@ -1039,6 +1078,7 @@ function ImageViewer({
       <img
         src={selected.src}
         alt={selected.alt}
+        draggable={false}
         onClick={(event) => {
           event.stopPropagation();
           onClose();
