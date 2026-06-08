@@ -210,7 +210,7 @@ Core performance rules:
 - Avoid runtime theme libraries, animation frameworks, markdown renderers, rich text editors, or date libraries unless the product surface clearly needs them. Prefer platform APIs and small local helpers for v1.
 - Store feed layout preferences locally and apply them before the first timeline render to avoid a visible density/layout jump.
 - Make scroll restoration explicit per source. Switching from a Feed to a profile/thread preview and back should restore both loaded items and scroll offset without refetching the visible page.
-- Use `IntersectionObserver` for pagination, media loading, and delayed detail fetches. Avoid scroll event loops for core feed behavior.
+- Use `IntersectionObserver` for pagination, media loading, and delayed detail fetches. Avoid scroll event loops for core feed behavior. Status: first pass implemented for feed, profile, post-search, and people-search pagination with visible load-more fallback controls.
 - Debounce search and Feed selector filtering locally. Do not issue network requests on every keystroke.
 - Abort stale requests when the user changes Feed/source, search query, or active preview before the prior request finishes.
 - Surface rate limits and offline states without retry storms. Retries should use bounded exponential backoff and stop when the user changes source.
@@ -1006,7 +1006,7 @@ Request budget mindset:
 - Notifications.
 - Personal feeds/lists.
 - Saved posts. Status: first pass implemented as a browser-local saved timeline under `/saved`; post cards can save/remove loaded public posts locally without a backend or account write.
-- Search and trending topics.
+- Search and trending topics. Status: partial; public post/profile/Feed search is implemented, current searches can be pinned locally, and the right rail now derives lightweight hashtag trends from loaded posts with static fallback topics.
 - Profile/self-profile surfaces. Status: partial; signed-in Profile now renders the restored OAuth identity, account stats, local sign-out, disabled edit-profile affordance, and an action into the public profile reader. Account-only Likes/Feeds/Starter Packs/Lists tabs remain pending.
 - Account switcher placeholder and sign-out. Status: partial; signed-in identity now appears in the left rail with profile access and visible sign-out, plus right-rail and Settings account controls.
 - Inline composer/input at the top of the active Feed timeline. Status: implemented as a local composer placeholder with autosaved browser-local draft state.
@@ -1045,15 +1045,15 @@ Request budget mindset:
 
 - Configurable feed width and density. Status: first pass implemented with browser-local Balanced, Wide, and Focus width modes plus existing density modes.
 - Optional multiple timelines side by side for users who want it, not as the default requirement.
-- Pinned feeds/profiles/searches/notifications.
+- Pinned feeds/profiles/searches/notifications. Status: partial; known Feeds and searches can be pinned locally in the browser, while profile and notification pins remain pending.
 - Feed grouping, filtering, ordering, and quick switching. Status: partial; the selector supports grouped browsing, local filtering, group collapse/expand state, local Pinned shortcuts, and one-click switching without a horizontal tab strip. Manual account-backed ordering remains pending.
 - Wide post-card layout variants.
 - Media-heavy and compact reading modes.
 - Sticky active Feed header.
-- Contextual right rail and preview side panel.
+- Contextual right rail and preview side panel. Status: partial; the right rail adapts between Feed/profile context, link previews, recent history, Feed Map, local pinned searches, and loaded-post hashtag trends.
 - Thread reader with parent/reply context.
 - Media lightbox.
-- Saved local workspaces. Status: partial; browser-local saved posts, recent trail, per-feed density preferences, composer drafts, and reply drafts are stored under `bigbsky:*` and clearable from Settings.
+- Saved local workspaces. Status: partial; browser-local saved posts, recent trail, per-feed density preferences, composer drafts, reply drafts, pinned Feeds, pinned searches, and width preferences are stored under `bigbsky:*` and clearable from Settings.
 - Per-column source selection: Home, Discover, Following, feed, list, search, profile, mentions, notifications, saved.
 - Per-Feed layout memory. Status: implemented for density mode.
 - Feed map grouped by topic/community-style categories. Status: first pass implemented from the local Feed source groups with left-panel group counts and a right-rail Feed Map summary.
@@ -1105,11 +1105,11 @@ Request budget mindset:
 - Static app deploys successfully to Cloudflare Pages.
 - App works without D1, KV, R2, Durable Objects, Workers, Pages Functions, or a custom backend.
 - Pages Function/Worker request count remains zero during normal v1 usage.
-- Build output contains no `functions/`, `_worker.js`, SSR server chunks, middleware, API routes, or edge runtime artifacts. Status: verified locally by `npm run build` static-output audit on 2026-06-08 after the self-profile/settings/audit changes; the audit now also requires `index.html`, `_redirects`, `/oauth-client-metadata.json`, `/sw.js`, SPA fallback routing, OAuth callback metadata, and initial JS/CSS gzip budget compliance.
+- Build output contains no `functions/`, `_worker.js`, SSR server chunks, middleware, API routes, or edge runtime artifacts. Status: verified locally by `npm run build` static-output audit on 2026-06-08 after the auto-pagination/trending/pinned-search changes; the audit requires `index.html`, `_redirects`, `/oauth-client-metadata.json`, `/sw.js`, SPA fallback routing, OAuth callback metadata, and initial JS/CSS gzip budget compliance.
 - Cloudflare project has no Worker routes, Pages Functions, Pages Plugins, service bindings, KV/D1/R2/Durable Object bindings, queues, scheduled jobs, Web Analytics/Zaraz, Image Resizing/Images, or server-side redirect rules enabled for v1 normal traffic.
 - Cloudflare dashboard shows zero Pages Function/Worker invocations while testing first load, in-app navigation, Feed scrolling, profile previews, thread previews, search, OAuth callback, and sign-out.
 - App ships as one static document plus a small number of cached hashed assets. Status: local `dist` contains `index.html`, `sw.js`, `_headers`, `_redirects`, one main JS/CSS asset pair, and lazy OAuth/API chunks that are not loaded on cold signed-out Settings smoke tests.
-- Initial reader bundle stays within the agreed JS/CSS gzip budgets or has an explicit exception. Status: local production build on 2026-06-08 passed the audit with 80 kB gzip initial JS and 5 kB gzip CSS against the local 100 kB JS / 20 kB CSS audit budgets; OAuth/API chunks remain lazy.
+- Initial reader bundle stays within the agreed JS/CSS gzip budgets or has an explicit exception. Status: local production build on 2026-06-08 passed the audit with 81 kB gzip initial JS and 5 kB gzip CSS against the local 100 kB JS / 20 kB CSS audit budgets; OAuth/API chunks remain lazy.
 - Service worker serves repeat app-shell visits from browser cache. Status: static service worker implemented and `/sw.js` verified via local preview; browser registration/runtime verification still pending because the in-app browser backend was unavailable on 2026-06-08.
 - In-app navigation does not reload the document or request new HTML from Cloudflare.
 - Shared deep links are served by static SPA fallback routing, not a Function.
@@ -1128,7 +1128,7 @@ Request budget mindset:
 - At 2560px, the feed presentation becomes richer or more useful instead of expanding empty gutters.
 - No user data is sent to a backend we control.
 - Browser-local preferences/drafts/history can be cleared locally and are not persisted on our infrastructure. Status: implemented for density preferences, recent trail, saved posts, composer draft, reply drafts, and OAuth/local auth markers through the Settings clear-data control; Settings now reports the `bigbsky:*` local key count and OAuth IndexedDB storage scope.
-- Desktop screenshot at 1920x1080 shows the intended wide layout. Status: fallback Puppeteer screenshot captured on 2026-06-08 after virtualized feed scrolling; wide rails, active timeline, right context, and media card layout rendered correctly.
+- Desktop screenshot at 1920x1080 shows the intended wide layout. Status: fallback Puppeteer screenshot captured on 2026-06-08 after the auto-pagination/trending/pinned-search changes; wide rails, active timeline, right context, composer, and loaded-data trending panel rendered correctly.
 - Mobile viewport remains usable enough, even though desktop is the priority.
 - Scrolling a long Feed keeps DOM node count bounded and does not degrade after several loaded pages. Status: partial; measured-row virtualization is implemented for feed/profile timelines, and fallback Puppeteer verification confirmed 29 loaded rows with only 2-3 mounted post cards after scrolling. Several loaded-page degradation testing remains pending.
 - Media-heavy Feed cards avoid visible layout jumps by reserving stable image/video/link-card space.

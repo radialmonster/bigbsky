@@ -389,7 +389,7 @@ button {
 
 .search-workspace {
   display: grid;
-  grid-template-columns: 22px minmax(180px, 1fr) 34px auto auto;
+  grid-template-columns: 22px minmax(180px, 1fr) 34px 34px auto auto;
   align-items: center;
   gap: 12px;
   margin-bottom: 18px;
@@ -422,6 +422,10 @@ button {
 .clear-search-button:disabled {
   cursor: default;
   opacity: 0.38;
+}
+
+.clear-search-button.pinned {
+  color: var(--bsky-blue-soft);
 }
 
 .search-options {
@@ -1814,6 +1818,38 @@ button {
   padding: 0 10px;
 }
 
+.context-panel button small {
+  float: right;
+  color: var(--app-text-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pinned-searches-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.pinned-searches-panel div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  gap: 6px;
+}
+
+.pinned-searches-panel button {
+  min-width: 0;
+  margin-top: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pinned-searches-panel button:last-child {
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
 .context-panel-header {
   display: flex;
   align-items: center;
@@ -2132,7 +2168,7 @@ button {
   }
 
   .search-workspace {
-    grid-template-columns: 22px minmax(0, 1fr) 34px;
+    grid-template-columns: 22px minmax(0, 1fr) 34px 34px;
   }
 
   .search-workspace .segmented,

@@ -144,6 +144,7 @@ const savedPostsStorageKey = "bigbsky:saved-posts";
 const composerDraftStorageKey = "bigbsky:composer-draft";
 const workspaceWidthStorageKey = "bigbsky:workspace-width";
 const pinnedFeedsStorageKey = "bigbsky:pinned-feeds";
+const pinnedSearchesStorageKey = "bigbsky:pinned-searches";
 const collapsedFeedGroupsStorageKey = "bigbsky:collapsed-feed-groups";
 const replyDraftPrefix = "bigbsky:reply-draft:";
 const emptyFeedState: FeedState = { items: [], status: "idle" };
@@ -229,6 +230,15 @@ function readPinnedFeedIds() {
   }
 }
 
+function readPinnedSearches() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(pinnedSearchesStorageKey) || "[]") as string[];
+    return Array.isArray(stored) ? stored.filter((query) => typeof query === "string" && query.trim()).slice(0, 12) : [];
+  } catch {
+    return [];
+  }
+}
+
 function readCollapsedFeedGroups() {
   try {
     const stored = JSON.parse(localStorage.getItem(collapsedFeedGroupsStorageKey) || "{}") as Record<string, boolean>;
@@ -303,6 +313,14 @@ function hasPostVideo(post: FeedPost) {
   return !!getVideoEmbed(post.embed);
 }
 
+function extractHashtags(text?: string) {
+  if (!text) {
+    return [];
+  }
+
+  return Array.from(text.matchAll(/(^|[\s([{])#([\p{L}\p{N}_-]{2,64})/gu), (match) => `#${match[2]}`);
+}
+
 export function App() {
   const [route, setRoute] = useState<RouteState>(() => getRouteState());
   const [activeSourceId, setActiveSourceId] = useState(feedSources[0].id);
@@ -327,6 +345,7 @@ export function App() {
   const [densityByContext, setDensityByContext] = useState<Record<string, string>>(() => readDensityPreferences());
   const [workspaceWidth, setWorkspaceWidth] = useState<(typeof widthModes)[number]>(() => readWorkspaceWidthPreference());
   const [pinnedFeedIds, setPinnedFeedIds] = useState<string[]>(() => readPinnedFeedIds());
+  const [pinnedSearches, setPinnedSearches] = useState<string[]>(() => readPinnedSearches());
   const [collapsedFeedGroups, setCollapsedFeedGroups] = useState<Record<string, boolean>>(() => readCollapsedFeedGroups());
   const [recentItems, setRecentItems] = useState<RecentItem[]>(() => readRecentItems());
   const [devMetrics, setDevMetrics] = useState<DevMetrics>(initialDevMetrics);
@@ -442,6 +461,25 @@ export function App() {
 
     return { posts, profiles, linkUrls };
   }, [feedState.items, searchState.posts]);
+  const trendingTopics = useMemo(() => {
+    const counts = new Map<string, number>();
+    const posts = [
+      ...feedState.items.map((item) => item.post),
+      ...searchState.posts,
+      ...savedPosts,
+    ];
+
+    posts.forEach((post) => {
+      extractHashtags(post.record.text).forEach((tag) => {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      });
+    });
+
+    return Array.from(counts.entries())
+      .sort((first, second) => second[1] - first[1] || first[0].localeCompare(second[0]))
+      .slice(0, 8)
+      .map(([tag, count]) => ({ tag, count }));
+  }, [feedState.items, savedPosts, searchState.posts]);
   const visibleProfileItems = useMemo(() => {
     if (route.kind !== "profile") {
       return feedState.items;
@@ -950,6 +988,20 @@ export function App() {
     });
   }
 
+  function togglePinnedSearch(query: string) {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    setPinnedSearches((current) => {
+      const exists = current.some((item) => item.toLowerCase() === trimmed.toLowerCase());
+      const next = exists ? current.filter((item) => item.toLowerCase() !== trimmed.toLowerCase()) : [trimmed, ...current].slice(0, 12);
+      localStorage.setItem(pinnedSearchesStorageKey, JSON.stringify(next));
+      return next;
+    });
+  }
+
   function toggleCollapsedFeedGroup(group: string) {
     setCollapsedFeedGroups((current) => {
       const next = { ...current, [group]: !current[group] };
@@ -1316,6 +1368,7 @@ export function App() {
             localDataKeyCount={countBigbskyLocalKeys()}
             pinnedFeedCount={pinnedFeedIds.length}
             pinnedFeedIds={pinnedFeedIds}
+            pinnedSearchCount={pinnedSearches.length}
             workspaceWidth={workspaceWidth}
             onClearLocalData={clearLocalReaderData}
             onOpenFeed={(source) => {
@@ -1345,6 +1398,7 @@ export function App() {
             searchState={searchState}
             sort={searchSort}
             tab={searchTab}
+            isPinnedSearch={route.query ? pinnedSearches.some((query) => query.toLowerCase() === route.query?.toLowerCase()) : false}
             onLoadMore={loadMore}
             onOpenImage={setImageViewer}
             onOpenPost={openPost}
@@ -1358,6 +1412,7 @@ export function App() {
             onLanguageChange={setSearchLanguage}
             onSortChange={setSearchSort}
             onTabChange={setSearchTab}
+            onTogglePinnedSearch={togglePinnedSearch}
             onOpenFeed={(source) => {
               setActiveSourceId(source.id);
               remember({
@@ -1397,11 +1452,7 @@ export function App() {
                 onToggleSaved={toggleSavedPost}
                 onRenderedRowsChange={setVirtualRenderedRows}
               >
-                {feedState.cursor && (
-                  <button className="load-more" type="button" onClick={loadMore}>
-                    Load more
-                  </button>
-                )}
+                {feedState.cursor && <AutoLoadMoreButton label="Load more profile posts" onLoadMore={loadMore} />}
               </VirtualPostList>
             )}
           </div>
@@ -1436,11 +1487,7 @@ export function App() {
                 onToggleSaved={toggleSavedPost}
                 onRenderedRowsChange={setVirtualRenderedRows}
               >
-                {feedState.cursor && (
-                  <button className="load-more" type="button" onClick={loadMore}>
-                    Load more
-                  </button>
-                )}
+                {feedState.cursor && <AutoLoadMoreButton label="Load more feed posts" onLoadMore={loadMore} />}
               </VirtualPostList>
             )}
           </div>
@@ -1456,6 +1503,7 @@ export function App() {
           <FeedContextPanel source={activeSource} metadata={feedMetadata} entityCache={entityCache} />
         )}
         <FeedMapPanel groups={feedMapSummary} />
+        <PinnedSearchesPanel searches={pinnedSearches} onOpen={submitSearch} onToggle={togglePinnedSearch} />
         <LinkPreviewPanel
           preview={linkPreview}
           onClose={() => setLinkPreview(null)}
@@ -1489,9 +1537,26 @@ export function App() {
         )}
         <section className="context-panel">
           <h2>Trending</h2>
-          <button type="button">#atproto</button>
-          <button type="button">#bluesky</button>
-          <button type="button">#socialweb</button>
+          {trendingTopics.length > 0 ? (
+            trendingTopics.map((topic) => (
+              <button key={topic.tag} type="button" onClick={() => submitSearch(topic.tag)}>
+                <span>{topic.tag}</span>
+                <small>{topic.count.toLocaleString()}</small>
+              </button>
+            ))
+          ) : (
+            <>
+              <button type="button" onClick={() => submitSearch("#atproto")}>
+                #atproto
+              </button>
+              <button type="button" onClick={() => submitSearch("#bluesky")}>
+                #bluesky
+              </button>
+              <button type="button" onClick={() => submitSearch("#socialweb")}>
+                #socialweb
+              </button>
+            </>
+          )}
         </section>
       </aside>
 
@@ -1635,6 +1700,42 @@ function VirtualPostList({
   );
 }
 
+function AutoLoadMoreButton({ label, onLoadMore }: { label: string; onLoadMore: () => void }) {
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const cooldownRef = useRef(false);
+
+  useEffect(() => {
+    const button = buttonRef.current;
+    if (!button || !("IntersectionObserver" in window)) {
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting) || cooldownRef.current) {
+          return;
+        }
+
+        cooldownRef.current = true;
+        onLoadMore();
+        window.setTimeout(() => {
+          cooldownRef.current = false;
+        }, 900);
+      },
+      { root: null, rootMargin: "640px 0px 640px 0px" },
+    );
+
+    observer.observe(button);
+    return () => observer.disconnect();
+  }, [onLoadMore]);
+
+  return (
+    <button className="load-more" ref={buttonRef} type="button" onClick={onLoadMore}>
+      {label}
+    </button>
+  );
+}
+
 function MeasuredPostRow({
   children,
   item,
@@ -1677,6 +1778,7 @@ function SurfaceView({
   localDataKeyCount,
   pinnedFeedCount,
   pinnedFeedIds,
+  pinnedSearchCount,
   workspaceWidth,
   onClearLocalData,
   onOpenFeed,
@@ -1696,6 +1798,7 @@ function SurfaceView({
   localDataKeyCount: number;
   pinnedFeedCount: number;
   pinnedFeedIds: string[];
+  pinnedSearchCount: number;
   workspaceWidth: (typeof widthModes)[number];
   onClearLocalData: () => void | Promise<void>;
   onOpenFeed: (source: FeedSource) => void;
@@ -1839,6 +1942,10 @@ function SurfaceView({
               <div>
                 <dt>Pinned feeds</dt>
                 <dd>{pinnedFeedCount.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Pinned searches</dt>
+                <dd>{pinnedSearchCount.toLocaleString()}</dd>
               </div>
               <div>
                 <dt>Storage scope</dt>
@@ -2325,6 +2432,7 @@ function SearchView({
   savedUris,
   sort,
   tab,
+  isPinnedSearch,
   onLoadMore,
   onLanguageChange,
   onOpenFeed,
@@ -2337,6 +2445,7 @@ function SearchView({
   onClearSearch,
   onSortChange,
   onTabChange,
+  onTogglePinnedSearch,
 }: {
   actorSearchState: ActorSearchState;
   feedSources: FeedSource[];
@@ -2345,6 +2454,7 @@ function SearchView({
   searchState: SearchState;
   sort: "top" | "latest";
   tab: (typeof searchTabs)[number];
+  isPinnedSearch: boolean;
   onLoadMore: () => void;
   onLanguageChange: (language: string) => void;
   onToggleSaved: (post: FeedPost) => void;
@@ -2358,6 +2468,7 @@ function SearchView({
   onClearSearch: () => void;
   onSortChange: (sort: "top" | "latest") => void;
   onTabChange: (tab: (typeof searchTabs)[number]) => void;
+  onTogglePinnedSearch: (query: string) => void;
   savedUris: Set<string>;
 }) {
   const feedResults = useMemo(() => {
@@ -2389,6 +2500,16 @@ function SearchView({
         />
         <button className="clear-search-button" type="button" onClick={onClearSearch} disabled={!query.trim()} aria-label="Clear search">
           <X size={16} />
+        </button>
+        <button
+          className={isPinnedSearch ? "clear-search-button pinned" : "clear-search-button"}
+          type="button"
+          onClick={() => onTogglePinnedSearch(query)}
+          disabled={!query.trim()}
+          aria-label={isPinnedSearch ? "Unpin search" : "Pin search"}
+          title={isPinnedSearch ? "Unpin search" : "Pin search locally"}
+        >
+          <Bookmark size={16} />
         </button>
         <div className="segmented" aria-label="Search tabs">
           {searchTabs.map((mode) => (
@@ -2464,11 +2585,7 @@ function SearchView({
                   </span>
                 </button>
               ))}
-              {actorSearchState.cursor && (
-                <button className="load-more" type="button" onClick={onLoadMore}>
-                  Load more
-                </button>
-              )}
+              {actorSearchState.cursor && <AutoLoadMoreButton label="Load more people" onLoadMore={onLoadMore} />}
             </section>
           )}
         </>
@@ -2497,11 +2614,7 @@ function SearchView({
                   onToggleSaved={onToggleSaved}
                 />
               ))}
-              {searchState.cursor && (
-                <button className="load-more" type="button" onClick={onLoadMore}>
-                  Load more
-                </button>
-              )}
+              {searchState.cursor && <AutoLoadMoreButton label="Load more search posts" onLoadMore={onLoadMore} />}
             </>
           )}
         </>
@@ -3337,6 +3450,36 @@ function FeedMapPanel({ groups }: { groups: Record<string, number> }) {
         <div key={group}>
           <span>{group}</span>
           <strong>{count}</strong>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function PinnedSearchesPanel({
+  searches,
+  onOpen,
+  onToggle,
+}: {
+  searches: string[];
+  onOpen: (query: string) => void;
+  onToggle: (query: string) => void;
+}) {
+  if (searches.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="context-panel pinned-searches-panel">
+      <h2>Pinned Searches</h2>
+      {searches.map((query) => (
+        <div key={query}>
+          <button type="button" onClick={() => onOpen(query)}>
+            {query}
+          </button>
+          <button type="button" onClick={() => onToggle(query)} aria-label={`Unpin ${query}`}>
+            <X size={13} />
+          </button>
         </div>
       ))}
     </section>
