@@ -414,6 +414,49 @@ function videoKindLabel(type?: string) {
   return "Video";
 }
 
+type VideoEmbedView = NonNullable<ReturnType<typeof getVideoEmbed>>;
+
+function VideoEmbedCard({ video, compact = false }: { video: VideoEmbedView; compact?: boolean }) {
+  const kind = videoKindLabel(video.type);
+  const aspectRatio =
+    video.aspectRatio?.width && video.aspectRatio?.height
+      ? { aspectRatio: `${video.aspectRatio.width} / ${video.aspectRatio.height}` }
+      : undefined;
+
+  return (
+    <div className={compact ? "video-card quote-video-card" : "video-card"}>
+      {video.playlist ? (
+        <video
+          controls
+          playsInline
+          preload="metadata"
+          poster={video.thumbnail}
+          aria-label={video.alt ? `${kind}: ${video.alt}` : kind}
+          style={aspectRatio}
+        >
+          <source src={video.playlist} type="application/vnd.apple.mpegurl" />
+          {kind} playback is not supported by this browser.
+        </video>
+      ) : video.thumbnail ? (
+        <a className="video-fallback-link" href={video.thumbnail} target="_blank" rel="noreferrer">
+          <img alt={video.alt || ""} src={video.thumbnail} loading="lazy" decoding="async" style={aspectRatio} />
+        </a>
+      ) : (
+        <span className="video-placeholder" />
+      )}
+      <span className="video-label">
+        <Film size={16} /> {kind}
+      </span>
+      {video.alt && <span className="video-alt-text">{video.alt}</span>}
+      {video.playlist && (
+        <a className="video-open-link" href={video.playlist} target="_blank" rel="noreferrer">
+          Open media
+        </a>
+      )}
+    </div>
+  );
+}
+
 function threadUnavailableState(node: Exclude<ThreadNode, { post: FeedPost }>) {
   const type = node.$type?.toLowerCase() || "";
   const message = node.message?.trim();
@@ -3485,29 +3528,7 @@ function PostCard({
           ))}
         </div>
       )}
-      {video && (
-        <a className="video-card" href={video.playlist || video.thumbnail} target="_blank" rel="noreferrer">
-          {video.thumbnail ? (
-            <img
-              alt={video.alt || ""}
-              src={video.thumbnail}
-              loading="lazy"
-              decoding="async"
-              style={
-                video.aspectRatio?.width && video.aspectRatio?.height
-                  ? { aspectRatio: `${video.aspectRatio.width} / ${video.aspectRatio.height}` }
-                  : undefined
-              }
-            />
-          ) : (
-            <span className="video-placeholder" />
-          )}
-          <span className="video-label">
-            <Film size={16} /> {videoKindLabel(video.type)}
-          </span>
-          {video.alt && <span className="video-alt-text">{video.alt}</span>}
-        </a>
-      )}
+      {video && <VideoEmbedCard video={video} />}
       {external && (
         <div className="link-card">
           <a href={external.uri} target="_blank" rel="noreferrer">
@@ -3647,29 +3668,7 @@ function QuotedPostCard({
           ))}
         </div>
       )}
-      {embeddedVideo && (
-        <a className="video-card quote-video-card" href={embeddedVideo.playlist || embeddedVideo.thumbnail} target="_blank" rel="noreferrer">
-          {embeddedVideo.thumbnail ? (
-            <img
-              alt={embeddedVideo.alt || ""}
-              src={embeddedVideo.thumbnail}
-              loading="lazy"
-              decoding="async"
-              style={
-                embeddedVideo.aspectRatio?.width && embeddedVideo.aspectRatio?.height
-                  ? { aspectRatio: `${embeddedVideo.aspectRatio.width} / ${embeddedVideo.aspectRatio.height}` }
-                  : undefined
-              }
-            />
-          ) : (
-            <span className="video-placeholder" />
-          )}
-          <span className="video-label">
-            <Film size={16} /> {videoKindLabel(embeddedVideo.type)}
-          </span>
-          {embeddedVideo.alt && <span className="video-alt-text">{embeddedVideo.alt}</span>}
-        </a>
-      )}
+      {embeddedVideo && <VideoEmbedCard video={embeddedVideo} compact />}
       {embeddedExternal && (
         <a className="link-card quote-link-card" href={embeddedExternal.uri} target="_blank" rel="noreferrer">
           {embeddedExternal.thumb && <img alt="" src={embeddedExternal.thumb} loading="lazy" decoding="async" />}
