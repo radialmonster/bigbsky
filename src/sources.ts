@@ -17,13 +17,6 @@ export const feedSources: FeedSource[] = [
     description: "Bluesky's public discovery feed for broad network activity.",
   },
   {
-    id: "classic-hot",
-    label: "What's Hot Classic",
-    uri: "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/hot-classic",
-    group: "Core",
-    description: "The original public What's Hot feed experience.",
-  },
-  {
     id: "bluesky-team",
     label: "Bluesky Team",
     uri: "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/bsky-team",

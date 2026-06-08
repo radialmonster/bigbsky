@@ -31,10 +31,8 @@ import {
 } from "./api";
 import { getRouteState, type RouteState } from "./router";
 import { displayName, feedSources, navigationItems, type FeedSource } from "./sources";
-import { useVirtualWindow } from "./useVirtualWindow";
 
 const navIcons = [Home, Compass, Bell, MessageCircle, Hash, List, Bookmark, User, Settings];
-const POST_ESTIMATE_HEIGHT = 332;
 
 type FeedState = {
   items: FeedItem[];
@@ -55,8 +53,6 @@ export function App() {
   const [composerText, setComposerText] = useState("");
   const [imageViewer, setImageViewer] = useState<ImageViewerState>(null);
   const [density, setDensity] = useState(() => localStorage.getItem("bigbsky:density") || "comfortable");
-  const [scrollTop, setScrollTop] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
   const [thread, setThread] = useState<{ status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string }>({
     status: "idle",
   });
@@ -71,13 +67,6 @@ export function App() {
       }, {}),
     [],
   );
-  const virtualWindow = useVirtualWindow({
-    itemCount: feedState.items.length,
-    scrollTop,
-    viewportHeight,
-    estimateSize: density === "compact" ? 246 : POST_ESTIMATE_HEIGHT,
-  });
-
   const loadFeed = useCallback(async (source: FeedSource, cursor?: string) => {
     const controller = new AbortController();
     setFeedState((current) => ({
@@ -123,12 +112,6 @@ export function App() {
   useEffect(() => {
     localStorage.setItem("bigbsky:density", density);
   }, [density]);
-
-  useEffect(() => {
-    const onResize = () => setViewportHeight(window.innerHeight);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
 
   useEffect(() => {
     if (route.kind !== "post") {
@@ -233,7 +216,6 @@ export function App() {
           <div
             className={`timeline ${density}`}
             ref={timelineRef}
-            onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
           >
             <Composer
               remainingChars={remainingChars}
@@ -244,15 +226,13 @@ export function App() {
             {feedState.status === "error" && <ErrorState message={feedState.error || "Feed failed to load."} />}
             {feedState.status === "ready" && (
               <>
-                <div style={{ height: virtualWindow.beforeHeight }} />
-                {virtualWindow.indexes.map((index) => (
+                {feedState.items.map((item) => (
                   <PostCard
-                    item={feedState.items[index]}
-                    key={feedState.items[index].post.uri}
+                    item={item}
+                    key={item.post.uri}
                     onOpenImage={setImageViewer}
                   />
                 ))}
-                <div style={{ height: virtualWindow.afterHeight }} />
                 {feedState.cursor && (
                   <button className="load-more" type="button" onClick={() => void loadFeed(activeSource, feedState.cursor)}>
                     Load more
