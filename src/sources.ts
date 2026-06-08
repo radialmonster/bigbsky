@@ -25,10 +25,10 @@ export const feedSources: FeedSource[] = [
   },
   {
     id: "jay",
-    label: "Jay",
+    label: "Jay at Bluesky",
     actor: "jay.bsky.team",
     group: "People",
-    description: "A public profile feed used while OAuth is deferred.",
+    description: "Public demo profile feed used until OAuth and user-pinned feeds are added.",
   },
   {
     id: "bigbsky",

@@ -1,9 +1,22 @@
 :root {
-  color-scheme: light;
+  color-scheme: dark;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #f4f5f7;
-  color: #18202f;
+  --bsky-blue: #0560ff;
+  --bsky-blue-soft: #75afff;
+  --bsky-dark: #232e3e;
+  --app-bg: #0b111c;
+  --app-bg-raised: #111827;
+  --app-surface: #161f2f;
+  --app-surface-2: #1d293b;
+  --app-border: #2c3a4f;
+  --app-border-strong: #3b4c65;
+  --app-text: #f9fafb;
+  --app-text-muted: #aebdcc;
+  --app-text-soft: #7f90a6;
+  --app-danger: #ff8a7a;
+  background: var(--app-bg);
+  color: var(--app-text);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -33,15 +46,15 @@ button {
   grid-template-columns: 76px 288px minmax(640px, 1fr) 320px;
   height: 100vh;
   min-height: 680px;
-  background: #eef1f5;
+  background: var(--app-bg);
 }
 
 .left-rail,
 .feed-map,
 .right-rail {
   min-height: 0;
-  border-right: 1px solid #dce1e8;
-  background: #fbfcfe;
+  border-right: 1px solid var(--app-border);
+  background: var(--app-bg-raised);
 }
 
 .left-rail {
@@ -63,8 +76,8 @@ button {
   width: 44px;
   height: 44px;
   border-radius: 8px;
-  background: #e7f2ff;
-  color: #0b63ce;
+  background: rgba(5, 96, 255, 0.18);
+  color: var(--bsky-blue-soft);
 }
 
 .rail-nav {
@@ -77,12 +90,12 @@ button {
 .rail-button {
   position: relative;
   background: transparent;
-  color: #465466;
+  color: var(--app-text-muted);
 }
 
 .rail-button:hover {
-  background: #eef3f8;
-  color: #172235;
+  background: var(--app-surface-2);
+  color: var(--app-text);
 }
 
 .rail-button span {
@@ -90,10 +103,10 @@ button {
   left: 54px;
   width: max-content;
   padding: 6px 8px;
-  border: 1px solid #dce1e8;
+  border: 1px solid var(--app-border);
   border-radius: 6px;
-  background: #fff;
-  color: #172235;
+  background: var(--app-surface);
+  color: var(--app-text);
   opacity: 0;
   pointer-events: none;
   transform: translateX(-4px);
@@ -106,7 +119,7 @@ button {
 }
 
 .compose-button {
-  background: #1267d8;
+  background: var(--bsky-blue);
   color: #fff;
 }
 
@@ -129,8 +142,8 @@ button {
 .feed-map-header button {
   width: 34px;
   height: 34px;
-  background: #eef3f8;
-  color: #39475a;
+  background: var(--app-surface-2);
+  color: var(--app-text-muted);
 }
 
 .feed-group {
@@ -141,7 +154,7 @@ button {
 .context-panel h2,
 .profile-panel h2 {
   margin: 0 0 10px;
-  color: #5a6575;
+  color: var(--app-text-soft);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0;
@@ -157,7 +170,7 @@ button {
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
-  color: #172235;
+  color: var(--app-text);
   text-align: left;
 }
 
@@ -170,7 +183,7 @@ button {
 .feed-source small {
   display: -webkit-box;
   overflow: hidden;
-  color: #657386;
+  color: var(--app-text-muted);
   line-height: 1.35;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -178,8 +191,8 @@ button {
 
 .feed-source:hover,
 .feed-source.active {
-  border-color: #bed9fa;
-  background: #eef6ff;
+  border-color: rgba(117, 175, 255, 0.42);
+  background: rgba(5, 96, 255, 0.16);
 }
 
 .workspace {
@@ -196,14 +209,14 @@ button {
   gap: 16px;
   height: 86px;
   padding: 18px 26px;
-  border-bottom: 1px solid #dce1e8;
-  background: rgba(251, 252, 254, 0.92);
+  border-bottom: 1px solid var(--app-border);
+  background: rgba(17, 24, 39, 0.92);
   backdrop-filter: blur(14px);
 }
 
 .workspace-header p {
   margin: 0 0 4px;
-  color: #657386;
+  color: var(--app-text-muted);
   font-size: 13px;
 }
 
@@ -216,9 +229,9 @@ button {
 .segmented {
   display: flex;
   padding: 3px;
-  border: 1px solid #d8dee8;
+  border: 1px solid var(--app-border);
   border-radius: 8px;
-  background: #f5f7fa;
+  background: #0f1724;
 }
 
 .segmented button {
@@ -226,12 +239,12 @@ button {
   padding: 8px 10px;
   border-radius: 6px;
   background: transparent;
-  color: #4c596b;
+  color: var(--app-text-muted);
   text-transform: capitalize;
 }
 
 .segmented .selected {
-  background: #172235;
+  background: var(--bsky-blue);
   color: #fff;
 }
 
@@ -248,10 +261,11 @@ button {
 .profile-panel,
 .context-panel,
 .search-box {
-  border: 1px solid #dce1e8;
+  border: 1px solid var(--app-border);
   border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(21, 32, 52, 0.04);
+  border-color: var(--app-border);
+  background: var(--app-surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
 }
 
 .composer {
@@ -265,7 +279,13 @@ button {
   resize: vertical;
   border: 0;
   outline: 0;
-  color: #172235;
+  background: transparent;
+  color: var(--app-text);
+}
+
+.composer textarea::placeholder,
+.search-box input::placeholder {
+  color: var(--app-text-soft);
 }
 
 .composer-actions {
@@ -276,12 +296,12 @@ button {
 }
 
 .composer-actions span {
-  color: #657386;
+  color: var(--app-text-muted);
   font-variant-numeric: tabular-nums;
 }
 
 .composer-actions .over-limit {
-  color: #b42318;
+  color: var(--app-danger);
 }
 
 .composer-actions button:last-child,
@@ -289,14 +309,14 @@ button {
   min-height: 38px;
   padding: 0 16px;
   border-radius: 8px;
-  background: #1267d8;
+  background: var(--bsky-blue);
   color: #fff;
   font-weight: 700;
 }
 
 .composer-actions button:disabled {
   cursor: not-allowed;
-  background: #cad3df;
+  background: #41516a;
 }
 
 .post-card {
@@ -323,7 +343,7 @@ button {
 
 .post-header span,
 .reason {
-  color: #657386;
+  color: var(--app-text-muted);
   font-size: 13px;
 }
 
@@ -331,7 +351,7 @@ button {
   width: 34px;
   height: 34px;
   background: transparent;
-  color: #657386;
+  color: var(--app-text-muted);
 }
 
 .avatar {
@@ -339,7 +359,7 @@ button {
   height: 44px;
   border-radius: 8px;
   object-fit: cover;
-  background: #d9e4f2;
+  background: var(--app-border-strong);
 }
 
 .avatar.fallback {
@@ -349,7 +369,7 @@ button {
 .post-text {
   max-width: 900px;
   margin: 12px 0;
-  color: #1f2a3a;
+  color: var(--app-text);
   font-size: 17px;
   line-height: 1.48;
   white-space: pre-wrap;
@@ -376,7 +396,7 @@ button {
   aspect-ratio: 16 / 10;
   border-radius: 8px;
   object-fit: cover;
-  background: #e4eaf2;
+  background: var(--app-surface-2);
 }
 
 .media .image-grid img {
@@ -390,7 +410,7 @@ button {
   min-height: 112px;
   margin: 12px 0;
   overflow: hidden;
-  border: 1px solid #dce1e8;
+  border: 1px solid var(--app-border);
   border-radius: 8px;
   color: inherit;
   text-decoration: none;
@@ -400,7 +420,7 @@ button {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  background: #e4eaf2;
+  background: var(--app-surface-2);
 }
 
 .link-card span {
@@ -413,7 +433,7 @@ button {
   display: -webkit-box;
   overflow: hidden;
   margin-top: 5px;
-  color: #657386;
+  color: var(--app-text-muted);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
@@ -421,7 +441,7 @@ button {
 .post-actions {
   display: flex;
   gap: 24px;
-  color: #657386;
+  color: var(--app-text-muted);
   font-size: 14px;
 }
 
@@ -440,7 +460,7 @@ button {
   overflow: auto;
   padding: 18px 14px;
   border-right: 0;
-  border-left: 1px solid #dce1e8;
+  border-left: 1px solid var(--app-border);
 }
 
 .search-box {
@@ -457,6 +477,8 @@ button {
   flex: 1;
   border: 0;
   outline: 0;
+  background: transparent;
+  color: var(--app-text);
 }
 
 .profile-panel,
@@ -467,7 +489,7 @@ button {
 
 .profile-panel h2 {
   margin-top: 10px;
-  color: #172235;
+  color: var(--app-text);
   font-size: 16px;
   text-transform: none;
 }
@@ -475,7 +497,7 @@ button {
 .profile-panel p,
 .context-panel p {
   margin: 0;
-  color: #657386;
+  color: var(--app-text-muted);
   line-height: 1.45;
 }
 
@@ -487,7 +509,7 @@ button {
 }
 
 .profile-panel dt {
-  color: #657386;
+  color: var(--app-text-muted);
   font-size: 12px;
 }
 
@@ -501,8 +523,8 @@ button {
   min-height: 34px;
   margin-top: 8px;
   border-radius: 8px;
-  background: #eef3f8;
-  color: #263348;
+  background: var(--app-surface-2);
+  color: var(--app-text);
   text-align: left;
   padding: 0 10px;
 }
@@ -514,12 +536,12 @@ button {
   justify-content: center;
   gap: 10px;
   min-height: 160px;
-  color: #657386;
+  color: var(--app-text-muted);
 }
 
 .state.error {
   flex-direction: column;
-  color: #9a3412;
+  color: var(--app-danger);
 }
 
 .spin {
@@ -527,7 +549,7 @@ button {
 }
 
 .thread-node {
-  border-left: 2px solid #dce1e8;
+  border-left: 2px solid var(--app-border);
   padding-left: 14px;
 }
 
@@ -576,7 +598,7 @@ button {
     top: 0;
     flex-direction: row;
     height: 64px;
-    border-bottom: 1px solid #dce1e8;
+    border-bottom: 1px solid var(--app-border);
   }
 
   .rail-nav {

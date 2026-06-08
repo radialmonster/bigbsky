@@ -256,6 +256,8 @@ Initial performance budgets:
 - Root Vite/React/TypeScript app is scaffolded at the repository root, so Cloudflare can run `npm run build` and publish `dist`.
 - Current root app includes a desktop reader shell, grouped Feed selector, right context rail, local composer UI with 300-character validation, direct public Bluesky author-feed loading, standalone post-thread route loading, static `_headers`, static `_redirects`, and a build-output audit for forbidden server/runtime artifacts.
 - Latest local production build passed with `npm run build`; audit result: static-only `dist` output.
+- Default visual theme is dark, using Bluesky brand colors as anchors: Blue `#0560FF`, Light Blue `#75AFFF`, Dark Gray `#232E3E`, and Light Gray `#F9FAFB`.
+- `https://bigbsky.pages.dev/` is serving the static app. `https://bigbsky.com/` currently does not resolve to an address record from local DNS checks, so the custom domain still needs Cloudflare DNS/custom-domain activation before it can serve the Pages app.
 - Treat "Cloudflare Pages Free" as "static assets only." Avoid anything that turns normal app traffic into Pages Function or Worker traffic.
 - Required public files:
   - OAuth client metadata JSON.
