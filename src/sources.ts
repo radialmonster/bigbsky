@@ -4,7 +4,7 @@ export type FeedSource = {
   id: string;
   label: string;
   uri: string;
-  group: "Core" | "Media" | "Project";
+  group: "Core" | "Official" | "Project";
   description: string;
 };
 
@@ -17,18 +17,18 @@ export const feedSources: FeedSource[] = [
     description: "Bluesky's public discovery feed for broad network activity.",
   },
   {
-    id: "popular-with-friends",
-    label: "Popular With Friends",
-    uri: "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/with-friends",
+    id: "classic-hot",
+    label: "What's Hot Classic",
+    uri: "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/hot-classic",
     group: "Core",
-    description: "A Bluesky feed-generator source for popular posts and likes.",
+    description: "The original public What's Hot feed experience.",
   },
   {
-    id: "video",
-    label: "Video",
-    uri: "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/thevids",
-    group: "Media",
-    description: "Trending videos in the public Bluesky network.",
+    id: "bluesky-team",
+    label: "Bluesky Team",
+    uri: "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/bsky-team",
+    group: "Official",
+    description: "Posts from members of the Bluesky team.",
   },
   {
     id: "bigbsky",
