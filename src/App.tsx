@@ -3696,6 +3696,14 @@ function findFirstThreadPost(node?: ThreadNode): FeedPost | null {
   return node.post;
 }
 
+function collectThreadParents(node?: ThreadNode): ThreadNode[] {
+  if (!node || !("post" in node) || !node.parent) {
+    return [];
+  }
+
+  return [...collectThreadParents(node.parent), node.parent];
+}
+
 function formatPostTime(value?: string) {
   if (!value) {
     return "Unknown time";
@@ -3749,6 +3757,7 @@ function ThreadView({
 }) {
   const [expandedBranches, setExpandedBranches] = useState<Record<string, boolean>>({});
   const rootPost = findFirstThreadPost(thread.node);
+  const parentNodes = collectThreadParents(thread.node);
   const replyDraftKey = rootPost ? `${replyDraftPrefix}${rootPost.uri}` : "";
   const [replyText, setReplyText] = useState("");
   const remainingReplyChars = 300 - replyText.length;
@@ -3829,12 +3838,91 @@ function ThreadView({
           </button>
         </div>
       </section>
+      {parentNodes.length > 0 && (
+        <section className="thread-parent-context" aria-label="Parent posts">
+          <header>
+            <span>Reply context</span>
+            <strong>{parentNodes.length === 1 ? "1 parent post" : `${parentNodes.length} parent posts`}</strong>
+          </header>
+          {parentNodes.map((parentNode, index) =>
+            renderThreadContextNode(
+              parentNode,
+              index,
+              parentNodes.length,
+              { loadingBranches, onLoadBranch, onOpenImage, onOpenPost, onOpenProfile },
+              onOpenLinkPreview,
+              { currentDid, localLists, onToggleListPost, onToggleSaved, savedUris },
+            ),
+          )}
+        </section>
+      )}
       {renderThreadNode(thread.node, 0, expandedBranches, (uri) =>
         setExpandedBranches((current) => ({ ...current, [uri]: !current[uri] })),
         { loadingBranches, onLoadBranch, onOpenImage, onOpenPost, onOpenProfile },
         onOpenLinkPreview,
         { currentDid, localLists, onToggleListPost, onToggleSaved, savedUris },
       )}
+    </div>
+  );
+}
+
+function renderThreadContextNode(
+  node: ThreadNode,
+  index: number,
+  total: number,
+  handlers: {
+    loadingBranches: Record<string, boolean>;
+    onLoadBranch: (uri: string) => void;
+    onOpenImage: (image: ImageViewerState) => void;
+    onOpenPost: (post: FeedPost) => void;
+    onOpenProfile: (profile: Profile) => void;
+  },
+  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void,
+  savedState: {
+    currentDid?: string;
+    localLists: LocalList[];
+    onToggleListPost: (listId: string, post: FeedPost) => void;
+    onToggleSaved: (post: FeedPost) => void;
+    savedUris: Set<string>;
+  },
+) {
+  if (!("post" in node)) {
+    const state = threadUnavailableState(node);
+
+    return (
+      <div className={`thread-context-item unavailable ${state.tone}`} key={`parent:${index}`}>
+        <span className="thread-context-step">{index + 1}</span>
+        <div className={`thread-alert ${state.tone}`}>
+          <ShieldAlert size={16} />
+          <span>
+            <strong>{state.title}</strong>
+            <small>{state.detail}</small>
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="thread-context-item" key={node.post.uri}>
+      <span className="thread-context-step">{index + 1}</span>
+      <div>
+        <small>
+          {index + 1 === total ? "Direct parent" : `Parent ${index + 1} of ${total}`}
+        </small>
+        <PostCard
+          item={{ post: node.post }}
+          currentDid={savedState.currentDid}
+          onOpenImage={handlers.onOpenImage}
+          onOpenLinkPreview={onOpenLinkPreview}
+          onOpenPost={handlers.onOpenPost}
+          onOpenProfile={handlers.onOpenProfile}
+          isSaved={savedState.savedUris.has(node.post.uri)}
+          localLists={savedState.localLists}
+          onToggleListPost={savedState.onToggleListPost}
+          onToggleSaved={savedState.onToggleSaved}
+        />
+      </div>
     </div>
   );
 }

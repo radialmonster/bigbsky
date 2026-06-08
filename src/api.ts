@@ -117,6 +117,7 @@ export type ActorSearchResponse = {
 
 export type ThreadPostNode = {
   post: FeedPost;
+  parent?: ThreadNode;
   replies?: ThreadNode[];
 };
 
