@@ -153,6 +153,7 @@ const localListsStorageKey = "bigbsky:local-lists";
 const workspaceWidthStorageKey = "bigbsky:workspace-width";
 const pinnedFeedsStorageKey = "bigbsky:pinned-feeds";
 const pinnedSearchesStorageKey = "bigbsky:pinned-searches";
+const pinnedProfilesStorageKey = "bigbsky:pinned-profiles";
 const collapsedFeedGroupsStorageKey = "bigbsky:collapsed-feed-groups";
 const replyDraftPrefix = "bigbsky:reply-draft:";
 const emptyFeedState: FeedState = { items: [], status: "idle" };
@@ -255,6 +256,19 @@ function readPinnedSearches() {
   try {
     const stored = JSON.parse(localStorage.getItem(pinnedSearchesStorageKey) || "[]") as string[];
     return Array.isArray(stored) ? stored.filter((query) => typeof query === "string" && query.trim()).slice(0, 12) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readPinnedProfiles() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(pinnedProfilesStorageKey) || "[]") as Profile[];
+    return Array.isArray(stored)
+      ? stored
+          .filter((profile) => profile && typeof profile.did === "string" && typeof profile.handle === "string")
+          .slice(0, 16)
+      : [];
   } catch {
     return [];
   }
@@ -368,6 +382,7 @@ export function App() {
   const [workspaceWidth, setWorkspaceWidth] = useState<(typeof widthModes)[number]>(() => readWorkspaceWidthPreference());
   const [pinnedFeedIds, setPinnedFeedIds] = useState<string[]>(() => readPinnedFeedIds());
   const [pinnedSearches, setPinnedSearches] = useState<string[]>(() => readPinnedSearches());
+  const [pinnedProfiles, setPinnedProfiles] = useState<Profile[]>(() => readPinnedProfiles());
   const [collapsedFeedGroups, setCollapsedFeedGroups] = useState<Record<string, boolean>>(() => readCollapsedFeedGroups());
   const [recentItems, setRecentItems] = useState<RecentItem[]>(() => readRecentItems());
   const [devMetrics, setDevMetrics] = useState<DevMetrics>(initialDevMetrics);
@@ -934,6 +949,8 @@ export function App() {
     setSavedPosts([]);
     setLocalLists([]);
     setPinnedFeedIds([]);
+    setPinnedSearches([]);
+    setPinnedProfiles([]);
     setCollapsedFeedGroups({});
     feedCacheRef.current = {};
     feedMetadataCacheRef.current = {};
@@ -1050,6 +1067,21 @@ export function App() {
       const exists = current.some((item) => item.toLowerCase() === trimmed.toLowerCase());
       const next = exists ? current.filter((item) => item.toLowerCase() !== trimmed.toLowerCase()) : [trimmed, ...current].slice(0, 12);
       localStorage.setItem(pinnedSearchesStorageKey, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function togglePinnedProfile(profileToPin: Profile | null | undefined) {
+    if (!profileToPin?.did || !profileToPin.handle) {
+      return;
+    }
+
+    setPinnedProfiles((current) => {
+      const exists = current.some((item) => item.did === profileToPin.did || item.handle === profileToPin.handle);
+      const next = exists
+        ? current.filter((item) => item.did !== profileToPin.did && item.handle !== profileToPin.handle)
+        : [profileToPin, ...current].slice(0, 16);
+      localStorage.setItem(pinnedProfilesStorageKey, JSON.stringify(next));
       return next;
     });
   }
@@ -1389,6 +1421,7 @@ export function App() {
 
         {route.kind === "post" ? (
           <ThreadView
+            currentDid={authState.session?.did}
             thread={thread}
             loadingBranches={loadingThreadBranches}
             onOpenImage={setImageViewer}
@@ -1403,6 +1436,7 @@ export function App() {
           <SavedPostsView
             posts={savedPosts}
             savedUris={new Set(savedPosts.map((post) => post.uri))}
+            currentDid={authState.session?.did}
             onOpenImage={setImageViewer}
             onOpenPost={openPost}
             onOpenProfile={openProfile}
@@ -1421,6 +1455,7 @@ export function App() {
             localLists={localLists}
             pinnedFeedCount={pinnedFeedIds.length}
             pinnedFeedIds={pinnedFeedIds}
+            pinnedProfileCount={pinnedProfiles.length}
             pinnedSearchCount={pinnedSearches.length}
             workspaceWidth={workspaceWidth}
             onClearLocalData={clearLocalReaderData}
@@ -1447,6 +1482,7 @@ export function App() {
         ) : route.kind === "search" ? (
           <SearchView
             actorSearchState={actorSearchState}
+            currentDid={authState.session?.did}
             feedSources={feedSources}
             language={searchLanguage}
             query={globalSearchText}
@@ -1485,8 +1521,10 @@ export function App() {
             <ProfileDetailHeader
               actor={route.actor}
               profile={profile}
+              isPinned={!!profile && pinnedProfiles.some((item) => item.did === profile.did || item.handle === profile.handle)}
               selectedTab={profileTab}
               onSelectTab={setProfileTab}
+              onTogglePinned={togglePinnedProfile}
             />
             {feedState.status === "loading" && <LoadingState label="Loading public profile posts" />}
             {feedState.status === "error" && <ErrorState message={feedState.error || "Profile feed failed to load."} />}
@@ -1504,6 +1542,7 @@ export function App() {
                 onOpenProfile={openProfile}
                 onOpenLinkPreview={openLinkPreview}
                 savedUris={new Set(savedPosts.map((post) => post.uri))}
+                currentDid={authState.session?.did}
                 onToggleSaved={toggleSavedPost}
                 onRenderedRowsChange={setVirtualRenderedRows}
               >
@@ -1539,6 +1578,7 @@ export function App() {
                 onOpenProfile={openProfile}
                 onOpenLinkPreview={openLinkPreview}
                 savedUris={new Set(savedPosts.map((post) => post.uri))}
+                currentDid={authState.session?.did}
                 onToggleSaved={toggleSavedPost}
                 onRenderedRowsChange={setVirtualRenderedRows}
               >
@@ -1559,6 +1599,7 @@ export function App() {
         )}
         <FeedMapPanel groups={feedMapSummary} />
         <PinnedSearchesPanel searches={pinnedSearches} onOpen={submitSearch} onToggle={togglePinnedSearch} />
+        <PinnedProfilesPanel profiles={pinnedProfiles} onOpen={openProfile} onToggle={togglePinnedProfile} />
         <LinkPreviewPanel
           preview={linkPreview}
           onClose={() => setLinkPreview(null)}
@@ -1623,6 +1664,7 @@ export function App() {
 function VirtualPostList({
   children,
   containerRef,
+  currentDid,
   density,
   items,
   onOpenImage,
@@ -1635,6 +1677,7 @@ function VirtualPostList({
 }: {
   children?: React.ReactNode;
   containerRef: RefObject<HTMLDivElement | null>;
+  currentDid?: string;
   density: string;
   items: FeedItem[];
   onOpenImage: (image: ImageViewerState) => void;
@@ -1754,6 +1797,7 @@ function VirtualPostList({
         >
           <PostCard
             item={item}
+            currentDid={currentDid}
             onOpenImage={onOpenImage}
             onOpenLinkPreview={onOpenLinkPreview}
             onOpenPost={onOpenPost}
@@ -1848,6 +1892,7 @@ function SurfaceView({
   localLists,
   pinnedFeedCount,
   pinnedFeedIds,
+  pinnedProfileCount,
   pinnedSearchCount,
   workspaceWidth,
   onClearLocalData,
@@ -1871,6 +1916,7 @@ function SurfaceView({
   localLists: LocalList[];
   pinnedFeedCount: number;
   pinnedFeedIds: string[];
+  pinnedProfileCount: number;
   pinnedSearchCount: number;
   workspaceWidth: (typeof widthModes)[number];
   onClearLocalData: () => void | Promise<void>;
@@ -2019,6 +2065,10 @@ function SurfaceView({
                 <dd>{pinnedFeedCount.toLocaleString()}</dd>
               </div>
               <div>
+                <dt>Pinned profiles</dt>
+                <dd>{pinnedProfileCount.toLocaleString()}</dd>
+              </div>
+              <div>
                 <dt>Pinned searches</dt>
                 <dd>{pinnedSearchCount.toLocaleString()}</dd>
               </div>
@@ -2082,6 +2132,7 @@ function SurfaceView({
         auth={auth}
         savedPostCount={savedPostCount}
         pinnedFeedCount={pinnedFeedCount}
+        pinnedProfileCount={pinnedProfileCount}
         pinnedSearchCount={pinnedSearchCount}
         localListCount={localLists.length}
         onOpenSearch={onOpenSearch}
@@ -2200,6 +2251,7 @@ function NotificationsSurface({
   auth,
   savedPostCount,
   pinnedFeedCount,
+  pinnedProfileCount,
   pinnedSearchCount,
   localListCount,
   onOpenSearch,
@@ -2207,6 +2259,7 @@ function NotificationsSurface({
   auth: AuthState;
   savedPostCount: number;
   pinnedFeedCount: number;
+  pinnedProfileCount: number;
   pinnedSearchCount: number;
   localListCount: number;
   onOpenSearch: () => void;
@@ -2228,6 +2281,11 @@ function NotificationsSurface({
       title: `${pinnedFeedCount.toLocaleString()} pinned feed${pinnedFeedCount === 1 ? "" : "s"}`,
       detail: "Pinned Feed destinations stay at the top of the desktop selector.",
       status: "Feeds",
+    },
+    {
+      title: `${pinnedProfileCount.toLocaleString()} pinned profile${pinnedProfileCount === 1 ? "" : "s"}`,
+      detail: "Pinned profiles are browser-local shortcuts for public profile readers.",
+      status: "Profiles",
     },
     {
       title: `${pinnedSearchCount.toLocaleString()} pinned search${pinnedSearchCount === 1 ? "" : "es"}`,
@@ -2415,14 +2473,18 @@ function AccountPanel({
 
 function ProfileDetailHeader({
   actor,
+  isPinned,
   profile,
   selectedTab,
   onSelectTab,
+  onTogglePinned,
 }: {
   actor: string;
+  isPinned: boolean;
   profile: Profile | null;
   selectedTab: (typeof profileTabs)[number];
   onSelectTab: (tab: (typeof profileTabs)[number]) => void;
+  onTogglePinned: (profile: Profile | null | undefined) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const bskyUrl = `https://bsky.app/profile/${encodeURIComponent(profile?.handle || actor)}`;
@@ -2440,6 +2502,9 @@ function ProfileDetailHeader({
         <div className="profile-detail-actions">
           <button type="button" disabled title="Follow after OAuth is added">
             Follow
+          </button>
+          <button type="button" onClick={() => onTogglePinned(profile)} disabled={!profile}>
+            {isPinned ? "Unpin profile" : "Pin locally"}
           </button>
           <button
             type="button"
@@ -2623,6 +2688,7 @@ function SearchBox({
 }
 
 function SavedPostsView({
+  currentDid,
   posts,
   savedUris,
   onOpenImage,
@@ -2632,6 +2698,7 @@ function SavedPostsView({
   onToggleSaved,
 }: {
   posts: FeedPost[];
+  currentDid?: string;
   savedUris: Set<string>;
   onOpenImage: (image: ImageViewerState) => void;
   onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
@@ -2652,6 +2719,7 @@ function SavedPostsView({
           {posts.map((post) => (
             <PostCard
               item={{ post }}
+              currentDid={currentDid}
               key={post.uri}
               isSaved={savedUris.has(post.uri)}
               onOpenImage={onOpenImage}
@@ -2669,6 +2737,7 @@ function SavedPostsView({
 
 function SearchView({
   actorSearchState,
+  currentDid,
   feedSources,
   language,
   onToggleSaved,
@@ -2693,6 +2762,7 @@ function SearchView({
   onTogglePinnedSearch,
 }: {
   actorSearchState: ActorSearchState;
+  currentDid?: string;
   feedSources: FeedSource[];
   language: string;
   query: string;
@@ -2850,6 +2920,7 @@ function SearchView({
               {searchState.posts.map((post) => (
                 <PostCard
                   item={{ post }}
+                  currentDid={currentDid}
                   key={post.uri}
                   onOpenImage={onOpenImage}
                   onOpenLinkPreview={onOpenLinkPreview}
@@ -2930,6 +3001,7 @@ function FeedDetailHeader({
 }
 
 function PostCard({
+  currentDid,
   isSaved = false,
   item,
   onOpenImage,
@@ -2938,6 +3010,7 @@ function PostCard({
   onOpenProfile,
   onToggleSaved,
 }: {
+  currentDid?: string;
   isSaved?: boolean;
   item: FeedItem;
   onOpenImage?: (image: ImageViewerState) => void;
@@ -2955,6 +3028,7 @@ function PostCard({
   const preservesLineBreaks = text.includes("\n");
   const hasRichContent = images.length > 0 || !!external || !!recordEmbed || !!video;
   const postVariant = images.length > 0 || !!video ? "has-media" : external ? "has-link" : recordEmbed ? "has-quote" : "text-only";
+  const isOwnPost = !!currentDid && post.author.did === currentDid;
 
   return (
     <article className={`post-card ${postVariant}`}>
@@ -2970,8 +3044,9 @@ function PostCard({
       </header>
       {item.reason?.by && <p className="reason">Reposted by {displayName(item.reason.by)}</p>}
       {item.reply?.parent && <p className="reason">Replying in a thread from @{item.reply.parent.author.handle}</p>}
-      {(post.labels?.length ?? 0) > 0 && (
+      {(isOwnPost || (post.labels?.length ?? 0) > 0) && (
         <div className="post-badges" aria-label="Post context">
+          {isOwnPost && <span>Your post</span>}
           {post.labels?.slice(0, 3).map((label) => (
             <span key={`${post.uri}:${label.val || label.src || label.uri}`}>
               {label.val || "Content label"}
@@ -3230,6 +3305,7 @@ function replyPermissionLabel(post: FeedPost) {
 }
 
 function ThreadView({
+  currentDid,
   thread,
   loadingBranches,
   onOpenImage,
@@ -3240,6 +3316,7 @@ function ThreadView({
   onToggleSaved,
   savedUris,
 }: {
+  currentDid?: string;
   thread: { status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string };
   loadingBranches: Record<string, boolean>;
   onOpenImage: (image: ImageViewerState) => void;
@@ -3336,7 +3413,7 @@ function ThreadView({
         setExpandedBranches((current) => ({ ...current, [uri]: !current[uri] })),
         { loadingBranches, onLoadBranch, onOpenImage, onOpenPost, onOpenProfile },
         onOpenLinkPreview,
-        { onToggleSaved, savedUris },
+        { currentDid, onToggleSaved, savedUris },
       )}
     </div>
   );
@@ -3534,6 +3611,7 @@ function renderThreadNode(
   },
   onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void,
   savedState: {
+    currentDid?: string;
     onToggleSaved: (post: FeedPost) => void;
     savedUris: Set<string>;
   },
@@ -3558,6 +3636,7 @@ function renderThreadNode(
     <div className="thread-node" key={node.post.uri} style={{ marginLeft: depth * 22 }}>
       <PostCard
         item={{ post: node.post }}
+        currentDid={savedState.currentDid}
         onOpenImage={handlers.onOpenImage}
         onOpenLinkPreview={onOpenLinkPreview}
         onOpenPost={handlers.onOpenPost}
@@ -3748,6 +3827,40 @@ function PinnedSearchesPanel({
             {query}
           </button>
           <button type="button" onClick={() => onToggle(query)} aria-label={`Unpin ${query}`}>
+            <X size={13} />
+          </button>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function PinnedProfilesPanel({
+  profiles,
+  onOpen,
+  onToggle,
+}: {
+  profiles: Profile[];
+  onOpen: (profile: Profile) => void;
+  onToggle: (profile: Profile) => void;
+}) {
+  if (profiles.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="context-panel pinned-profiles-panel">
+      <h2>Pinned Profiles</h2>
+      {profiles.map((profile) => (
+        <div key={profile.did}>
+          <button type="button" onClick={() => onOpen(profile)}>
+            <Avatar profile={profile} />
+            <span>
+              <strong>{displayName(profile)}</strong>
+              <small>@{profile.handle}</small>
+            </span>
+          </button>
+          <button type="button" onClick={() => onToggle(profile)} aria-label={`Unpin @${profile.handle}`}>
             <X size={13} />
           </button>
         </div>
