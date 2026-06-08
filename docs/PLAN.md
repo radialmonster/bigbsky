@@ -1118,7 +1118,7 @@ Request budget mindset:
 - OAuth client metadata is reachable at its final HTTPS URL. Status: local static asset implemented and verified at `/oauth-client-metadata.json`; production `https://bigbsky.com/oauth-client-metadata.json` verification remains pending after deploy.
 - User can sign in with a Bluesky handle. Status: first pass implemented with explicit handle/DID/PDS input and browser OAuth SDK redirect; end-to-end production OAuth verification remains pending.
 - Session survives refresh without our backend. Status: partial; SDK local restore path and active DID marker are wired, with reload and multi-tab verification pending.
-- Sign-out is always visible to signed-in users. Status: partial; visible in the right-rail account panel, Settings, signed-in left rail, and signed-in Profile surface after session restore. Full account switcher placement remains pending.
+- Sign-out is always visible to signed-in users. Status: improved; visible in the right-rail account panel, Settings, signed-in left rail, signed-in Profile surface, and a compact left-rail account switcher after session restore. The switcher exposes identity, profile/settings actions, sign-out, and an add/switch OAuth form, while account-backed multi-account sync remains pending.
 - Sign-out clears local auth state and account-specific browser-local data without a BigBSky backend. Status: partial; sign-out clears `bigbsky:auth:*` and the SDK OAuth IndexedDB store after a best-effort revocation attempt.
 - Sign-out does not clear static app-shell/service-worker cache unless the user explicitly clears site data.
 - Public profile/thread/feed pages work while signed out.

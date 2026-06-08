@@ -489,6 +489,7 @@ export function App() {
   const [recentItems, setRecentItems] = useState<RecentItem[]>(() => readRecentItems());
   const [devMetrics, setDevMetrics] = useState<DevMetrics>(initialDevMetrics);
   const [authState, setAuthState] = useState<AuthState>(initialAuthState);
+  const [isAccountSwitcherOpen, setIsAccountSwitcherOpen] = useState(false);
   const [virtualRenderedRows, setVirtualRenderedRows] = useState(0);
   const [thread, setThread] = useState<{ status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string }>({
     status: "idle",
@@ -1084,6 +1085,7 @@ export function App() {
     }
 
     setAuthState((current) => ({ ...current, status: "signing-in", message: `Starting Bluesky OAuth for ${trimmed}.` }));
+    setIsAccountSwitcherOpen(false);
     try {
       await startSignIn(trimmed);
     } catch (error) {
@@ -1098,6 +1100,7 @@ export function App() {
   async function handleSignOut() {
     const did = authState.session?.did;
     setAuthState((current) => ({ ...current, status: "signing-in", message: "Signing out locally." }));
+    setIsAccountSwitcherOpen(false);
     const warning = await signOut(did);
     setAuthState({
       status: warning ? "error" : "signed-out",
@@ -1444,12 +1447,58 @@ export function App() {
         </nav>
         {authState.session && (
           <div className="rail-account" aria-label="Signed-in account">
-            <button type="button" title={`Open @${authState.session.handle}`} onClick={() => openProfile(authState.session as Profile)}>
+            <button
+              type="button"
+              title={`Account: @${authState.session.handle}`}
+              aria-expanded={isAccountSwitcherOpen}
+              onClick={() => setIsAccountSwitcherOpen((isOpen) => !isOpen)}
+            >
               <Avatar profile={authState.session} />
             </button>
-            <button type="button" title="Sign out" onClick={handleSignOut}>
-              <LogOut size={17} />
-            </button>
+            {isAccountSwitcherOpen && (
+              <div className="account-switcher" role="menu" aria-label="Account switcher">
+                <div className="account-identity">
+                  <Avatar profile={authState.session} />
+                  <span>
+                    <strong>{authState.session.displayName || authState.session.handle}</strong>
+                    <small>@{authState.session.handle}</small>
+                  </span>
+                </div>
+                <div className="account-switcher-actions">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAccountSwitcherOpen(false);
+                      openProfile(authState.session as Profile);
+                    }}
+                  >
+                    <User size={15} />
+                    Open profile
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAccountSwitcherOpen(false);
+                      openNavigation("Settings");
+                    }}
+                  >
+                    <Settings size={15} />
+                    Account settings
+                  </button>
+                  <button type="button" onClick={handleSignOut}>
+                    <LogOut size={15} />
+                    Sign out
+                  </button>
+                </div>
+                <div className="account-switcher-add">
+                  <span>
+                    <Plus size={14} />
+                    Add or switch account
+                  </span>
+                  <SignInForm status={authState.status} onSignIn={handleSignIn} />
+                </div>
+              </div>
+            )}
           </div>
         )}
         <button className="compose-button" type="button" title="New post">
