@@ -117,6 +117,7 @@ type DevMetrics = {
 
 const densityModes = ["comfortable", "compact", "media"];
 const searchTabs = ["posts", "people", "feeds"] as const;
+const profileTabs = ["posts", "replies", "media", "videos"] as const;
 const searchLanguages = [
   { label: "Any language", value: "" },
   { label: "English", value: "en" },
@@ -239,6 +240,14 @@ function replaceThreadBranch(node: ThreadNode, uri: string, replacement: ThreadN
   };
 }
 
+function hasPostImages(post: FeedPost) {
+  return getEmbedImages(post.embed).length > 0;
+}
+
+function hasPostVideo(post: FeedPost) {
+  return !!getVideoEmbed(post.embed);
+}
+
 export function App() {
   const [route, setRoute] = useState<RouteState>(() => getRouteState());
   const [activeSourceId, setActiveSourceId] = useState(feedSources[0].id);
@@ -250,6 +259,7 @@ export function App() {
   const [searchSort, setSearchSort] = useState<"top" | "latest">("top");
   const [searchTab, setSearchTab] = useState<(typeof searchTabs)[number]>("posts");
   const [searchLanguage, setSearchLanguage] = useState("");
+  const [profileTab, setProfileTab] = useState<(typeof profileTabs)[number]>("posts");
   const [feedState, setFeedState] = useState<FeedState>(emptyFeedState);
   const [searchState, setSearchState] = useState<SearchState>(emptySearchState);
   const [actorSearchState, setActorSearchState] = useState<ActorSearchState>(emptyActorSearchState);
@@ -363,6 +373,25 @@ export function App() {
 
     return { posts, profiles, linkUrls, mediaPosts: mediaPosts.slice(0, 8), smartGroups };
   }, [feedState.items, searchState.posts]);
+  const visibleProfileItems = useMemo(() => {
+    if (route.kind !== "profile") {
+      return feedState.items;
+    }
+
+    if (profileTab === "replies") {
+      return feedState.items.filter((item) => !!item.post.record.reply || !!item.reply?.parent);
+    }
+
+    if (profileTab === "media") {
+      return feedState.items.filter((item) => hasPostImages(item.post) || hasPostVideo(item.post));
+    }
+
+    if (profileTab === "videos") {
+      return feedState.items.filter((item) => hasPostVideo(item.post));
+    }
+
+    return feedState.items.filter((item) => !item.post.record.reply && !item.reply?.parent);
+  }, [feedState.items, profileTab, route.kind]);
 
   const loadFeed = useCallback(async (source: FeedSource, cursor?: string, signal?: AbortSignal) => {
     const cacheKey = `feed:${source.id}`;
@@ -759,6 +788,24 @@ export function App() {
     localStorage.setItem("bigbsky:density-by-context", JSON.stringify(nextPreferences));
   }
 
+  function clearLocalReaderData() {
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith("bigbsky:"))
+      .forEach((key) => localStorage.removeItem(key));
+    setDensityByContext({});
+    setRecentItems([]);
+    setComposerText("");
+    feedCacheRef.current = {};
+    feedMetadataCacheRef.current = {};
+    profileCacheRef.current = {};
+    searchCacheRef.current = {};
+    actorSearchCacheRef.current = {};
+    threadCacheRef.current = {};
+    threadBranchCacheRef.current = {};
+    scrollCacheRef.current = {};
+    setDevMetrics((current) => ({ ...current, cacheHits: 0 }));
+  }
+
   function remember(item: RecentItem) {
     setRecentItems((current) => {
       const next = [item, ...current.filter((existing) => existing.path !== item.path)].slice(0, 8);
@@ -1056,7 +1103,14 @@ export function App() {
             onLoadBranch={loadThreadBranch}
           />
         ) : route.kind === "surface" ? (
-          <SurfaceView name={route.name} />
+          <SurfaceView
+            name={route.name}
+            density={density}
+            recentCount={recentItems.length}
+            savedPreferenceCount={Object.keys(densityByContext).length}
+            onClearLocalData={clearLocalReaderData}
+            onOpenSearch={() => navigate({ kind: "search" }, "/search")}
+          />
         ) : route.kind === "search" ? (
           <SearchView
             actorSearchState={actorSearchState}
@@ -1088,6 +1142,38 @@ export function App() {
               navigate({ kind: "feed", uri: source.id }, feedRoutePath(source));
             }}
           />
+        ) : route.kind === "profile" ? (
+          <div className={`timeline ${density}`} ref={timelineRef}>
+            <ProfileDetailHeader
+              actor={route.actor}
+              profile={profile}
+              selectedTab={profileTab}
+              onSelectTab={setProfileTab}
+            />
+            {feedState.status === "loading" && <LoadingState label="Loading public profile posts" />}
+            {feedState.status === "error" && <ErrorState message={feedState.error || "Profile feed failed to load."} />}
+            {feedState.status === "rate-limit" && <RateLimitState message={feedState.error} />}
+            {feedState.status === "ready" && visibleProfileItems.length === 0 && (
+              <EmptyState title="No posts in this tab" message="This public profile has no loaded posts matching the selected view." />
+            )}
+            {feedState.status === "ready" && visibleProfileItems.length > 0 && (
+              <VirtualPostList
+                containerRef={timelineRef}
+                density={density}
+                items={visibleProfileItems}
+                onOpenImage={setImageViewer}
+                onOpenPost={openPost}
+                onOpenProfile={openProfile}
+                onRenderedRowsChange={setVirtualRenderedRows}
+              >
+                {feedState.cursor && (
+                  <button className="load-more" type="button" onClick={loadMore}>
+                    Load more
+                  </button>
+                )}
+              </VirtualPostList>
+            )}
+          </div>
         ) : (
           <div
             className={`timeline ${density}`}
@@ -1253,7 +1339,21 @@ function VirtualPostList({
   );
 }
 
-function SurfaceView({ name }: { name: string }) {
+function SurfaceView({
+  name,
+  density,
+  recentCount,
+  savedPreferenceCount,
+  onClearLocalData,
+  onOpenSearch,
+}: {
+  name: string;
+  density: string;
+  recentCount: number;
+  savedPreferenceCount: number;
+  onClearLocalData: () => void;
+  onOpenSearch: () => void;
+}) {
   const title = name.charAt(0).toUpperCase() + name.slice(1);
   const surfaces: Record<string, { copy: string; cards: Array<{ title: string; detail: string; status: string }> }> = {
     chat: {
@@ -1334,6 +1434,59 @@ function SurfaceView({ name }: { name: string }) {
     cards: [{ title: "Static Route", detail: "The SPA fallback can serve this destination without server code.", status: "Ready" }],
   };
 
+  if (name === "settings") {
+    return (
+      <div className="timeline comfortable">
+        <section className="surface-placeholder">
+          <h2>Settings</h2>
+          <p>Local reader preferences and account/session controls live here. No BigBSky backend storage is used for v1 reader data.</p>
+        </section>
+        <section className="settings-grid" aria-label="Settings sections">
+          <article className="settings-panel">
+            <span>Active</span>
+            <h3>Appearance</h3>
+            <dl>
+              <div>
+                <dt>Current density</dt>
+                <dd>{density}</dd>
+              </div>
+              <div>
+                <dt>Saved preference keys</dt>
+                <dd>{savedPreferenceCount.toLocaleString()}</dd>
+              </div>
+            </dl>
+            <p>Density is stored locally per Feed or surface and applied before timeline rows paint.</p>
+          </article>
+          <article className="settings-panel">
+            <span>Local</span>
+            <h3>Browser Data</h3>
+            <dl>
+              <div>
+                <dt>Recent trail items</dt>
+                <dd>{recentCount.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Storage scope</dt>
+                <dd>bigbsky:*</dd>
+              </div>
+            </dl>
+            <button type="button" onClick={onClearLocalData}>
+              Clear local reader data
+            </button>
+          </article>
+          <article className="settings-panel">
+            <span>OAuth later</span>
+            <h3>Account</h3>
+            <p>Account identity, switching, token refresh, revocation, and sign-out will attach here after browser-side OAuth is implemented.</p>
+            <button type="button" disabled>
+              Sign out
+            </button>
+          </article>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="timeline comfortable">
       <section className="surface-placeholder">
@@ -1342,8 +1495,7 @@ function SurfaceView({ name }: { name: string }) {
         {name === "explore" && (
           <a className="surface-action" href="/search" onClick={(event) => {
             event.preventDefault();
-            window.history.pushState(null, "", "/search");
-            window.dispatchEvent(new PopStateEvent("popstate"));
+            onOpenSearch();
           }}>
             Open search
           </a>
@@ -1359,6 +1511,75 @@ function SurfaceView({ name }: { name: string }) {
         ))}
       </section>
     </div>
+  );
+}
+
+function ProfileDetailHeader({
+  actor,
+  profile,
+  selectedTab,
+  onSelectTab,
+}: {
+  actor: string;
+  profile: Profile | null;
+  selectedTab: (typeof profileTabs)[number];
+  onSelectTab: (tab: (typeof profileTabs)[number]) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const bskyUrl = `https://bsky.app/profile/${encodeURIComponent(profile?.handle || actor)}`;
+
+  return (
+    <section className="profile-detail-header">
+      <div className="profile-banner" />
+      <div className="profile-detail-main">
+        <Avatar profile={profile ?? undefined} />
+        <div>
+          <span>Public Profile</span>
+          <h2>{displayName(profile ?? undefined)}</h2>
+          <p>@{profile?.handle || actor}</p>
+        </div>
+        <div className="profile-detail-actions">
+          <button type="button" disabled title="Follow after OAuth is added">
+            Follow
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void navigator.clipboard?.writeText(bskyUrl);
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1600);
+            }}
+          >
+            {copied ? "Copied" : "Copy link"}
+          </button>
+          <a href={bskyUrl} target="_blank" rel="noreferrer">
+            Open on Bluesky
+          </a>
+        </div>
+      </div>
+      {profile?.description && <p className="profile-detail-description">{profile.description}</p>}
+      <dl className="profile-detail-stats">
+        <div>
+          <dt>Followers</dt>
+          <dd>{profile?.followersCount?.toLocaleString() ?? "-"}</dd>
+        </div>
+        <div>
+          <dt>Following</dt>
+          <dd>{profile?.followsCount?.toLocaleString() ?? "-"}</dd>
+        </div>
+        <div>
+          <dt>Posts</dt>
+          <dd>{profile?.postsCount?.toLocaleString() ?? "-"}</dd>
+        </div>
+      </dl>
+      <div className="profile-tabs" aria-label="Profile tabs">
+        {profileTabs.map((tab) => (
+          <button className={selectedTab === tab ? "selected" : ""} key={tab} type="button" onClick={() => onSelectTab(tab)}>
+            {tab}
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 

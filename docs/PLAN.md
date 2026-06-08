@@ -255,7 +255,7 @@ Initial performance budgets:
 - Target Cloudflare Pages Free compatibility for v1.
 - Root Vite/React/TypeScript app is scaffolded at the repository root, so Cloudflare can run `npm run build` and publish `dist`.
 - Current root app includes a desktop reader shell, grouped/filterable Feed selector, right context rail, browser-local recent trail, local composer UI with 300-character validation, per-feed density preferences, direct public Bluesky feed-generator loading for Home, direct public Feed Generator metadata loading for active Feed detail/header context, direct public author-feed loading for `/profile/:handleOrDid`, standalone post-thread route loading, public post and people search at `/search?q=...`, local Feed search over known static Feed destinations, static service worker/app-shell caching, a development inspector for source/request/cache/static-runtime posture, static `_headers`, static `_redirects`, and a build-output audit for forbidden server/runtime artifacts.
-- Latest local production build passed with `npm run build`; audit result: static-only `dist` output. Local preview returned `200` for `/` and `/sw.js`. Browser-plugin visual verification was attempted on 2026-06-08 but the in-app browser backend was unavailable in this session.
+- Latest local production build passed with `npm run build`; audit result: static-only `dist` output. Local preview returned `200` for `/`, `/settings`, `/profile/bsky.app`, `/sw.js`, and `/oauth-client-metadata.json`. Browser-plugin visual verification was attempted on 2026-06-08 but the in-app browser backend was unavailable in this session.
 - Default visual theme is dark, using Bluesky brand colors as anchors: Blue `#0560FF`, Light Blue `#75AFFF`, Dark Gray `#232E3E`, and Light Gray `#F9FAFB`.
 - `https://bigbsky.pages.dev/` and `https://bigbsky.com/` are serving the static app. Clean profile routes such as `https://bigbsky.com/profile/radialmonster.com` return the SPA shell through static fallback.
 - Signed-out Home feed has been tested working against public feed-generator sources. Current default sources intentionally avoid official feed generators that returned `502` signed out, and avoid `What's Hot Classic` because it surfaced NSFW content despite returning `200`.
@@ -990,8 +990,8 @@ Request budget mindset:
 
 ### Phase 2: OAuth Login
 
-- Add AT Protocol OAuth client metadata.
-- Serve OAuth client metadata, icons, and callback shell as static assets only.
+- Add AT Protocol OAuth client metadata. Status: first static public-client metadata document implemented at `/oauth-client-metadata.json` for the `https://bigbsky.com/oauth-client-metadata.json` client ID, including HTTPS callbacks, refresh-token grant declaration, `atproto transition:generic` scope, and DPoP-bound tokens.
+- Serve OAuth client metadata, icons, and callback shell as static assets only. Status: partial; OAuth client metadata and the callback shell are static SPA assets, with icon assets still pending.
 - Add static OAuth callback route/surface through the SPA shell. Status: placeholder route implemented for `/oauth/callback`; browser-side OAuth state validation and token exchange remain pending.
 - Implement sign-in with handle input.
 - Complete callback handling.
@@ -999,7 +999,7 @@ Request budget mindset:
 - Persist session locally.
 - Show signed-in account identity.
 - Add visible sign-out in account/profile menu and Settings.
-- Sign-out must clear local OAuth session state, account-specific cache, and account-specific browser-local data without needing a BigBSky backend.
+- Sign-out must clear local OAuth session state, account-specific cache, and account-specific browser-local data without needing a BigBSky backend. Status: partial; Settings now includes local browser-reader data cleanup for `bigbsky:*` keys and in-memory caches, while OAuth session-specific cleanup waits for Phase 2 auth state.
 - Sign-out should attempt OAuth revocation where supported, but local sign-out must still work if revocation fails.
 - Verify reload persistence and multi-tab behavior.
 
@@ -1022,12 +1022,12 @@ Request budget mindset:
 - Multi-post/thread composition from the inline composer.
 - Drafts and Post All support where feasible.
 - 300-character-per-post limit counter and validation.
-- Menu destination views for Explore, Notifications, Feeds, Lists, Saved, Profile, and Settings. Status: first pass implemented with static SPA routes for Explore, Feeds, Notifications, Chat, Lists, Saved, Profile, and Settings; each route now shows structured client-only section cards, and Explore links into public search.
+- Menu destination views for Explore, Notifications, Feeds, Lists, Saved, Profile, and Settings. Status: first pass implemented with static SPA routes for Explore, Feeds, Notifications, Chat, Lists, Saved, Profile, and Settings; each route now shows structured client-only section cards, Explore links into public search, and Settings has local appearance/data/account panels.
 - Chat entry point and empty/message-list state, with full DM behavior deferred until privacy/API handling is clear. Status: first pass implemented as a static SPA placeholder route that explicitly defers DM behavior.
 - Feed detail header with Feed name, creator, count, options, and active Feed timeline below. Status: first pass implemented for public Feed Generator metadata, creator handle, like count, Feed URI key, description, avatar, and active timeline below; client-only options now include disabled Pin feed, Copy URI, and Open on Bluesky controls.
 - Post/thread detail view with reply composer, stats, repost/quote/like/save links, and reply permissions. Status: partial; standalone threads now show conversation metadata, reply/repost/quote/like counts, timestamp, reply-permission text, and a local 300-character reply composer placeholder; authenticated reply/write actions remain pending.
 - Search result view with query, clear action, language selector, and Top/Latest/People/Feeds filters. Status: first pass implemented with query form, clear-query button, Posts/People/Feeds tabs, Top/Latest post results, language selector for post search, public actor search for People, and local Feed destination results for Feeds.
-- Profile view variants for self-profile and other-user profiles.
+- Profile view variants for self-profile and other-user profiles. Status: partial; public other-user profile routes now render a profile-specific header with stats, disabled follow/action controls, Open on Bluesky/Copy link actions, and local Posts/Replies/Media/Videos tabs over loaded public posts. Self-profile remains a signed-in placeholder until OAuth account identity exists.
 - Media, GIF/video, alt text, and content-label rendering states. Status: partial; image alt badges, video thumbnail/placeholder cards, and content-label chips now render from loaded AppView data, with full GIF/video playback controls and richer moderation states still pending.
 - Muted/blocked content handling as exposed by APIs.
 - Account-aware post rendering.
@@ -1115,7 +1115,7 @@ Request budget mindset:
 - Static app deploys successfully to Cloudflare Pages.
 - App works without D1, KV, R2, Durable Objects, Workers, Pages Functions, or a custom backend.
 - Pages Function/Worker request count remains zero during normal v1 usage.
-- Build output contains no `functions/`, `_worker.js`, SSR server chunks, middleware, API routes, or edge runtime artifacts. Status: verified locally by `npm run build` static-output audit on 2026-06-08 after the virtualized feed and static surface-route changes.
+- Build output contains no `functions/`, `_worker.js`, SSR server chunks, middleware, API routes, or edge runtime artifacts. Status: verified locally by `npm run build` static-output audit on 2026-06-08 after the profile/settings/OAuth metadata changes.
 - Cloudflare project has no Worker routes, Pages Functions, Pages Plugins, service bindings, KV/D1/R2/Durable Object bindings, queues, scheduled jobs, Web Analytics/Zaraz, Image Resizing/Images, or server-side redirect rules enabled for v1 normal traffic.
 - Cloudflare dashboard shows zero Pages Function/Worker invocations while testing first load, in-app navigation, Feed scrolling, profile previews, thread previews, search, OAuth callback, and sign-out.
 - App ships as one static document plus a small number of cached hashed assets. Status: local `dist` contains `index.html`, `sw.js`, `_headers`, `_redirects`, and one hashed JS/CSS asset pair.
@@ -1125,11 +1125,11 @@ Request budget mindset:
 - Shared deep links are served by static SPA fallback routing, not a Function.
 - OAuth callback is served by the static SPA fallback and handled browser-side.
 - No server-side analytics, logging, redirects, image optimization, link previews, remote config, feature flags, or health checks are deployed.
-- OAuth client metadata is reachable at its final HTTPS URL.
+- OAuth client metadata is reachable at its final HTTPS URL. Status: local static asset implemented and verified at `/oauth-client-metadata.json`; production `https://bigbsky.com/oauth-client-metadata.json` verification remains pending after deploy.
 - User can sign in with a Bluesky handle.
 - Session survives refresh without our backend.
 - Sign-out is always visible to signed-in users.
-- Sign-out clears local auth state and account-specific browser-local data without a BigBSky backend.
+- Sign-out clears local auth state and account-specific browser-local data without a BigBSky backend. Status: partial; local reader data cleanup exists in Settings, while OAuth session/token cleanup remains pending.
 - Sign-out does not clear static app-shell/service-worker cache unless the user explicitly clears site data.
 - Public profile/thread/feed pages work while signed out.
 - Home timeline and notifications work while signed in.
