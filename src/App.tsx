@@ -4,7 +4,6 @@ import {
   Compass,
   Feather,
   Film,
-  Flame,
   Hash,
   Home,
   Image,
@@ -112,17 +111,6 @@ type EntityCache = {
   posts: Record<string, FeedPost>;
   profiles: Record<string, Profile>;
   linkUrls: string[];
-  mediaPosts: Array<{
-    uri: string;
-    authorHandle: string;
-    thumb: string;
-    alt: string;
-  }>;
-  smartGroups: Array<{
-    key: string;
-    label: string;
-    count: number;
-  }>;
 };
 
 type DevMetrics = {
@@ -274,29 +262,6 @@ function isRateLimit(error: unknown) {
 
 function rateLimitMessage(error: unknown) {
   return error instanceof Error ? error.message : "Bluesky rate limit reached.";
-}
-
-function normalizeGroupText(text?: string) {
-  return text
-    ?.toLowerCase()
-    .replace(/https?:\/\/\S+/g, "")
-    .replace(/[^\p{L}\p{N}#\s]/gu, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 96);
-}
-
-function groupLabel(key: string) {
-  if (key.startsWith("link:")) {
-    return `Link: ${key.slice(5)}`;
-  }
-  if (key.startsWith("quote:")) {
-    return "Quoted post discussion";
-  }
-  if (key.startsWith("reply:")) {
-    return "Thread activity";
-  }
-  return `Topic: ${key.slice(5)}`;
 }
 
 function countThreadRows(node?: ThreadNode): number {
@@ -455,8 +420,6 @@ export function App() {
     const posts: Record<string, FeedPost> = {};
     const profiles: Record<string, Profile> = {};
     const linkUrls: string[] = [];
-    const mediaPosts: EntityCache["mediaPosts"] = [];
-    const groupCounts = new Map<string, number>();
 
     for (const post of [...feedState.items.map((item) => item.post), ...searchState.posts]) {
       posts[post.uri] = post;
@@ -466,46 +429,10 @@ export function App() {
       const external = getExternalEmbed(post.embed);
       if (external?.uri) {
         linkUrls.push(external.uri);
-        groupCounts.set(`link:${external.uri}`, (groupCounts.get(`link:${external.uri}`) ?? 0) + 1);
-      }
-
-      const record = getRecordEmbed(post.embed);
-      if (record?.uri) {
-        groupCounts.set(`quote:${record.uri}`, (groupCounts.get(`quote:${record.uri}`) ?? 0) + 1);
-      }
-
-      const replyRoot = feedState.items.find((item) => item.post.uri === post.uri)?.reply?.root?.uri;
-      if (replyRoot) {
-        groupCounts.set(`reply:${replyRoot}`, (groupCounts.get(`reply:${replyRoot}`) ?? 0) + 1);
-      }
-
-      const normalizedText = normalizeGroupText(post.record.text);
-      if (normalizedText && normalizedText.length > 28) {
-        groupCounts.set(`text:${normalizedText}`, (groupCounts.get(`text:${normalizedText}`) ?? 0) + 1);
-      }
-
-      const images = getEmbedImages(post.embed);
-      const video = getVideoEmbed(post.embed);
-      const imageThumb = images[0]?.thumb || images[0]?.fullsize;
-      const videoThumb = video?.thumbnail;
-      const thumb = imageThumb || videoThumb;
-      if (thumb) {
-        mediaPosts.push({
-          uri: post.uri,
-          authorHandle: post.author.handle,
-          thumb,
-          alt: images[0]?.alt || video?.alt || "",
-        });
       }
     }
 
-    const smartGroups = [...groupCounts.entries()]
-      .filter(([, count]) => count > 1)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([key, count]) => ({ key, count, label: groupLabel(key) }));
-
-    return { posts, profiles, linkUrls, mediaPosts: mediaPosts.slice(0, 8), smartGroups };
+    return { posts, profiles, linkUrls };
   }, [feedState.items, searchState.posts]);
   const visibleProfileItems = useMemo(() => {
     if (route.kind !== "profile") {
@@ -1521,12 +1448,9 @@ export function App() {
         <FeedMapPanel groups={feedMapSummary} />
         <LinkPreviewPanel
           preview={linkPreview}
-          relatedPosts={linkPreview ? feedState.items.map((item) => item.post).filter((post) => getExternalEmbed(post.embed)?.uri === linkPreview.uri) : []}
           onClose={() => setLinkPreview(null)}
           onOpenPost={openPost}
         />
-        <SmartGroupsPanel groups={entityCache.smartGroups} />
-        <MediaStripPanel mediaPosts={entityCache.mediaPosts} posts={entityCache.posts} onOpenPost={openPost} />
         <RecentPanel
           items={recentItems}
           onOpen={(item) => {
@@ -2598,9 +2522,6 @@ function PostCard({
   const text = post.record.text?.trim() || "";
   const preservesLineBreaks = text.includes("\n");
   const hasRichContent = images.length > 0 || !!external || !!recordEmbed || !!video;
-  const engagementTotal = (post.replyCount ?? 0) + (post.repostCount ?? 0) + (post.likeCount ?? 0) + (post.quoteCount ?? 0);
-  const hasDiscussion = (post.replyCount ?? 0) >= 10 || (post.quoteCount ?? 0) >= 8;
-  const hasHighReach = engagementTotal >= 100;
 
   return (
     <article className="post-card">
@@ -2616,18 +2537,8 @@ function PostCard({
       </header>
       {item.reason?.by && <p className="reason">Reposted by {displayName(item.reason.by)}</p>}
       {item.reply?.parent && <p className="reason">Replying in a thread from @{item.reply.parent.author.handle}</p>}
-      {(hasDiscussion || hasHighReach || (post.labels?.length ?? 0) > 0) && (
+      {(post.labels?.length ?? 0) > 0 && (
         <div className="post-badges" aria-label="Post context">
-          {hasDiscussion && (
-            <span>
-              <MessageCircle size={13} /> Active discussion
-            </span>
-          )}
-          {hasHighReach && (
-            <span>
-              <Flame size={13} /> High activity
-            </span>
-          )}
           {post.labels?.slice(0, 3).map((label) => (
             <span key={`${post.uri}:${label.val || label.src || label.uri}`}>
               {label.val || "Content label"}
@@ -3339,14 +3250,6 @@ function FeedContextPanel({
           <dt>Cached posts</dt>
           <dd>{Object.keys(entityCache.posts).length.toLocaleString()}</dd>
         </div>
-        <div>
-          <dt>Media posts</dt>
-          <dd>{entityCache.mediaPosts.length.toLocaleString()}</dd>
-        </div>
-        <div>
-          <dt>Smart groups</dt>
-          <dd>{entityCache.smartGroups.length.toLocaleString()}</dd>
-        </div>
       </dl>
     </section>
   );
@@ -3366,32 +3269,12 @@ function FeedMapPanel({ groups }: { groups: Record<string, number> }) {
   );
 }
 
-function SmartGroupsPanel({ groups }: { groups: EntityCache["smartGroups"] }) {
-  if (groups.length === 0) {
-    return null;
-  }
-
-  return (
-    <section className="context-panel smart-groups-panel">
-      <h2>Smart Groups</h2>
-      {groups.map((group) => (
-        <button key={group.key} type="button" title={group.label}>
-          <span>{group.count} posts</span>
-          <small>{group.label}</small>
-        </button>
-      ))}
-    </section>
-  );
-}
-
 function LinkPreviewPanel({
   preview,
-  relatedPosts,
   onClose,
   onOpenPost,
 }: {
   preview: LinkPreviewState;
-  relatedPosts: FeedPost[];
   onClose: () => void;
   onOpenPost: (post: FeedPost) => void;
 }) {
@@ -3426,44 +3309,6 @@ function LinkPreviewPanel({
           Open source post
         </button>
       )}
-      {relatedPosts.length > 1 && <p>{relatedPosts.length.toLocaleString()} loaded posts share this link.</p>}
-    </section>
-  );
-}
-
-function MediaStripPanel({
-  mediaPosts,
-  posts,
-  onOpenPost,
-}: {
-  mediaPosts: EntityCache["mediaPosts"];
-  posts: EntityCache["posts"];
-  onOpenPost: (post: FeedPost) => void;
-}) {
-  if (mediaPosts.length === 0) {
-    return null;
-  }
-
-  return (
-    <section className="context-panel media-strip-panel">
-      <h2>Media Strip</h2>
-      <div className="media-strip">
-        {mediaPosts.map((media) => (
-          <button
-            key={`${media.uri}:${media.thumb}`}
-            type="button"
-            onClick={() => {
-              const post = posts[media.uri];
-              if (post) {
-                onOpenPost(post);
-              }
-            }}
-            title={`Open @${media.authorHandle} media post`}
-          >
-            <img src={media.thumb} alt={media.alt} loading="lazy" decoding="async" />
-          </button>
-        ))}
-      </div>
     </section>
   );
 }

@@ -1839,9 +1839,7 @@ button {
 }
 
 .recent-panel span,
-.recent-panel small,
-.smart-groups-panel span,
-.smart-groups-panel small {
+.recent-panel small {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -1849,40 +1847,9 @@ button {
   white-space: nowrap;
 }
 
-.recent-panel small,
-.smart-groups-panel small {
+.recent-panel small {
   margin-top: 2px;
   color: var(--app-text-muted);
-}
-
-.smart-groups-panel button {
-  height: auto;
-  min-height: 48px;
-  padding-block: 8px;
-}
-
-.media-strip {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.media-strip button {
-  width: 100%;
-  min-height: 0;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  aspect-ratio: 1;
-  border-radius: 6px;
-  background: var(--app-surface-2);
-}
-
-.media-strip img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
 
 .state,

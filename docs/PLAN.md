@@ -17,6 +17,8 @@ Build a desktop-first Bluesky reader that uses the AT Protocol and Bluesky APIs 
 
 The app is a desktop reader first, not a mobile clone.
 
+BigBSky should preserve Bluesky's original post data and account surfaces. The product should improve layout, navigation, density, media sizing, and widescreen ergonomics without inventing engagement labels, topic labels, scores, clusters, or summaries that reinterpret Bluesky content.
+
 Primary design targets:
 
 - 1920x1080 and larger monitors.
@@ -160,26 +162,22 @@ The biggest design win is to make the active Feed timeline a desktop reading sur
 Useful creative ideas that fit the Feed-first product direction:
 
 - Feed magazine mode: keep the endless Feed, but give media/link-heavy Feeds a more editorial layout with larger lead media, compact text-only posts, and stronger visual grouping. Static path: compute layout in the browser from currently loaded Feed items and local display preferences.
-- Smart post grouping: collapse repeated links/topics/quote storms into clusters such as "12 posts about this" so the Feed is less repetitive without hiding access to individual posts. Static path: group only currently loaded posts by URL, quoted post URI, reply root, hashtags, or simple normalized text. Defer global clustering across unseen posts.
 - Per-Feed layout memory: remember layout/density preferences per Feed, such as media-heavy for design/art Feeds, compact for trading/news Feeds, and comfortable for Following. Static path: store browser-locally by Feed URI. Defer cross-device sync.
 - Author/profile preview in the right rail: selecting an author can show profile details, follow controls, recent posts, and related Feeds without leaving the active Feed. Static path: fetch live profile and author-feed data on demand, then cache locally.
-- Link preview reader: expand article/link cards into a side panel with source, excerpt, related posts, quote posts, and discussion around that link. Static path: use link-card metadata already present in Bluesky posts plus live Bluesky search/quote/thread APIs where available. Defer third-party article crawling or extraction.
+- Link preview reader: expand Bluesky-provided link-card metadata into a side panel with source, title, thumbnail, description, and source-post actions. Do not crawl third-party pages or summarize related discussion.
 - Feed map: show saved/pinned Feeds grouped by topic/community-style categories while still calling them Feeds. Static path: use user-created browser-local groups plus client-side grouping from Feed names/descriptions. Defer shared/global Feed taxonomy.
 - Session history trail: keep a small recent trail of viewed Feeds, profiles, posts, and searches so desktop browsing has better wayfinding. Static path: browser-local recent history only.
-- Media strip: optional visual strip/panel of recent images/videos from the active Feed for art, design, photography, video, and music-related Feeds. Static path: derive from currently loaded Feed items.
-- Post density markers: subtle signals for high-discussion, high-like, high-repost, or fast-moving posts to improve scanning. Static path: compute from reply/repost/like counts and timestamps already present on loaded posts. Defer server-side velocity/trend scoring. Status: first pass implemented with local active-discussion and high-activity chips.
 - Context-preserving profile peek: open profile previews in-place first, with full profile navigation only when the user chooses it. Static path: live API fetch on demand and browser-local cache.
 
 Highest-priority creative ideas:
 
 - Per-Feed layout memory.
-- Smart post grouping.
 - Feed map.
 
 Remove or defer if stateless implementation is not enough:
 
 - Shared Feed maps or public topic taxonomies requiring our backend.
-- Global smart grouping across users or posts the browser has not loaded.
+- Engagement labels, topic labels, smart grouping, local scoring, or generated summaries that reinterpret Bluesky posts.
 - Cross-device BigBSky preference sync.
 - Article extraction/summarization requiring our server to fetch third-party pages.
 - Analytics-driven recommendations based on server-side behavior tracking.
@@ -498,11 +496,8 @@ bigbsky/
         AuthorPreviewPanel.tsx
         LinkPreviewPanel.tsx
         TrendingPanel.tsx
-        MediaStrip.tsx
       novel/
         magazineMode.ts
-        smartPostGrouping.ts
-        postDensityMarkers.ts
         linkPreviewModel.ts
     components/
       Button.tsx
@@ -654,8 +649,7 @@ Feature-by-feature implications:
 - Search and trending: keep if using Bluesky APIs directly. Do not build our own search index.
 - Profiles, post/thread views, lists, saved posts: keep as live API views with browser-local UI state only.
 - Settings: support local BigBSky settings browser-locally. For Bluesky account settings, link to or call supported Bluesky APIs directly; do not duplicate settings that require backend account management.
-- Context panels, previews, media strip, density modes, magazine mode: keep because they are client render/layout features over loaded API data.
-- Smart grouping and post density markers: keep only as client-side calculations over loaded posts. Defer global/server-computed versions.
+- Context panels, previews, density modes, and magazine mode: keep when they are presentation changes for Bluesky-provided data, not new interpretations of post meaning or importance.
 - Optional multi-column mode: keep if each column is just another live API query and local layout preference. Avoid server-persisted workspaces.
 
 ## Static And OAuth Proof Log
@@ -812,14 +806,14 @@ Bluesky/API request strategy:
 - Cache API responses in memory first, with optional short-lived IndexedDB cache for public/profile/Feed metadata.
 - Keep timeline page caches scoped by active source and cursor. Route changes should retain loaded pages until the user explicitly refreshes or memory pressure requires pruning.
 - Use stale-while-revalidate behavior for Feed metadata, profile previews, Feed maps, and right-rail panels.
-- Fetch details on demand: author previews, link preview panels, thread expansions, liked-by/reposted-by/quotes pages, and media strips should load only when opened or visible.
+- Fetch details on demand: author previews, link preview panels, thread expansions, and liked-by/reposted-by/quotes pages should load only when opened or visible.
 - Virtualize long timelines so rendering more content does not trigger unnecessary detail fetches. Status: first pass implemented for Feed and profile timelines with measured row windowing.
 - Avoid prefetching every post's author profile, thread, quote context, or media details.
 - Batch or coalesce where APIs support it, especially profile lookups, post lookups, and Feed metadata.
 - Use request cancellation for obsolete source/search/preview requests so late responses do not overwrite the active view.
-- Prefer derived local indexes for loaded posts, such as posts by author, posts by link URL, posts by quote URI, and posts with media, instead of fetching separate "related" surfaces by default.
+- Prefer local references to already-loaded Bluesky entities instead of fetching separate related surfaces by default.
 - Keep optional multi-column mode conservative: each extra column is another live timeline query, so it should be user-enabled and visibly count as extra activity.
-- For smart grouping, post density markers, magazine mode, and media strips, operate only on already-loaded Feed items unless the user explicitly opens more detail.
+- For magazine mode and other layout variants, operate only on already-loaded Feed items unless the user explicitly opens more detail.
 - Back off on rate-limit responses and surface a clear local state instead of retry loops.
 - Persist pagination cursors and loaded Feed state in memory during the session so route changes and context panels do not refetch from scratch.
 - Cap background refresh. Invisible sources, collapsed panels, and inactive tabs should not poll.
@@ -885,9 +879,7 @@ Data shape:
 - Build standalone post pages from already-loaded post entities first when opened from inside the app. On direct open, resolve the `handleOrDid` and `rkey` in the browser, call Bluesky/AT Protocol directly for the post thread, and render the root post plus threaded replies inside the static app shell.
 - Normalize every post, author, embed, media object, and reply edge returned by a thread response. Do not refetch author profiles, post records, media metadata, or link cards that are already embedded in the thread payload unless the user opens a deeper detail surface.
 - Build Feed map entries from saved Feed metadata already loaded for the Feed selector.
-- Build media strip from loaded posts instead of fetching a separate media endpoint unless the user asks for more.
-- Build post density markers from existing counts on loaded posts.
-- Build smart groups from loaded posts only.
+- Build layout variants from the original loaded posts without adding local labels, scores, clusters, or summaries.
 
 Request-saving UI patterns:
 
@@ -942,7 +934,7 @@ Request budget mindset:
 - Opening context should reuse loaded entities before making new requests.
 - Extra panels and optional columns should be opt-in because each one may add live API queries.
 - The default desktop view should show more content through better layout, not by fetching more sources at once.
-- Local derivation beats remote expansion. Smart groups, media strips, density markers, feed maps, and recent history should be computed from loaded data unless the user explicitly asks for a deeper surface.
+- Reuse loaded Bluesky data before requesting more. Local UI state such as feed maps and recent history should not reinterpret post content.
 - Do not let hover states become network traffic by default. Use click, keyboard focus, explicit open, or sustained dwell before fetching details.
 
 ## MVP Scope
@@ -965,7 +957,7 @@ Request budget mindset:
 - Include multi-post/thread composer UI. Status: first pass implemented as a client-only thread composer with add/remove draft posts, Drafts/Post All controls, and per-post validation.
 - Include per-post media attachment UI and upload/posting flow. Status: partial; each draft post supports up to four local media placeholders, with actual upload/posting deferred until OAuth and write APIs are added.
 - Include 300-character counter and validation per post in composer UI. Status: implemented for the current placeholder composer and each draft in the thread composer.
-- Experiment with wider post/card formats for text, media, link cards, quote posts, and threads. Status: implemented as first pass; quote-post cards, quoted media/link/video previews, alt badges, content-label chips, and engagement density markers now render from loaded post data.
+- Experiment with wider post/card formats for text, media, link cards, quote posts, and threads. Status: implemented as first pass; quote-post cards, quoted media/link/video previews, alt badges, and content-label chips now render from loaded post data.
 - Add public timeline/feed/profile/thread data loading. Status: implemented.
 - Add standalone post-thread data loading for `/profile/:handleOrDid/post/:rkey`, including direct-open support for Bluesky-style copied post URLs. Status: implemented.
 - Render standalone post routes as full threaded conversation pages: root post first, then nested replies/comments, with branch expansion for additional replies when Bluesky truncates the initial thread response. Status: partial; nested replies render, loaded reply branches can expand/collapse locally, and posts with more known replies than loaded replies can explicitly fetch a deeper branch from Bluesky by post URI with a session cache. More complete continuation handling for alternate thread APIs remains pending.
@@ -1064,11 +1056,9 @@ Request budget mindset:
 - Saved local workspaces. Status: partial; browser-local saved posts, recent trail, per-feed density preferences, composer drafts, and reply drafts are stored under `bigbsky:*` and clearable from Settings.
 - Per-column source selection: Home, Discover, Following, feed, list, search, profile, mentions, notifications, saved.
 - Per-Feed layout memory. Status: implemented for density mode.
-- Smart post grouping by repeated link/topic/quote activity. Status: first pass implemented in the right rail from already-loaded posts by repeated links, quoted post URIs, reply roots, and normalized text.
 - Feed map grouped by topic/community-style categories. Status: first pass implemented from the local Feed source groups with left-panel group counts and a right-rail Feed Map summary.
-- Link preview reader. Status: first pass implemented as a right-rail preview panel from loaded Bluesky external embed metadata, with source-post and external-link actions; no third-party crawling or BigBSky backend is used.
+- Link preview reader. Status: first pass implemented as a right-rail preview panel from loaded Bluesky external embed metadata, with source-post and external-link actions; no related-discussion summaries, third-party crawling, or BigBSky backend is used.
 - Session history trail. Status: implemented as a browser-local recent trail for feeds, profiles, threads, and searches.
-- Optional media strip/panel for visual Feeds. Status: first pass implemented in the right rail from already-loaded image/video thumbnails, with in-app navigation back to the source post.
 - Performance inspector for development builds showing active source, loaded pages, rendered rows, API requests, cache hits, and service-worker state. Status: implemented as a development-only right-rail inspector showing source, rendered rows, Bluesky API request count, session cache hits, and service-worker state.
 - Quota inspector for development builds showing Cloudflare document/static asset requests separately from Bluesky API requests, with a warning if any Pages Function/Worker route is detected. Status: first pass implemented in the development inspector by counting same-origin static resource entries separately from Bluesky API events and warning on `/api/`, `/functions/`, or `_worker` resource paths.
 
