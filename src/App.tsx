@@ -161,6 +161,14 @@ const initialAuthState: AuthState = {
   session: null,
 };
 
+function countBigbskyLocalKeys() {
+  try {
+    return Object.keys(localStorage).filter((key) => key.startsWith("bigbsky:")).length;
+  } catch {
+    return 0;
+  }
+}
+
 function readDensityPreferences() {
   try {
     return JSON.parse(localStorage.getItem("bigbsky:density-by-context") || "{}") as Record<string, string>;
@@ -1305,6 +1313,7 @@ export function App() {
             recentCount={recentItems.length}
             savedPostCount={savedPosts.length}
             savedPreferenceCount={Object.keys(densityByContext).length}
+            localDataKeyCount={countBigbskyLocalKeys()}
             pinnedFeedCount={pinnedFeedIds.length}
             pinnedFeedIds={pinnedFeedIds}
             workspaceWidth={workspaceWidth}
@@ -1320,6 +1329,7 @@ export function App() {
               });
               navigate({ kind: "feed", uri: source.id }, feedRoutePath(source));
             }}
+            onOpenProfile={openProfile}
             onOpenSearch={() => navigate({ kind: "search" }, "/search")}
             onSignIn={handleSignIn}
             onSignOut={handleSignOut}
@@ -1664,11 +1674,13 @@ function SurfaceView({
   recentCount,
   savedPostCount,
   savedPreferenceCount,
+  localDataKeyCount,
   pinnedFeedCount,
   pinnedFeedIds,
   workspaceWidth,
   onClearLocalData,
   onOpenFeed,
+  onOpenProfile,
   onOpenSearch,
   onSignIn,
   onSignOut,
@@ -1681,11 +1693,13 @@ function SurfaceView({
   recentCount: number;
   savedPostCount: number;
   savedPreferenceCount: number;
+  localDataKeyCount: number;
   pinnedFeedCount: number;
   pinnedFeedIds: string[];
   workspaceWidth: (typeof widthModes)[number];
   onClearLocalData: () => void | Promise<void>;
   onOpenFeed: (source: FeedSource) => void;
+  onOpenProfile: (profile: Profile) => void;
   onOpenSearch: () => void;
   onSignIn: (handle: string) => void | Promise<void>;
   onSignOut: () => void | Promise<void>;
@@ -1743,9 +1757,11 @@ function SurfaceView({
       ],
     },
     profile: {
-      copy: "Self-profile needs OAuth before edit controls, likes, feeds, starter packs, and lists can be shown.",
+      copy: auth.session
+        ? "Self-profile is attached to the restored OAuth identity. Public posts open in the profile reader while account-only tabs remain reserved."
+        : "Self-profile needs OAuth before edit controls, likes, feeds, starter packs, and lists can be shown.",
       cards: [
-        { title: "Posts", detail: "Public profile routes already show other-user post feeds.", status: "Active" },
+        { title: "Posts", detail: "Signed-in users can open their public profile feed from this surface.", status: auth.session ? "Active" : "OAuth later" },
         { title: "Likes", detail: "Self-only tabs need authenticated account context.", status: "OAuth later" },
         { title: "Edit Profile", detail: "Write scopes and local session handling are required first.", status: "Pending" },
       ],
@@ -1762,7 +1778,7 @@ function SurfaceView({
       copy: "Settings starts with local preferences, sign-out placement, and account/session controls.",
       cards: [
         { title: "Appearance", detail: "Density is stored locally per context and applied before feed paint.", status: "Active" },
-        { title: "Account", detail: "Account identity, switcher, and sign-out wait for OAuth.", status: "Pending" },
+        { title: "Account", detail: "Account identity and sign-out are shown after browser OAuth restore.", status: "Partial" },
         { title: "Privacy", detail: "No BigBSky backend storage is used for v1 reader data.", status: "Static" },
       ],
     },
@@ -1828,6 +1844,14 @@ function SurfaceView({
                 <dt>Storage scope</dt>
                 <dd>bigbsky:*</dd>
               </div>
+              <div>
+                <dt>Local keys</dt>
+                <dd>{localDataKeyCount.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>OAuth store</dt>
+                <dd>IndexedDB</dd>
+              </div>
             </dl>
             <button type="button" onClick={onClearLocalData}>
               Clear local reader data
@@ -1861,6 +1885,56 @@ function SurfaceView({
             )}
             {auth.message && <p className={auth.status === "error" ? "settings-warning" : undefined}>{auth.message}</p>}
           </article>
+        </section>
+      </div>
+    );
+  }
+
+  if (name === "profile" && auth.session) {
+    return (
+      <div className="timeline comfortable">
+        <section className="self-profile-card">
+          <div className="account-identity">
+            <Avatar profile={auth.session} />
+            <span>
+              <strong>{auth.session.displayName || auth.session.handle}</strong>
+              <small>@{auth.session.handle}</small>
+            </span>
+          </div>
+          <dl>
+            <div>
+              <dt>Followers</dt>
+              <dd>{auth.session.followersCount?.toLocaleString() ?? "-"}</dd>
+            </div>
+            <div>
+              <dt>Following</dt>
+              <dd>{auth.session.followsCount?.toLocaleString() ?? "-"}</dd>
+            </div>
+            <div>
+              <dt>Posts</dt>
+              <dd>{auth.session.postsCount?.toLocaleString() ?? "-"}</dd>
+            </div>
+          </dl>
+          <div className="self-profile-actions">
+            <button type="button" onClick={() => onOpenProfile(auth.session as Profile)}>
+              Open public profile
+            </button>
+            <button type="button" disabled title="Edit profile requires authenticated write support">
+              Edit profile
+            </button>
+            <button type="button" onClick={onSignOut}>
+              Sign out
+            </button>
+          </div>
+        </section>
+        <section className="surface-grid" aria-label="Self-profile sections">
+          {surface.cards.map((card) => (
+            <article className="surface-card" key={card.title}>
+              <span>{card.status}</span>
+              <h3>{card.title}</h3>
+              <p>{card.detail}</p>
+            </article>
+          ))}
         </section>
       </div>
     );

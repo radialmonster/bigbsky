@@ -989,9 +989,9 @@ Request budget mindset:
 - Complete callback handling. Status: partial; callback detection and SDK `init()` handling are wired, but production OAuth callback verification and error-state polish remain pending.
 - Handle OAuth callback parsing, state validation, token exchange, session restore, and refresh in browser code or the OAuth SDK without a BigBSky backend. Status: partial; the app lazy-loads `@atproto/oauth-client-browser` for known stored sessions, callbacks, sign-in, and sign-out, and avoids loading OAuth chunks on cold signed-out reader visits. End-to-end production token exchange still needs verification.
 - Persist session locally. Status: partial; the SDK-managed IndexedDB store is used and BigBSky records the active DID/handle in `bigbsky:auth:*` local keys for restore. Reload and multi-tab verification remain pending.
-- Show signed-in account identity. Status: first pass implemented after SDK restore/callback by fetching the signed-in profile through `@atproto/api` and showing handle/display name/avatar in the account panel and Settings.
-- Add visible sign-out in account/profile menu and Settings. Status: partial; right-rail account panel, Settings account panel, and signed-in left rail expose sign-out when a session is present. Rich account switcher placement remains pending.
-- Sign-out must clear local OAuth session state, account-specific cache, and account-specific browser-local data without needing a BigBSky backend. Status: partial; sign-out now clears `bigbsky:auth:*` keys and the SDK OAuth IndexedDB store after attempting revocation, and Settings local data cleanup also clears browser reader/auth state. Account-scoped query cache clearing will expand with signed-in reads.
+- Show signed-in account identity. Status: first pass implemented after SDK restore/callback by fetching the signed-in profile through `@atproto/api` and showing handle/display name/avatar in the left rail, right-rail account panel, self-profile surface, and Settings.
+- Add visible sign-out in account/profile menu and Settings. Status: partial; right-rail account panel, Settings account panel, signed-in left rail, and signed-in Profile surface expose sign-out when a session is present. Rich account switcher placement remains pending.
+- Sign-out must clear local OAuth session state, account-specific cache, and account-specific browser-local data without needing a BigBSky backend. Status: partial; sign-out now clears `bigbsky:auth:*` keys and the SDK OAuth IndexedDB store after attempting revocation, and Settings local data cleanup also clears browser reader/auth state while reporting local BigBSky key counts. Account-scoped query cache clearing will expand with signed-in reads.
 - Sign-out should attempt OAuth revocation where supported, but local sign-out must still work if revocation fails. Status: first pass implemented with SDK `revoke()` attempt and local cleanup fallback.
 - Verify reload persistence and multi-tab behavior.
 
@@ -1007,7 +1007,7 @@ Request budget mindset:
 - Personal feeds/lists.
 - Saved posts. Status: first pass implemented as a browser-local saved timeline under `/saved`; post cards can save/remove loaded public posts locally without a backend or account write.
 - Search and trending topics.
-- Profile/self-profile surfaces.
+- Profile/self-profile surfaces. Status: partial; signed-in Profile now renders the restored OAuth identity, account stats, local sign-out, disabled edit-profile affordance, and an action into the public profile reader. Account-only Likes/Feeds/Starter Packs/Lists tabs remain pending.
 - Account switcher placeholder and sign-out. Status: partial; signed-in identity now appears in the left rail with profile access and visible sign-out, plus right-rail and Settings account controls.
 - Inline composer/input at the top of the active Feed timeline. Status: implemented as a local composer placeholder with autosaved browser-local draft state.
 - Image attachment support for the inline composer. Status: first pass implemented with per-post local media placeholders capped at four images while authenticated upload remains pending.
@@ -1019,7 +1019,7 @@ Request budget mindset:
 - Feed detail header with Feed name, creator, count, options, and active Feed timeline below. Status: first pass implemented for public Feed Generator metadata, creator handle, like count, Feed URI key, description, avatar, and active timeline below; client-only options now include local Pin/Unpin feed, Copy URI, and Open on Bluesky controls.
 - Post/thread detail view with reply composer, stats, repost/quote/like/save links, and reply permissions. Status: partial; standalone threads now show conversation metadata, reply/repost/quote/like counts, timestamp, reply-permission text, local save actions, and a browser-local 300-character reply draft per thread; authenticated reply/write actions remain pending.
 - Search result view with query, clear action, language selector, and Top/Latest/People/Feeds filters. Status: first pass implemented with query form, clear-query button, Posts/People/Feeds tabs, Top/Latest post results, language selector for post search, public actor search for People, and local Feed destination results for Feeds.
-- Profile view variants for self-profile and other-user profiles. Status: partial; public other-user profile routes now render a profile-specific header with stats, disabled follow/action controls, Open on Bluesky/Copy link actions, and local Posts/Replies/Media/Videos tabs over loaded public posts. Self-profile remains a signed-in placeholder until OAuth account identity exists.
+- Profile view variants for self-profile and other-user profiles. Status: partial; public other-user profile routes now render a profile-specific header with stats, disabled follow/action controls, Open on Bluesky/Copy link actions, and local Posts/Replies/Media/Videos tabs over loaded public posts. Self-profile now uses the restored OAuth identity for display/stats/sign-out and can open the signed-in user's public profile reader, while account-only tabs and edit controls remain pending.
 - Media, GIF/video, alt text, and content-label rendering states. Status: partial; image alt badges, video thumbnail/placeholder cards, and content-label chips now render from loaded AppView data, with full GIF/video playback controls and richer moderation states still pending.
 - Muted/blocked content handling as exposed by APIs.
 - Account-aware post rendering.
@@ -1105,11 +1105,11 @@ Request budget mindset:
 - Static app deploys successfully to Cloudflare Pages.
 - App works without D1, KV, R2, Durable Objects, Workers, Pages Functions, or a custom backend.
 - Pages Function/Worker request count remains zero during normal v1 usage.
-- Build output contains no `functions/`, `_worker.js`, SSR server chunks, middleware, API routes, or edge runtime artifacts. Status: verified locally by `npm run build` static-output audit on 2026-06-08 after the profile/settings/OAuth metadata changes.
+- Build output contains no `functions/`, `_worker.js`, SSR server chunks, middleware, API routes, or edge runtime artifacts. Status: verified locally by `npm run build` static-output audit on 2026-06-08 after the self-profile/settings/audit changes; the audit now also requires `index.html`, `_redirects`, `/oauth-client-metadata.json`, `/sw.js`, SPA fallback routing, OAuth callback metadata, and initial JS/CSS gzip budget compliance.
 - Cloudflare project has no Worker routes, Pages Functions, Pages Plugins, service bindings, KV/D1/R2/Durable Object bindings, queues, scheduled jobs, Web Analytics/Zaraz, Image Resizing/Images, or server-side redirect rules enabled for v1 normal traffic.
 - Cloudflare dashboard shows zero Pages Function/Worker invocations while testing first load, in-app navigation, Feed scrolling, profile previews, thread previews, search, OAuth callback, and sign-out.
 - App ships as one static document plus a small number of cached hashed assets. Status: local `dist` contains `index.html`, `sw.js`, `_headers`, `_redirects`, one main JS/CSS asset pair, and lazy OAuth/API chunks that are not loaded on cold signed-out Settings smoke tests.
-- Initial reader bundle stays within the agreed JS/CSS gzip budgets or has an explicit exception. Status: local production build on 2026-06-08 emitted a 63.46 kB gzip initial JS asset and 4.90 kB gzip CSS asset; OAuth/API chunks are lazy.
+- Initial reader bundle stays within the agreed JS/CSS gzip budgets or has an explicit exception. Status: local production build on 2026-06-08 passed the audit with 80 kB gzip initial JS and 5 kB gzip CSS against the local 100 kB JS / 20 kB CSS audit budgets; OAuth/API chunks remain lazy.
 - Service worker serves repeat app-shell visits from browser cache. Status: static service worker implemented and `/sw.js` verified via local preview; browser registration/runtime verification still pending because the in-app browser backend was unavailable on 2026-06-08.
 - In-app navigation does not reload the document or request new HTML from Cloudflare.
 - Shared deep links are served by static SPA fallback routing, not a Function.
@@ -1118,7 +1118,7 @@ Request budget mindset:
 - OAuth client metadata is reachable at its final HTTPS URL. Status: local static asset implemented and verified at `/oauth-client-metadata.json`; production `https://bigbsky.com/oauth-client-metadata.json` verification remains pending after deploy.
 - User can sign in with a Bluesky handle. Status: first pass implemented with explicit handle/DID/PDS input and browser OAuth SDK redirect; end-to-end production OAuth verification remains pending.
 - Session survives refresh without our backend. Status: partial; SDK local restore path and active DID marker are wired, with reload and multi-tab verification pending.
-- Sign-out is always visible to signed-in users. Status: partial; visible in right-rail account panel and Settings after session restore, with left-rail/profile-menu placement still pending.
+- Sign-out is always visible to signed-in users. Status: partial; visible in the right-rail account panel, Settings, signed-in left rail, and signed-in Profile surface after session restore. Full account switcher placement remains pending.
 - Sign-out clears local auth state and account-specific browser-local data without a BigBSky backend. Status: partial; sign-out clears `bigbsky:auth:*` and the SDK OAuth IndexedDB store after a best-effort revocation attempt.
 - Sign-out does not clear static app-shell/service-worker cache unless the user explicitly clears site data.
 - Public profile/thread/feed pages work while signed out.
@@ -1127,7 +1127,7 @@ Request budget mindset:
 - At 1920px, the active endless-scroll Feed timeline uses width better than `bsky.app`'s narrow mobile column. Status: partial; local feed-width modes now let the reader claim more desktop width while preserving compact rails.
 - At 2560px, the feed presentation becomes richer or more useful instead of expanding empty gutters.
 - No user data is sent to a backend we control.
-- Browser-local preferences/drafts/history can be cleared locally and are not persisted on our infrastructure. Status: implemented for density preferences, recent trail, saved posts, composer draft, reply drafts, and OAuth/local auth markers through the Settings clear-data control.
+- Browser-local preferences/drafts/history can be cleared locally and are not persisted on our infrastructure. Status: implemented for density preferences, recent trail, saved posts, composer draft, reply drafts, and OAuth/local auth markers through the Settings clear-data control; Settings now reports the `bigbsky:*` local key count and OAuth IndexedDB storage scope.
 - Desktop screenshot at 1920x1080 shows the intended wide layout. Status: fallback Puppeteer screenshot captured on 2026-06-08 after virtualized feed scrolling; wide rails, active timeline, right context, and media card layout rendered correctly.
 - Mobile viewport remains usable enough, even though desktop is the priority.
 - Scrolling a long Feed keeps DOM node count bounded and does not degrade after several loaded pages. Status: partial; measured-row virtualization is implemented for feed/profile timelines, and fallback Puppeteer verification confirmed 29 loaded rows with only 2-3 mounted post cards after scrolling. Several loaded-page degradation testing remains pending.
