@@ -24,13 +24,6 @@ export const feedSources: FeedSource[] = [
     description: "Protocol updates and AT ecosystem posts.",
   },
   {
-    id: "jay",
-    label: "Jay at Bluesky",
-    actor: "jay.bsky.team",
-    group: "People",
-    description: "Public demo profile feed used until OAuth and user-pinned feeds are added.",
-  },
-  {
     id: "bigbsky",
     label: "BigBSky Route Test",
     actor: "bsky.app",
