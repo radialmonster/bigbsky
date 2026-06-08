@@ -88,10 +88,10 @@ For signed-in users, BigBSky should aim to expose the same categories of informa
 - Following feed.
 - User-pinned and custom feeds.
 - Mentions.
-- Notifications.
+- Notifications. Status: partial; the route now has a browser-local inbox with All/Mentions controls and local reader/account events while authenticated notification reads remain pending.
 - Chat entry point/status, with direct-message functionality deferred unless safe API support and privacy posture are clear.
 - Feed directory and feed suggestions.
-- Lists.
+- Lists. Status: partial; the route now has browser-local list workspaces with create/delete and empty states, while authenticated Bluesky list sync/timelines remain pending.
 - Saved posts.
 - Profile view and self-profile link.
 - Settings entry point or local settings, depending on which settings can be safely represented through APIs.
@@ -1003,7 +1003,7 @@ Request budget mindset:
 - Pinned/custom feeds in a scalable feed selector. Status: partial; known public Feeds can now be pinned/unpinned locally in the browser, appear in a Pinned group at the top of the selector, and are counted/clearable through Settings. Signed-in pinned/custom Feed sync remains pending.
 - No horizontal feed-tab scrolling for normal feed selection.
 - Feed organization that supports topic/community-style browsing while retaining Bluesky terminology.
-- Notifications.
+- Notifications. Status: partial; local inbox UI now renders account/session state, saved-post count, pinned Feed/search count, local list count, and a mention-search entry point. Authenticated notification reads remain pending.
 - Personal feeds/lists.
 - Saved posts. Status: first pass implemented as a browser-local saved timeline under `/saved`; post cards can save/remove loaded public posts locally without a backend or account write.
 - Search and trending topics. Status: partial; public post/profile/Feed search is implemented, current searches can be pinned locally, and the right rail now derives lightweight hashtag trends from loaded posts with static fallback topics.
@@ -1014,7 +1014,7 @@ Request budget mindset:
 - Multi-post/thread composition from the inline composer. Status: implemented locally with add/remove post controls and per-post validation.
 - Drafts and Post All support where feasible. Status: partial; composer drafts autosave locally and can be cleared, while authenticated Drafts/Post All write behavior remains disabled until OAuth posting is implemented.
 - 300-character-per-post limit counter and validation. Status: implemented for each local composer post and reply draft.
-- Menu destination views for Explore, Notifications, Feeds, Lists, Saved, Profile, and Settings. Status: first pass implemented with static SPA routes for Explore, Feeds, Notifications, Chat, Lists, Saved, Profile, and Settings; each route now shows structured client-only section cards, Explore links into public search, and Settings has local appearance/data/account panels.
+- Menu destination views for Explore, Notifications, Feeds, Lists, Saved, Profile, and Settings. Status: expanded; static SPA routes exist for Explore, Feeds, Notifications, Chat, Lists, Saved, Profile, and Settings. Notifications now has a local inbox surface, Lists now supports browser-local list workspaces with create/delete controls, Explore links into public search, and Settings has local appearance/data/account panels.
 - Chat entry point and empty/message-list state, with full DM behavior deferred until privacy/API handling is clear. Status: first pass implemented as a static SPA placeholder route that explicitly defers DM behavior.
 - Feed detail header with Feed name, creator, count, options, and active Feed timeline below. Status: first pass implemented for public Feed Generator metadata, creator handle, like count, Feed URI key, description, avatar, and active timeline below; client-only options now include local Pin/Unpin feed, Copy URI, and Open on Bluesky controls.
 - Post/thread detail view with reply composer, stats, repost/quote/like/save links, and reply permissions. Status: partial; standalone threads now show conversation metadata, reply/repost/quote/like counts, timestamp, reply-permission text, local save actions, and a browser-local 300-character reply draft per thread; authenticated reply/write actions remain pending.
@@ -1053,7 +1053,7 @@ Request budget mindset:
 - Contextual right rail and preview side panel. Status: partial; the right rail adapts between Feed/profile context, link previews, recent history, Feed Map, local pinned searches, and loaded-post hashtag trends.
 - Thread reader with parent/reply context.
 - Media lightbox. Status: first pass implemented; image posts open in an in-app viewer with viewport-constrained fullsize media, keyboard/onscreen navigation for multi-image posts, thumbnail selection, alt text display, and an open-original action.
-- Saved local workspaces. Status: partial; browser-local saved posts, recent trail, per-feed density preferences, composer drafts, reply drafts, pinned Feeds, pinned searches, and width preferences are stored under `bigbsky:*` and clearable from Settings.
+- Saved local workspaces. Status: partial; browser-local saved posts, recent trail, per-feed density preferences, composer drafts, reply drafts, local list workspaces, pinned Feeds, pinned searches, and width preferences are stored under `bigbsky:*` and clearable from Settings.
 - Per-column source selection: Home, Discover, Following, feed, list, search, profile, mentions, notifications, saved.
 - Per-Feed layout memory. Status: implemented for density mode.
 - Feed map grouped by topic/community-style categories. Status: first pass implemented from the local Feed source groups with left-panel group counts and a right-rail Feed Map summary.
@@ -1123,11 +1123,11 @@ Request budget mindset:
 - Sign-out does not clear static app-shell/service-worker cache unless the user explicitly clears site data.
 - Public profile/thread/feed pages work while signed out.
 - Home timeline and notifications work while signed in.
-- Signed-in layout exposes the same core surfaces as `bsky.app`: Home, Explore/Discover, Following, Notifications, Chat entry point, Feeds, Lists, Saved, Profile, Settings, Search, Trending, Composer, and pinned/custom feeds. Status: partial; primary rail controls now open Home, Explore/Search, Feeds focus, and structured static routes for Notifications, Chat, Lists, Saved, Profile, and Settings.
+- Signed-in layout exposes the same core surfaces as `bsky.app`: Home, Explore/Discover, Following, Notifications, Chat entry point, Feeds, Lists, Saved, Profile, Settings, Search, Trending, Composer, and pinned/custom feeds. Status: partial; primary rail controls now open Home, Explore/Search, Feeds focus, a local Notifications inbox, local Lists workspaces, Saved posts, Profile, and Settings.
 - At 1920px, the active endless-scroll Feed timeline uses width better than `bsky.app`'s narrow mobile column. Status: partial; local feed-width modes now let the reader claim more desktop width while preserving compact rails.
 - At 2560px, the feed presentation becomes richer or more useful instead of expanding empty gutters.
 - No user data is sent to a backend we control.
-- Browser-local preferences/drafts/history can be cleared locally and are not persisted on our infrastructure. Status: implemented for density preferences, recent trail, saved posts, composer draft, reply drafts, and OAuth/local auth markers through the Settings clear-data control; Settings now reports the `bigbsky:*` local key count and OAuth IndexedDB storage scope.
+- Browser-local preferences/drafts/history can be cleared locally and are not persisted on our infrastructure. Status: implemented for density preferences, recent trail, saved posts, composer draft, reply drafts, local list workspaces, and OAuth/local auth markers through the Settings clear-data control; Settings now reports the `bigbsky:*` local key count and OAuth IndexedDB storage scope.
 - Desktop screenshot at 1920x1080 shows the intended wide layout. Status: fallback Puppeteer screenshot captured on 2026-06-08 after the auto-pagination/trending/pinned-search changes; wide rails, active timeline, right context, composer, and loaded-data trending panel rendered correctly.
 - Mobile viewport remains usable enough, even though desktop is the priority.
 - Scrolling a long Feed keeps DOM node count bounded and does not degrade after several loaded pages. Status: partial; measured-row virtualization is implemented for feed/profile timelines, and fallback Puppeteer verification confirmed 29 loaded rows with only 2-3 mounted post cards after scrolling. Several loaded-page degradation testing remains pending.

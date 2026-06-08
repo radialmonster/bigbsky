@@ -994,6 +994,153 @@ button {
   text-decoration: none;
 }
 
+.button.surface-action,
+button.surface-action {
+  border: 0;
+}
+
+.notification-tabs {
+  display: inline-flex;
+  gap: 4px;
+  margin: 14px 0;
+  padding: 3px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: #0f1724;
+}
+
+.notification-tabs button {
+  min-width: 110px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--app-text-muted);
+  font-weight: 700;
+}
+
+.notification-tabs .selected {
+  background: var(--bsky-blue);
+  color: #fff;
+}
+
+.notification-list {
+  display: grid;
+  gap: 10px;
+  max-width: 980px;
+}
+
+.notification-item {
+  display: grid;
+  grid-template-columns: 116px minmax(0, 1fr);
+  gap: 14px;
+  padding: 15px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface);
+}
+
+.notification-item > span,
+.local-list-card > span {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 24px;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  color: var(--app-text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.notification-item h3,
+.local-list-card h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.notification-item p,
+.local-list-card p {
+  margin: 0;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  line-height: 1.42;
+}
+
+.local-list-form {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.7fr) minmax(220px, 1fr) auto;
+  gap: 8px;
+  max-width: 980px;
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface);
+}
+
+.local-list-form input {
+  min-width: 0;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  outline: 0;
+  background: #0f1724;
+  color: var(--app-text);
+}
+
+.local-list-form input:focus {
+  border-color: rgba(117, 175, 255, 0.72);
+}
+
+.local-list-form button,
+.local-list-card button {
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--bsky-blue);
+  color: #fff;
+  font-weight: 700;
+}
+
+.local-list-form button:disabled {
+  cursor: not-allowed;
+  background: #41516a;
+}
+
+.local-list-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 980px;
+}
+
+.local-list-card {
+  display: grid;
+  min-height: 178px;
+  align-content: start;
+  gap: 9px;
+  padding: 15px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface);
+}
+
+.local-list-card small {
+  color: var(--app-text-soft);
+  font-size: 12px;
+}
+
+.local-list-card button {
+  width: fit-content;
+  margin-top: 4px;
+  background: var(--app-surface-2);
+  color: var(--app-text);
+}
+
 .feed-directory-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2382,6 +2529,15 @@ button {
   }
 
   .surface-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .notification-item {
+    grid-template-columns: 1fr;
+  }
+
+  .local-list-form,
+  .local-list-grid {
     grid-template-columns: 1fr;
   }
 

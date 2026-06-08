@@ -107,6 +107,13 @@ type RecentItem = {
   sourceId?: string;
 };
 
+type LocalList = {
+  id: string;
+  name: string;
+  description: string;
+  createdAt: string;
+};
+
 type EntityCache = {
   posts: Record<string, FeedPost>;
   profiles: Record<string, Profile>;
@@ -142,6 +149,7 @@ const searchLanguages = [
 const recentStorageKey = "bigbsky:recent";
 const savedPostsStorageKey = "bigbsky:saved-posts";
 const composerDraftStorageKey = "bigbsky:composer-draft";
+const localListsStorageKey = "bigbsky:local-lists";
 const workspaceWidthStorageKey = "bigbsky:workspace-width";
 const pinnedFeedsStorageKey = "bigbsky:pinned-feeds";
 const pinnedSearchesStorageKey = "bigbsky:pinned-searches";
@@ -191,6 +199,19 @@ function readSavedPosts() {
   try {
     const posts = JSON.parse(localStorage.getItem(savedPostsStorageKey) || "[]") as FeedPost[];
     return Array.isArray(posts) ? posts : [];
+  } catch {
+    return [];
+  }
+}
+
+function readLocalLists() {
+  try {
+    const lists = JSON.parse(localStorage.getItem(localListsStorageKey) || "[]") as LocalList[];
+    return Array.isArray(lists)
+      ? lists
+          .filter((list) => list && typeof list.id === "string" && typeof list.name === "string")
+          .slice(0, 20)
+      : [];
   } catch {
     return [];
   }
@@ -340,6 +361,7 @@ export function App() {
   const [feedMetadata, setFeedMetadata] = useState<FeedGeneratorView | null>(null);
   const [composerDraft, setComposerDraft] = useState(() => readComposerDraft());
   const [savedPosts, setSavedPosts] = useState<FeedPost[]>(() => readSavedPosts());
+  const [localLists, setLocalLists] = useState<LocalList[]>(() => readLocalLists());
   const [imageViewer, setImageViewer] = useState<ImageViewerState>(null);
   const [linkPreview, setLinkPreview] = useState<LinkPreviewState>(null);
   const [densityByContext, setDensityByContext] = useState<Record<string, string>>(() => readDensityPreferences());
@@ -910,6 +932,7 @@ export function App() {
     setRecentItems([]);
     setComposerDraft({ posts: [""], mediaSlots: {} });
     setSavedPosts([]);
+    setLocalLists([]);
     setPinnedFeedIds([]);
     setCollapsedFeedGroups({});
     feedCacheRef.current = {};
@@ -976,6 +999,35 @@ export function App() {
       const exists = current.some((savedPost) => savedPost.uri === post.uri);
       const next = exists ? current.filter((savedPost) => savedPost.uri !== post.uri) : [post, ...current].slice(0, 100);
       localStorage.setItem(savedPostsStorageKey, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function createLocalList(name: string, description: string) {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      return;
+    }
+
+    setLocalLists((current) => {
+      const next = [
+        {
+          id: crypto.randomUUID(),
+          name: trimmedName.slice(0, 80),
+          description: description.trim().slice(0, 180),
+          createdAt: new Date().toISOString(),
+        },
+        ...current,
+      ].slice(0, 20);
+      localStorage.setItem(localListsStorageKey, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function deleteLocalList(id: string) {
+    setLocalLists((current) => {
+      const next = current.filter((list) => list.id !== id);
+      localStorage.setItem(localListsStorageKey, JSON.stringify(next));
       return next;
     });
   }
@@ -1366,11 +1418,14 @@ export function App() {
             savedPostCount={savedPosts.length}
             savedPreferenceCount={Object.keys(densityByContext).length}
             localDataKeyCount={countBigbskyLocalKeys()}
+            localLists={localLists}
             pinnedFeedCount={pinnedFeedIds.length}
             pinnedFeedIds={pinnedFeedIds}
             pinnedSearchCount={pinnedSearches.length}
             workspaceWidth={workspaceWidth}
             onClearLocalData={clearLocalReaderData}
+            onCreateLocalList={createLocalList}
+            onDeleteLocalList={deleteLocalList}
             onOpenFeed={(source) => {
               setActiveSourceId(source.id);
               remember({
@@ -1776,11 +1831,14 @@ function SurfaceView({
   savedPostCount,
   savedPreferenceCount,
   localDataKeyCount,
+  localLists,
   pinnedFeedCount,
   pinnedFeedIds,
   pinnedSearchCount,
   workspaceWidth,
   onClearLocalData,
+  onCreateLocalList,
+  onDeleteLocalList,
   onOpenFeed,
   onOpenProfile,
   onOpenSearch,
@@ -1796,11 +1854,14 @@ function SurfaceView({
   savedPostCount: number;
   savedPreferenceCount: number;
   localDataKeyCount: number;
+  localLists: LocalList[];
   pinnedFeedCount: number;
   pinnedFeedIds: string[];
   pinnedSearchCount: number;
   workspaceWidth: (typeof widthModes)[number];
   onClearLocalData: () => void | Promise<void>;
+  onCreateLocalList: (name: string, description: string) => void;
+  onDeleteLocalList: (id: string) => void;
   onOpenFeed: (source: FeedSource) => void;
   onOpenProfile: (profile: Profile) => void;
   onOpenSearch: () => void;
@@ -1836,19 +1897,19 @@ function SurfaceView({
       ],
     },
     lists: {
-      copy: "Lists will become timeline sources after signed-in reads are available.",
+      copy: "Lists are staged as browser-local workspaces now. Authenticated Bluesky list sync and list timelines can attach here later.",
       cards: [
-        { title: "List Index", detail: "A stable route is ready for account list discovery.", status: "Pending" },
-        { title: "New List", detail: "Authenticated create/edit flows stay out of the public shell.", status: "OAuth later" },
+        { title: "List Index", detail: "Local list workspaces are visible on this route and clearable from Settings.", status: "Local" },
+        { title: "New List", detail: "Create local list shells without sending anything to BigBSky infrastructure.", status: "Active" },
         { title: "List Timelines", detail: "Lists should behave like Feed sources once data is available.", status: "Planned" },
       ],
     },
     notifications: {
-      copy: "Notifications need OAuth, account context, and local session restore.",
+      copy: "Notifications has a local inbox now so account state, saved-post activity, and draft state have a stable destination before OAuth reads are added.",
       cards: [
-        { title: "All", detail: "Likes, reposts, follows, and replies will use account-aware reads.", status: "OAuth later" },
-        { title: "Mentions", detail: "Mentions are reserved as both a notification tab and a Feed selector source.", status: "Planned" },
-        { title: "Settings", detail: "Notification controls belong here after session handling exists.", status: "Pending" },
+        { title: "All", detail: "Local reader/account events render in an inbox-style list.", status: "Local" },
+        { title: "Mentions", detail: "Mention search opens from this surface until authenticated mention reads are available.", status: "Search" },
+        { title: "Settings", detail: "Notification controls remain reserved for signed-in account preferences.", status: "Pending" },
       ],
     },
     "oauth-callback": {
@@ -1948,6 +2009,10 @@ function SurfaceView({
                 <dd>{pinnedSearchCount.toLocaleString()}</dd>
               </div>
               <div>
+                <dt>Local lists</dt>
+                <dd>{localLists.length.toLocaleString()}</dd>
+              </div>
+              <div>
                 <dt>Storage scope</dt>
                 <dd>bigbsky:*</dd>
               </div>
@@ -1994,6 +2059,29 @@ function SurfaceView({
           </article>
         </section>
       </div>
+    );
+  }
+
+  if (name === "notifications") {
+    return (
+      <NotificationsSurface
+        auth={auth}
+        savedPostCount={savedPostCount}
+        pinnedFeedCount={pinnedFeedCount}
+        pinnedSearchCount={pinnedSearchCount}
+        localListCount={localLists.length}
+        onOpenSearch={onOpenSearch}
+      />
+    );
+  }
+
+  if (name === "lists") {
+    return (
+      <ListsSurface
+        lists={localLists}
+        onCreateList={onCreateLocalList}
+        onDeleteList={onDeleteLocalList}
+      />
     );
   }
 
@@ -2090,6 +2178,149 @@ function SurfaceView({
           </article>
         ))}
       </section>
+    </div>
+  );
+}
+
+function NotificationsSurface({
+  auth,
+  savedPostCount,
+  pinnedFeedCount,
+  pinnedSearchCount,
+  localListCount,
+  onOpenSearch,
+}: {
+  auth: AuthState;
+  savedPostCount: number;
+  pinnedFeedCount: number;
+  pinnedSearchCount: number;
+  localListCount: number;
+  onOpenSearch: () => void;
+}) {
+  const events = [
+    {
+      title: auth.session ? `Signed in as @${auth.session.handle}` : "Public reader mode",
+      detail: auth.session
+        ? "Account identity restored from browser OAuth storage."
+        : "Sign in from Settings to enable account-backed notification reads later.",
+      status: auth.session ? "Account" : "Signed out",
+    },
+    {
+      title: `${savedPostCount.toLocaleString()} saved post${savedPostCount === 1 ? "" : "s"}`,
+      detail: "Local saves are available in the Saved timeline and remain browser-only.",
+      status: "Saved",
+    },
+    {
+      title: `${pinnedFeedCount.toLocaleString()} pinned feed${pinnedFeedCount === 1 ? "" : "s"}`,
+      detail: "Pinned Feed destinations stay at the top of the desktop selector.",
+      status: "Feeds",
+    },
+    {
+      title: `${pinnedSearchCount.toLocaleString()} pinned search${pinnedSearchCount === 1 ? "" : "es"}`,
+      detail: "Pinned searches are kept in the right rail for quick return.",
+      status: "Search",
+    },
+    {
+      title: `${localListCount.toLocaleString()} local list workspace${localListCount === 1 ? "" : "s"}`,
+      detail: "List shells are local staging areas until authenticated list reads are added.",
+      status: "Lists",
+    },
+  ];
+
+  return (
+    <div className="timeline comfortable">
+      <section className="surface-placeholder">
+        <h2>Notifications</h2>
+        <p>Local reader events render here now. Account notifications, mentions, and follows can replace this inbox once signed-in reads are available.</p>
+        <button className="surface-action" type="button" onClick={onOpenSearch}>
+          Open mention search
+        </button>
+      </section>
+      <section className="notification-tabs" aria-label="Notification filters">
+        <button className="selected" type="button">
+          All
+        </button>
+        <button type="button" onClick={onOpenSearch}>
+          Mentions
+        </button>
+      </section>
+      <section className="notification-list" aria-label="Local notifications">
+        {events.map((event) => (
+          <article className="notification-item" key={event.title}>
+            <span>{event.status}</span>
+            <div>
+              <h3>{event.title}</h3>
+              <p>{event.detail}</p>
+            </div>
+          </article>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function ListsSurface({
+  lists,
+  onCreateList,
+  onDeleteList,
+}: {
+  lists: LocalList[];
+  onCreateList: (name: string, description: string) => void;
+  onDeleteList: (id: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+
+  return (
+    <div className="timeline comfortable">
+      <section className="surface-placeholder">
+        <h2>Lists</h2>
+        <p>Local list workspaces reserve the desktop list index without creating remote Bluesky lists or storing anything on BigBSky servers.</p>
+      </section>
+      <form
+        className="local-list-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onCreateList(name, description);
+          setName("");
+          setDescription("");
+        }}
+      >
+        <input
+          aria-label="List name"
+          maxLength={80}
+          placeholder="List name"
+          value={name}
+          onInput={(event) => setName(event.currentTarget.value)}
+        />
+        <input
+          aria-label="List description"
+          maxLength={180}
+          placeholder="Description"
+          value={description}
+          onInput={(event) => setDescription(event.currentTarget.value)}
+        />
+        <button type="submit" disabled={!name.trim()}>
+          New list
+        </button>
+      </form>
+      {lists.length === 0 ? (
+        <EmptyState title="No local lists yet" message="Create a local list workspace to stage the signed-in list surface." />
+      ) : (
+        <section className="local-list-grid" aria-label="Local lists">
+          {lists.map((list) => (
+            <article className="local-list-card" key={list.id}>
+              <span>Local</span>
+              <h3>{list.name}</h3>
+              <p>{list.description || "No description yet."}</p>
+              <small>Created {formatPostTime(list.createdAt)}</small>
+              <button type="button" onClick={() => onDeleteList(list.id)}>
+                Delete
+              </button>
+            </article>
+          ))}
+        </section>
+      )}
     </div>
   );
 }
