@@ -93,10 +93,25 @@ type EntityCache = {
   }>;
 };
 
+type DevMetrics = {
+  apiRequests: number;
+  cacheHits: number;
+  sameOriginRequests: number;
+  runtimeWarnings: string[];
+  serviceWorkerState: string;
+};
+
 const densityModes = ["comfortable", "compact", "media"];
 const recentStorageKey = "bigbsky:recent";
 const emptyFeedState: FeedState = { items: [], status: "idle" };
 const emptySearchState: SearchState = { posts: [], status: "idle" };
+const initialDevMetrics: DevMetrics = {
+  apiRequests: 0,
+  cacheHits: 0,
+  sameOriginRequests: 0,
+  runtimeWarnings: [],
+  serviceWorkerState: "checking",
+};
 
 function readDensityPreferences() {
   try {
@@ -172,6 +187,14 @@ function groupLabel(key: string) {
   return `Topic: ${key.slice(5)}`;
 }
 
+function countThreadRows(node?: ThreadNode): number {
+  if (!node || !("post" in node)) {
+    return 0;
+  }
+
+  return 1 + (node.replies ?? []).reduce((total, reply) => total + countThreadRows(reply), 0);
+}
+
 export function App() {
   const [route, setRoute] = useState<RouteState>(() => getRouteState());
   const [activeSourceId, setActiveSourceId] = useState(feedSources[0].id);
@@ -188,6 +211,7 @@ export function App() {
   const [imageViewer, setImageViewer] = useState<ImageViewerState>(null);
   const [densityByContext, setDensityByContext] = useState<Record<string, string>>(() => readDensityPreferences());
   const [recentItems, setRecentItems] = useState<RecentItem[]>(() => readRecentItems());
+  const [devMetrics, setDevMetrics] = useState<DevMetrics>(initialDevMetrics);
   const [thread, setThread] = useState<{ status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string }>({
     status: "idle",
   });
@@ -284,6 +308,7 @@ export function App() {
     if (!cursor) {
       const cached = feedCacheRef.current[cacheKey];
       if (cached?.status === "ready") {
+        setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
         setFeedState(cached);
         requestAnimationFrame(() => timelineRef.current?.scrollTo({ top: scrollCacheRef.current[cacheKey] || 0 }));
         return;
@@ -323,6 +348,7 @@ export function App() {
     if (!cursor) {
       const cached = profileCacheRef.current[cacheKey];
       if (cached?.feed.status === "ready") {
+        setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
         setProfile(cached.profile);
         setFeedState(cached.feed);
         requestAnimationFrame(() => timelineRef.current?.scrollTo({ top: scrollCacheRef.current[cacheKey] || 0 }));
@@ -370,6 +396,7 @@ export function App() {
     if (!cursor) {
       const cached = searchCacheRef.current[cacheKey];
       if (cached?.status === "ready") {
+        setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
         setSearchState(cached);
         return;
       }
@@ -444,6 +471,61 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (!import.meta.env.DEV) {
+      return undefined;
+    }
+
+    const updateServiceWorkerState = () => {
+      const controllerState = navigator.serviceWorker?.controller?.state;
+      setDevMetrics((current) => ({
+        ...current,
+        serviceWorkerState: controllerState || ("serviceWorker" in navigator ? "registered when served over http(s)" : "unsupported"),
+      }));
+    };
+    const onApiRequest = () => setDevMetrics((current) => ({ ...current, apiRequests: current.apiRequests + 1 }));
+    const recordSameOriginEntries = (entries: PerformanceEntry[]) => {
+      const sameOriginEntries = entries.filter((entry) => {
+        try {
+          return new URL(entry.name).origin === window.location.origin;
+        } catch {
+          return false;
+        }
+      });
+      if (sameOriginEntries.length === 0) {
+        return;
+      }
+
+      const warnings = sameOriginEntries
+        .map((entry) => new URL(entry.name).pathname)
+        .filter((path) => path.startsWith("/api/") || path.startsWith("/functions/") || path.includes("_worker"));
+      setDevMetrics((current) => ({
+        ...current,
+        sameOriginRequests: current.sameOriginRequests + sameOriginEntries.length,
+        runtimeWarnings: [...new Set([...current.runtimeWarnings, ...warnings])],
+      }));
+    };
+    window.addEventListener("bigbsky:api-request", onApiRequest);
+    updateServiceWorkerState();
+    recordSameOriginEntries(performance.getEntriesByType("resource"));
+
+    const observer =
+      "PerformanceObserver" in window
+        ? new PerformanceObserver((list) => {
+            recordSameOriginEntries(list.getEntries());
+          })
+        : null;
+
+    observer?.observe({ entryTypes: ["resource"] });
+    navigator.serviceWorker?.addEventListener("controllerchange", updateServiceWorkerState);
+
+    return () => {
+      window.removeEventListener("bigbsky:api-request", onApiRequest);
+      navigator.serviceWorker?.removeEventListener("controllerchange", updateServiceWorkerState);
+      observer?.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
     if (route.kind !== "post") {
       setThread({ status: "idle" });
       return;
@@ -452,6 +534,7 @@ export function App() {
     const cacheKey = `${route.actor}:${route.rkey}`;
     const cached = threadCacheRef.current[cacheKey];
     if (cached) {
+      setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
       setThread({ status: "ready", node: cached });
       return;
     }
@@ -512,6 +595,10 @@ export function App() {
           ? displayName(profile ?? undefined)
           : activeSource.label;
   const activeScrollKey = route.kind === "profile" ? `profile:${route.actor}` : route.kind === "feed" ? `feed:${activeSource.id}` : "";
+  const renderedRows =
+    route.kind === "post" ? countThreadRows(thread.node) : route.kind === "search" ? searchState.posts.length : feedState.items.length;
+  const loadedPages =
+    route.kind === "post" ? (thread.node ? 1 : 0) : Math.ceil((route.kind === "search" ? searchState.posts.length : feedState.items.length) / 30);
 
   useEffect(() => {
     const timeline = timelineRef.current;
@@ -767,6 +854,19 @@ export function App() {
           <h2>Build Posture</h2>
           <p>Static SPA. No Pages Functions, Workers, bindings, KV, D1, R2, or backend sessions for v1.</p>
         </section>
+        {import.meta.env.DEV && (
+          <DevInspector
+            activeSource={activeSource}
+            apiRequests={devMetrics.apiRequests}
+            cacheHits={devMetrics.cacheHits}
+            loadedPages={loadedPages}
+            renderedRows={renderedRows}
+            route={route}
+            runtimeWarnings={devMetrics.runtimeWarnings}
+            sameOriginRequests={devMetrics.sameOriginRequests}
+            serviceWorkerState={devMetrics.serviceWorkerState}
+          />
+        )}
         <section className="context-panel">
           <h2>Trending</h2>
           <button type="button">#atproto</button>
@@ -1421,6 +1521,71 @@ function RecentPanel({ items, onOpen }: { items: RecentItem[]; onOpen: (item: Re
           <small>{item.detail}</small>
         </button>
       ))}
+    </section>
+  );
+}
+
+function DevInspector({
+  activeSource,
+  apiRequests,
+  cacheHits,
+  loadedPages,
+  renderedRows,
+  route,
+  runtimeWarnings,
+  sameOriginRequests,
+  serviceWorkerState,
+}: {
+  activeSource: FeedSource;
+  apiRequests: number;
+  cacheHits: number;
+  loadedPages: number;
+  renderedRows: number;
+  route: RouteState;
+  runtimeWarnings: string[];
+  sameOriginRequests: number;
+  serviceWorkerState: string;
+}) {
+  const routeLabel = route.kind === "feed" ? activeSource.label : route.kind;
+  const warningLabel = runtimeWarnings.length > 0 ? runtimeWarnings.join(", ") : "None detected";
+
+  return (
+    <section className="context-panel dev-inspector">
+      <h2>Dev Inspector</h2>
+      <dl>
+        <div>
+          <dt>Source</dt>
+          <dd>{routeLabel}</dd>
+        </div>
+        <div>
+          <dt>Pages</dt>
+          <dd>{loadedPages.toLocaleString()}</dd>
+        </div>
+        <div>
+          <dt>Rows</dt>
+          <dd>{renderedRows.toLocaleString()}</dd>
+        </div>
+        <div>
+          <dt>API requests</dt>
+          <dd>{apiRequests.toLocaleString()}</dd>
+        </div>
+        <div>
+          <dt>Cache hits</dt>
+          <dd>{cacheHits.toLocaleString()}</dd>
+        </div>
+        <div>
+          <dt>Static assets</dt>
+          <dd>{sameOriginRequests.toLocaleString()}</dd>
+        </div>
+        <div>
+          <dt>Service worker</dt>
+          <dd>{serviceWorkerState}</dd>
+        </div>
+        <div>
+          <dt>Runtime routes</dt>
+          <dd>{warningLabel}</dd>
+        </div>
+      </dl>
     </section>
   );
 }

@@ -254,8 +254,8 @@ Initial performance budgets:
 - Cloudflare Pages preview deployments are public by default.
 - Target Cloudflare Pages Free compatibility for v1.
 - Root Vite/React/TypeScript app is scaffolded at the repository root, so Cloudflare can run `npm run build` and publish `dist`.
-- Current root app includes a desktop reader shell, grouped/filterable Feed selector, right context rail, browser-local recent trail, local composer UI with 300-character validation, per-feed density preferences, direct public Bluesky feed-generator loading for Home, direct public author-feed loading for `/profile/:handleOrDid`, standalone post-thread route loading, public post search at `/search?q=...`, static `_headers`, static `_redirects`, and a build-output audit for forbidden server/runtime artifacts.
-- Latest local production build passed with `npm run build`; audit result: static-only `dist` output.
+- Current root app includes a desktop reader shell, grouped/filterable Feed selector, right context rail, browser-local recent trail, local composer UI with 300-character validation, per-feed density preferences, direct public Bluesky feed-generator loading for Home, direct public author-feed loading for `/profile/:handleOrDid`, standalone post-thread route loading, public post search at `/search?q=...`, static service worker/app-shell caching, a development inspector for source/request/cache/static-runtime posture, static `_headers`, static `_redirects`, and a build-output audit for forbidden server/runtime artifacts.
+- Latest local production build passed with `npm run build`; audit result: static-only `dist` output. Local preview returned `200` for `/` and `/sw.js`. Browser-plugin visual verification was attempted on 2026-06-08 but the in-app browser backend was unavailable in this session.
 - Default visual theme is dark, using Bluesky brand colors as anchors: Blue `#0560FF`, Light Blue `#75AFFF`, Dark Gray `#232E3E`, and Light Gray `#F9FAFB`.
 - `https://bigbsky.pages.dev/` and `https://bigbsky.com/` are serving the static app. Clean profile routes such as `https://bigbsky.com/profile/radialmonster.com` return the SPA shell through static fallback.
 - Signed-out Home feed has been tested working against public feed-generator sources. Current default sources intentionally avoid official feed generators that returned `502` signed out, and avoid `What's Hot Classic` because it surfaced NSFW content despite returning `200`.
@@ -980,8 +980,8 @@ Request budget mindset:
 - Add loading, empty, error, and rate-limit states. Status: implemented for current public feed/search surfaces; additional labeled/blocked/deleted states still pending.
 - Add local layout preferences. Status: implemented for density.
 - Apply local density/layout preferences before initial timeline paint. Status: implemented for per-feed/default density.
-- Add service worker/app-shell caching once the shell stabilizes.
-- Verify repeat visits and in-app navigation do not depend on Cloudflare document reloads or paid/quota-triggering Cloudflare requests. Static asset update checks are allowed only as deliberate background checks.
+- Add service worker/app-shell caching once the shell stabilizes. Status: implemented as a static `public/sw.js` app-shell cache for `/`, `/index.html`, and hashed assets; `/sw.js` is served with must-revalidate caching.
+- Verify repeat visits and in-app navigation do not depend on Cloudflare document reloads or paid/quota-triggering Cloudflare requests. Static asset update checks are allowed only as deliberate background checks. Status: local preview serves `/` and `/sw.js` as static assets; production Cloudflare dashboard verification still pending.
 - Verify DOM size remains bounded after scrolling multiple timeline pages.
 - Verify all clean routes and OAuth callback routes are served by static SPA fallback, not by server-side handlers.
 - Verify a direct standalone post route such as `/profile/suewho82.bsky.social/post/3mnpjvwbxq22b` renders through the static SPA shell, makes only direct Bluesky/AT Protocol data calls after load, shows the root post plus threaded replies/comments, and triggers zero Pages Function/Worker invocations. Status: local static-shell/thread rendering verified; Cloudflare dashboard zero-invocation verification still pending.
@@ -1066,8 +1066,8 @@ Request budget mindset:
 - Link preview reader.
 - Session history trail. Status: implemented as a browser-local recent trail for feeds, profiles, threads, and searches.
 - Optional media strip/panel for visual Feeds. Status: first pass implemented in the right rail from already-loaded image/video thumbnails, with in-app navigation back to the source post.
-- Performance inspector for development builds showing active source, loaded pages, rendered rows, API requests, cache hits, and service-worker state.
-- Quota inspector for development builds showing Cloudflare document/static asset requests separately from Bluesky API requests, with a warning if any Pages Function/Worker route is detected.
+- Performance inspector for development builds showing active source, loaded pages, rendered rows, API requests, cache hits, and service-worker state. Status: implemented as a development-only right-rail inspector showing source, rendered rows, Bluesky API request count, session cache hits, and service-worker state.
+- Quota inspector for development builds showing Cloudflare document/static asset requests separately from Bluesky API requests, with a warning if any Pages Function/Worker route is detected. Status: first pass implemented in the development inspector by counting same-origin static resource entries separately from Bluesky API events and warning on `/api/`, `/functions/`, or `_worker` resource paths.
 
 ## UX Requirements
 
@@ -1112,12 +1112,12 @@ Request budget mindset:
 - Static app deploys successfully to Cloudflare Pages.
 - App works without D1, KV, R2, Durable Objects, Workers, Pages Functions, or a custom backend.
 - Pages Function/Worker request count remains zero during normal v1 usage.
-- Build output contains no `functions/`, `_worker.js`, SSR server chunks, middleware, API routes, or edge runtime artifacts.
+- Build output contains no `functions/`, `_worker.js`, SSR server chunks, middleware, API routes, or edge runtime artifacts. Status: verified locally by `npm run build` static-output audit on 2026-06-08.
 - Cloudflare project has no Worker routes, Pages Functions, Pages Plugins, service bindings, KV/D1/R2/Durable Object bindings, queues, scheduled jobs, Web Analytics/Zaraz, Image Resizing/Images, or server-side redirect rules enabled for v1 normal traffic.
 - Cloudflare dashboard shows zero Pages Function/Worker invocations while testing first load, in-app navigation, Feed scrolling, profile previews, thread previews, search, OAuth callback, and sign-out.
-- App ships as one static document plus a small number of cached hashed assets.
+- App ships as one static document plus a small number of cached hashed assets. Status: local `dist` contains `index.html`, `sw.js`, `_headers`, `_redirects`, and one hashed JS/CSS asset pair.
 - Initial reader bundle stays within the agreed JS/CSS gzip budgets or has an explicit exception.
-- Service worker serves repeat app-shell visits from browser cache.
+- Service worker serves repeat app-shell visits from browser cache. Status: static service worker implemented and `/sw.js` verified via local preview; browser registration/runtime verification still pending because the in-app browser backend was unavailable on 2026-06-08.
 - In-app navigation does not reload the document or request new HTML from Cloudflare.
 - Shared deep links are served by static SPA fallback routing, not a Function.
 - OAuth callback is served by the static SPA fallback and handled browser-side.

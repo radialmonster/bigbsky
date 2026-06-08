@@ -100,6 +100,15 @@ async function getJson<T>(path: string, params: Record<string, string>, signal?:
   const url = new URL(`${host}/${path}`);
   Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
 
+  window.dispatchEvent(
+    new CustomEvent("bigbsky:api-request", {
+      detail: {
+        host: url.host,
+        path,
+      },
+    }),
+  );
+
   const response = await fetch(url, { signal });
   if (!response.ok) {
     throw new ApiError(response.status, response.statusText);
