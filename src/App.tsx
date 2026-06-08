@@ -1452,7 +1452,6 @@ export function App() {
                         sourceId: source.id,
                       });
                       navigate({ kind: "feed", uri: source.id }, feedRoutePath(source));
-                      timelineRef.current?.scrollTo({ top: 0 });
                     }}
                   >
                     <span>{source.label}</span>

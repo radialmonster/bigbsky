@@ -1024,7 +1024,7 @@ Request budget mindset:
 - Muted/blocked content handling as exposed by APIs. Status: partial; post cards now surface AppView viewer flags such as muted threads, limited replies, embedding-disabled state, and sensitive labels in a local moderation notice, while richer blocked/deleted/unavailable branch states remain pending.
 - Account-aware post rendering. Status: first pass implemented; signed-in users see browser-local "Your post" context on loaded posts authored by the restored account DID, while authenticated relationship/action state remains pending.
 - Wider active Feed timeline formatting while preserving endless-scroll behavior.
-- Preserve feed scroll position when opening post/thread/profile/media context. Status: partial; feed/profile scroll offsets are cached locally for shell navigation while saved-post and full browser reload restoration still need verification.
+- Preserve feed scroll position when opening post/thread/profile/media context. Status: improved; feed/profile scroll offsets are cached locally for shell navigation, cached feed/profile loads restore their prior offsets, and feed selector switching no longer forces the timeline back to the top. Saved-post and full browser reload restoration still need verification.
 
 ### Phase 4: Account Actions
 
@@ -1105,7 +1105,7 @@ Request budget mindset:
 - Static app deploys successfully to Cloudflare Pages.
 - App works without D1, KV, R2, Durable Objects, Workers, Pages Functions, or a custom backend.
 - Pages Function/Worker request count remains zero during normal v1 usage.
-- Build output contains no `functions/`, `_worker.js`, SSR server chunks, middleware, API routes, or edge runtime artifacts. Status: verified locally by `npm run build` static-output audit on 2026-06-08 after the static OAuth icon/service-worker changes and again after local share/video/moderation-card updates; the audit requires `index.html`, `_redirects`, `/oauth-client-metadata.json`, `/sw.js`, `/icon.svg`, `/site.webmanifest`, SPA fallback routing, OAuth callback metadata/logo URI, and initial JS/CSS gzip budget compliance.
+- Build output contains no `functions/`, `_worker.js`, SSR server chunks, middleware, API routes, or edge runtime artifacts. Status: verified locally by `npm run build` static-output audit on 2026-06-08 after the static OAuth icon/service-worker changes, again after local share/video/moderation-card updates, and again after the reader-behavior verification guard. The audit requires `index.html`, `_redirects`, `/oauth-client-metadata.json`, `/sw.js`, `/icon.svg`, `/site.webmanifest`, SPA fallback routing, OAuth callback metadata/logo URI, and initial JS/CSS gzip budget compliance.
 - Cloudflare project has no Worker routes, Pages Functions, Pages Plugins, service bindings, KV/D1/R2/Durable Object bindings, queues, scheduled jobs, Web Analytics/Zaraz, Image Resizing/Images, or server-side redirect rules enabled for v1 normal traffic.
 - Cloudflare dashboard shows zero Pages Function/Worker invocations while testing first load, in-app navigation, Feed scrolling, profile previews, thread previews, search, OAuth callback, and sign-out.
 - App ships as one static document plus a small number of cached hashed assets. Status: local `dist` contains `index.html`, `sw.js`, `_headers`, `_redirects`, `oauth-client-metadata.json`, `icon.svg`, `site.webmanifest`, one main JS/CSS asset pair, and lazy OAuth/API chunks that are not loaded on cold signed-out Settings smoke tests.
@@ -1133,8 +1133,8 @@ Request budget mindset:
 - Scrolling a long Feed keeps DOM node count bounded and does not degrade after several loaded pages. Status: partial; measured-row virtualization is implemented for feed/profile timelines, and fallback Puppeteer verification confirmed 29 loaded rows with only 2-3 mounted post cards after scrolling. Several loaded-page degradation testing remains pending.
 - Media-heavy Feed cards avoid visible layout jumps by reserving stable image/video/link-card space. Status: partial; media layouts reserve larger stable media regions, compact rich posts use a bounded two-column embed area on wide screens, and cumulative layout-shift measurement is still pending.
 - Opening profile and thread previews reuses already-loaded post/author data before making detail requests.
-- Switching between Feeds restores cached pages and scroll position without refetching the visible page from scratch.
-- Search and Feed selector input do not send a network request for every keystroke.
+- Switching between Feeds restores cached pages and scroll position without refetching the visible page from scratch. Status: locally verified by the `npm run build` reader-behavior guard on 2026-06-08; feed selector switching now preserves cached offsets instead of forcing `top: 0`, and cached Feed/Profile states restore from browser memory before requesting again.
+- Search and Feed selector input do not send a network request for every keystroke. Status: locally verified by the `npm run build` reader-behavior guard on 2026-06-08; Feed filtering is derived from local `feedSources`, search text edits only draft query state, and Bluesky search requests run only after explicit `/search?q=` navigation.
 
 ## Reference Sources
 
