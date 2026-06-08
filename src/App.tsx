@@ -1735,7 +1735,21 @@ function VirtualPostList({
           item={item}
           key={item.post.uri}
           onMeasured={(height) => {
-            setRowHeights((current) => (current[item.post.uri] === height ? current : { ...current, [item.post.uri]: height }));
+            setRowHeights((current) => {
+              const previousHeight = current[item.post.uri] ?? defaultRowHeight;
+              if (previousHeight === height) {
+                return current;
+              }
+
+              const rowIndex = items.findIndex((candidate) => candidate.post.uri === item.post.uri);
+              const rowTop = rowIndex >= 0 ? rowOffsets[rowIndex] ?? 0 : 0;
+              const container = containerRef.current;
+              if (container && rowTop + previousHeight <= container.scrollTop) {
+                container.scrollTop += height - previousHeight;
+              }
+
+              return { ...current, [item.post.uri]: height };
+            });
           }}
         >
           <PostCard
