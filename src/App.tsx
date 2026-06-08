@@ -48,6 +48,14 @@ import {
   searchActors,
   searchPosts,
 } from "./api";
+import {
+  type AuthSnapshot,
+  clearOAuthSessionStorage,
+  initAuthSession,
+  looksLikeOAuthCallback,
+  signOut,
+  startSignIn,
+} from "./auth";
 import { getRouteState, type RouteState } from "./router";
 import { displayName, feedSources, navigationItems, type FeedSource } from "./sources";
 
@@ -115,6 +123,12 @@ type DevMetrics = {
   serviceWorkerState: string;
 };
 
+type AuthState = {
+  status: "checking" | "signed-out" | "signing-in" | "signed-in" | "callback" | "error";
+  session: AuthSnapshot | null;
+  message?: string;
+};
+
 const densityModes = ["comfortable", "compact", "media"];
 const searchTabs = ["posts", "people", "feeds"] as const;
 const profileTabs = ["posts", "replies", "media", "videos"] as const;
@@ -141,6 +155,10 @@ const initialDevMetrics: DevMetrics = {
   sameOriginRequests: 0,
   runtimeWarnings: [],
   serviceWorkerState: "checking",
+};
+const initialAuthState: AuthState = {
+  status: looksLikeOAuthCallback() ? "callback" : "checking",
+  session: null,
 };
 
 function readDensityPreferences() {
@@ -270,6 +288,7 @@ export function App() {
   const [densityByContext, setDensityByContext] = useState<Record<string, string>>(() => readDensityPreferences());
   const [recentItems, setRecentItems] = useState<RecentItem[]>(() => readRecentItems());
   const [devMetrics, setDevMetrics] = useState<DevMetrics>(initialDevMetrics);
+  const [authState, setAuthState] = useState<AuthState>(initialAuthState);
   const [virtualRenderedRows, setVirtualRenderedRows] = useState(0);
   const [thread, setThread] = useState<{ status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string }>({
     status: "idle",
@@ -284,6 +303,31 @@ export function App() {
   const threadCacheRef = useRef<Record<string, ThreadNode>>({});
   const threadBranchCacheRef = useRef<Record<string, ThreadNode>>({});
   const scrollCacheRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+
+    initAuthSession().then((result) => {
+      if (cancelled) {
+        return;
+      }
+
+      setAuthState({
+        status: result.session ? "signed-in" : result.status === "error" ? "error" : "signed-out",
+        session: result.session,
+        message: result.message,
+      });
+
+      if (result.status === "callback" && window.location.pathname === "/oauth/callback") {
+        window.history.replaceState(null, "", "/settings");
+        setRoute({ kind: "surface", name: "settings" });
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const routeFeedSource =
     route.kind === "feed" && route.uri ? feedSources.find((source) => source.id === route.uri || source.uri === route.uri) : undefined;
@@ -788,10 +832,11 @@ export function App() {
     localStorage.setItem("bigbsky:density-by-context", JSON.stringify(nextPreferences));
   }
 
-  function clearLocalReaderData() {
+  async function clearLocalReaderData() {
     Object.keys(localStorage)
       .filter((key) => key.startsWith("bigbsky:"))
       .forEach((key) => localStorage.removeItem(key));
+    await clearOAuthSessionStorage();
     setDensityByContext({});
     setRecentItems([]);
     setComposerText("");
@@ -804,6 +849,46 @@ export function App() {
     threadBranchCacheRef.current = {};
     scrollCacheRef.current = {};
     setDevMetrics((current) => ({ ...current, cacheHits: 0 }));
+    setAuthState({ status: "signed-out", session: null });
+  }
+
+  async function handleSignIn(handle: string) {
+    const trimmed = handle.trim();
+    if (!trimmed) {
+      setAuthState({ status: "error", session: null, message: "Enter a Bluesky handle, DID, or PDS URL." });
+      return;
+    }
+
+    if (!trimmed.startsWith("did:") && !trimmed.startsWith("http") && !trimmed.includes(".")) {
+      setAuthState({
+        status: "error",
+        session: null,
+        message: "Use your full Bluesky handle, DID, or PDS URL, not an email address.",
+      });
+      return;
+    }
+
+    setAuthState((current) => ({ ...current, status: "signing-in", message: `Starting Bluesky OAuth for ${trimmed}.` }));
+    try {
+      await startSignIn(trimmed);
+    } catch (error) {
+      setAuthState({
+        status: "error",
+        session: null,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  async function handleSignOut() {
+    const did = authState.session?.did;
+    setAuthState((current) => ({ ...current, status: "signing-in", message: "Signing out locally." }));
+    const warning = await signOut(did);
+    setAuthState({
+      status: warning ? "error" : "signed-out",
+      session: null,
+      message: warning ? `Signed out locally. Remote revocation was not confirmed: ${warning}` : undefined,
+    });
   }
 
   function remember(item: RecentItem) {
@@ -1104,12 +1189,15 @@ export function App() {
           />
         ) : route.kind === "surface" ? (
           <SurfaceView
+            auth={authState}
             name={route.name}
             density={density}
             recentCount={recentItems.length}
             savedPreferenceCount={Object.keys(densityByContext).length}
             onClearLocalData={clearLocalReaderData}
             onOpenSearch={() => navigate({ kind: "search" }, "/search")}
+            onSignIn={handleSignIn}
+            onSignOut={handleSignOut}
           />
         ) : route.kind === "search" ? (
           <SearchView
@@ -1210,6 +1298,7 @@ export function App() {
 
       <aside className="right-rail" aria-label="Context">
         <SearchBox value={globalSearchText} onChange={setGlobalSearchText} onSearch={submitSearch} />
+        <AccountPanel auth={authState} onSignIn={handleSignIn} onSignOut={handleSignOut} />
         {route.kind === "profile" ? (
           <ProfileContextPanel actor={route.actor} profile={profile ?? entityCache.profiles[route.actor] ?? null} />
         ) : (
@@ -1340,19 +1429,25 @@ function VirtualPostList({
 }
 
 function SurfaceView({
+  auth,
   name,
   density,
   recentCount,
   savedPreferenceCount,
   onClearLocalData,
   onOpenSearch,
+  onSignIn,
+  onSignOut,
 }: {
+  auth: AuthState;
   name: string;
   density: string;
   recentCount: number;
   savedPreferenceCount: number;
-  onClearLocalData: () => void;
+  onClearLocalData: () => void | Promise<void>;
   onOpenSearch: () => void;
+  onSignIn: (handle: string) => void | Promise<void>;
+  onSignOut: () => void | Promise<void>;
 }) {
   const title = name.charAt(0).toUpperCase() + name.slice(1);
   const surfaces: Record<string, { copy: string; cards: Array<{ title: string; detail: string; status: string }> }> = {
@@ -1475,12 +1570,32 @@ function SurfaceView({
             </button>
           </article>
           <article className="settings-panel">
-            <span>OAuth later</span>
+            <span>{auth.session ? "Signed in" : "Signed out"}</span>
             <h3>Account</h3>
-            <p>Account identity, switching, token refresh, revocation, and sign-out will attach here after browser-side OAuth is implemented.</p>
-            <button type="button" disabled>
-              Sign out
-            </button>
+            {auth.session ? (
+              <>
+                <dl>
+                  <div>
+                    <dt>Handle</dt>
+                    <dd>@{auth.session.handle}</dd>
+                  </div>
+                  <div>
+                    <dt>DID</dt>
+                    <dd>{auth.session.did}</dd>
+                  </div>
+                </dl>
+                <p>Sign-out revokes the stored OAuth session when possible and always clears local browser auth state.</p>
+                <button type="button" onClick={onSignOut}>
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <>
+                <p>Use Bluesky OAuth from the browser. No BigBSky backend session is created.</p>
+                <SignInForm status={auth.status} onSignIn={onSignIn} />
+              </>
+            )}
+            {auth.message && <p className={auth.status === "error" ? "settings-warning" : undefined}>{auth.message}</p>}
           </article>
         </section>
       </div>
@@ -1511,6 +1626,80 @@ function SurfaceView({
         ))}
       </section>
     </div>
+  );
+}
+
+function SignInForm({
+  status,
+  onSignIn,
+}: {
+  status: AuthState["status"];
+  onSignIn: (handle: string) => void | Promise<void>;
+}) {
+  const [handle, setHandle] = useState("");
+  const isBusy = status === "checking" || status === "callback" || status === "signing-in";
+
+  return (
+    <form
+      className="sign-in-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void onSignIn(handle);
+      }}
+    >
+      <input
+        aria-label="Bluesky handle, DID, or PDS URL"
+        autoComplete="username"
+        placeholder="your.handle"
+        value={handle}
+        onInput={(event) => setHandle(event.currentTarget.value)}
+      />
+      <button type="submit" disabled={isBusy}>
+        {isBusy ? "Working" : "Sign in"}
+      </button>
+    </form>
+  );
+}
+
+function AccountPanel({
+  auth,
+  onSignIn,
+  onSignOut,
+}: {
+  auth: AuthState;
+  onSignIn: (handle: string) => void | Promise<void>;
+  onSignOut: () => void | Promise<void>;
+}) {
+  return (
+    <section className="context-panel account-panel">
+      <h2>Account</h2>
+      {auth.session ? (
+        <>
+          <div className="account-identity">
+            <Avatar profile={auth.session} />
+            <span>
+              <strong>{auth.session.displayName || auth.session.handle}</strong>
+              <small>@{auth.session.handle}</small>
+            </span>
+          </div>
+          <button type="button" onClick={onSignOut}>
+            Sign out
+          </button>
+        </>
+      ) : (
+        <>
+          <p>
+            {auth.status === "callback"
+              ? "Completing OAuth callback."
+              : auth.status === "checking"
+                ? "Checking browser session."
+                : "Signed-out public reader mode."}
+          </p>
+          <SignInForm status={auth.status} onSignIn={onSignIn} />
+        </>
+      )}
+      {auth.message && <p className={auth.status === "error" ? "account-warning" : undefined}>{auth.message}</p>}
+    </section>
   );
 }
 

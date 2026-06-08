@@ -725,6 +725,68 @@ button {
   opacity: 0.55;
 }
 
+.settings-warning,
+.account-warning {
+  color: var(--app-danger) !important;
+}
+
+.sign-in-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.sign-in-form input {
+  min-width: 0;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  outline: 0;
+  background: #0f1724;
+  color: var(--app-text);
+}
+
+.sign-in-form input:focus {
+  border-color: rgba(117, 175, 255, 0.72);
+}
+
+.sign-in-form button {
+  min-height: 38px;
+  margin: 0;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--bsky-blue);
+  color: #fff;
+  font-weight: 700;
+}
+
+.sign-in-form button:disabled {
+  cursor: wait;
+  background: #41516a;
+}
+
+.account-identity {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.account-identity strong,
+.account-identity small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-identity small {
+  color: var(--app-text-muted);
+}
+
 .surface-action {
   display: inline-flex;
   align-items: center;

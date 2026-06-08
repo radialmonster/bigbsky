@@ -254,8 +254,8 @@ Initial performance budgets:
 - Cloudflare Pages preview deployments are public by default.
 - Target Cloudflare Pages Free compatibility for v1.
 - Root Vite/React/TypeScript app is scaffolded at the repository root, so Cloudflare can run `npm run build` and publish `dist`.
-- Current root app includes a desktop reader shell, grouped/filterable Feed selector, right context rail, browser-local recent trail, local composer UI with 300-character validation, per-feed density preferences, direct public Bluesky feed-generator loading for Home, direct public Feed Generator metadata loading for active Feed detail/header context, direct public author-feed loading for `/profile/:handleOrDid`, standalone post-thread route loading, public post and people search at `/search?q=...`, local Feed search over known static Feed destinations, static service worker/app-shell caching, a development inspector for source/request/cache/static-runtime posture, static `_headers`, static `_redirects`, and a build-output audit for forbidden server/runtime artifacts.
-- Latest local production build passed with `npm run build`; audit result: static-only `dist` output. Local preview returned `200` for `/`, `/settings`, `/profile/bsky.app`, `/sw.js`, and `/oauth-client-metadata.json`. Browser-plugin visual verification was attempted on 2026-06-08 but the in-app browser backend was unavailable in this session.
+- Current root app includes a desktop reader shell, grouped/filterable Feed selector, right context rail, browser-local recent trail, local composer UI with 300-character validation, per-feed density preferences, direct public Bluesky feed-generator loading for Home, direct public Feed Generator metadata loading for active Feed detail/header context, direct public author-feed loading for `/profile/:handleOrDid`, standalone post-thread route loading, public post and people search at `/search?q=...`, local Feed search over known static Feed destinations, a browser-only OAuth SDK scaffold with signed-out account controls, static service worker/app-shell caching, a development inspector for source/request/cache/static-runtime posture, static `_headers`, static `_redirects`, and a build-output audit for forbidden server/runtime artifacts.
+- Latest local production build passed with `npm run build`; audit result: static-only `dist` output. Local preview returned `200` for `/`, `/settings`, `/profile/bsky.app`, `/sw.js`, and `/oauth-client-metadata.json`. Browser-plugin visual verification was attempted on 2026-06-08 but the in-app browser backend was unavailable in this session; fallback Puppeteer smoke testing verified the built `/settings` account controls and confirmed a cold signed-out Settings visit loads only the main JS/CSS plus favicon, not the lazy OAuth SDK chunks.
 - Default visual theme is dark, using Bluesky brand colors as anchors: Blue `#0560FF`, Light Blue `#75AFFF`, Dark Gray `#232E3E`, and Light Gray `#F9FAFB`.
 - `https://bigbsky.pages.dev/` and `https://bigbsky.com/` are serving the static app. Clean profile routes such as `https://bigbsky.com/profile/radialmonster.com` return the SPA shell through static fallback.
 - Signed-out Home feed has been tested working against public feed-generator sources. Current default sources intentionally avoid official feed generators that returned `502` signed out, and avoid `What's Hot Classic` because it surfaced NSFW content despite returning `200`.
@@ -992,15 +992,15 @@ Request budget mindset:
 
 - Add AT Protocol OAuth client metadata. Status: first static public-client metadata document implemented at `/oauth-client-metadata.json` for the `https://bigbsky.com/oauth-client-metadata.json` client ID, including HTTPS callbacks, refresh-token grant declaration, `atproto transition:generic` scope, and DPoP-bound tokens.
 - Serve OAuth client metadata, icons, and callback shell as static assets only. Status: partial; OAuth client metadata and the callback shell are static SPA assets, with icon assets still pending.
-- Add static OAuth callback route/surface through the SPA shell. Status: placeholder route implemented for `/oauth/callback`; browser-side OAuth state validation and token exchange remain pending.
-- Implement sign-in with handle input.
-- Complete callback handling.
-- Handle OAuth callback parsing, state validation, token exchange, session restore, and refresh in browser code or the OAuth SDK without a BigBSky backend.
-- Persist session locally.
-- Show signed-in account identity.
-- Add visible sign-out in account/profile menu and Settings.
-- Sign-out must clear local OAuth session state, account-specific cache, and account-specific browser-local data without needing a BigBSky backend. Status: partial; Settings now includes local browser-reader data cleanup for `bigbsky:*` keys and in-memory caches, while OAuth session-specific cleanup waits for Phase 2 auth state.
-- Sign-out should attempt OAuth revocation where supported, but local sign-out must still work if revocation fails.
+- Add static OAuth callback route/surface through the SPA shell. Status: partial; `/oauth/callback` is served by the static SPA and now invokes the browser OAuth SDK callback/restore path, then returns to Settings when a callback session is restored. Live production callback verification remains pending.
+- Implement sign-in with handle input. Status: first pass implemented in the right-rail account panel and Settings account panel; handle/DID/PDS input validates locally and starts the AT Protocol browser OAuth SDK redirect flow on explicit submit.
+- Complete callback handling. Status: partial; callback detection and SDK `init()` handling are wired, but production OAuth callback verification and error-state polish remain pending.
+- Handle OAuth callback parsing, state validation, token exchange, session restore, and refresh in browser code or the OAuth SDK without a BigBSky backend. Status: partial; the app lazy-loads `@atproto/oauth-client-browser` for known stored sessions, callbacks, sign-in, and sign-out, and avoids loading OAuth chunks on cold signed-out reader visits. End-to-end production token exchange still needs verification.
+- Persist session locally. Status: partial; the SDK-managed IndexedDB store is used and BigBSky records the active DID/handle in `bigbsky:auth:*` local keys for restore. Reload and multi-tab verification remain pending.
+- Show signed-in account identity. Status: first pass implemented after SDK restore/callback by fetching the signed-in profile through `@atproto/api` and showing handle/display name/avatar in the account panel and Settings.
+- Add visible sign-out in account/profile menu and Settings. Status: partial; right-rail account panel and Settings account panel expose sign-out when a session is present. Left-rail/profile-menu placement remains pending.
+- Sign-out must clear local OAuth session state, account-specific cache, and account-specific browser-local data without needing a BigBSky backend. Status: partial; sign-out now clears `bigbsky:auth:*` keys and the SDK OAuth IndexedDB store after attempting revocation, and Settings local data cleanup also clears browser reader/auth state. Account-scoped query cache clearing will expand with signed-in reads.
+- Sign-out should attempt OAuth revocation where supported, but local sign-out must still work if revocation fails. Status: first pass implemented with SDK `revoke()` attempt and local cleanup fallback.
 - Verify reload persistence and multi-tab behavior.
 
 ### Phase 3: Signed-In Reader
@@ -1118,18 +1118,18 @@ Request budget mindset:
 - Build output contains no `functions/`, `_worker.js`, SSR server chunks, middleware, API routes, or edge runtime artifacts. Status: verified locally by `npm run build` static-output audit on 2026-06-08 after the profile/settings/OAuth metadata changes.
 - Cloudflare project has no Worker routes, Pages Functions, Pages Plugins, service bindings, KV/D1/R2/Durable Object bindings, queues, scheduled jobs, Web Analytics/Zaraz, Image Resizing/Images, or server-side redirect rules enabled for v1 normal traffic.
 - Cloudflare dashboard shows zero Pages Function/Worker invocations while testing first load, in-app navigation, Feed scrolling, profile previews, thread previews, search, OAuth callback, and sign-out.
-- App ships as one static document plus a small number of cached hashed assets. Status: local `dist` contains `index.html`, `sw.js`, `_headers`, `_redirects`, and one hashed JS/CSS asset pair.
-- Initial reader bundle stays within the agreed JS/CSS gzip budgets or has an explicit exception.
+- App ships as one static document plus a small number of cached hashed assets. Status: local `dist` contains `index.html`, `sw.js`, `_headers`, `_redirects`, one main JS/CSS asset pair, and lazy OAuth/API chunks that are not loaded on cold signed-out Settings smoke tests.
+- Initial reader bundle stays within the agreed JS/CSS gzip budgets or has an explicit exception. Status: local production build on 2026-06-08 emitted a 63.46 kB gzip initial JS asset and 4.90 kB gzip CSS asset; OAuth/API chunks are lazy.
 - Service worker serves repeat app-shell visits from browser cache. Status: static service worker implemented and `/sw.js` verified via local preview; browser registration/runtime verification still pending because the in-app browser backend was unavailable on 2026-06-08.
 - In-app navigation does not reload the document or request new HTML from Cloudflare.
 - Shared deep links are served by static SPA fallback routing, not a Function.
-- OAuth callback is served by the static SPA fallback and handled browser-side.
+- OAuth callback is served by the static SPA fallback and handled browser-side. Status: partial; SDK callback handling is wired in the SPA, with live production callback verification pending.
 - No server-side analytics, logging, redirects, image optimization, link previews, remote config, feature flags, or health checks are deployed.
 - OAuth client metadata is reachable at its final HTTPS URL. Status: local static asset implemented and verified at `/oauth-client-metadata.json`; production `https://bigbsky.com/oauth-client-metadata.json` verification remains pending after deploy.
-- User can sign in with a Bluesky handle.
-- Session survives refresh without our backend.
-- Sign-out is always visible to signed-in users.
-- Sign-out clears local auth state and account-specific browser-local data without a BigBSky backend. Status: partial; local reader data cleanup exists in Settings, while OAuth session/token cleanup remains pending.
+- User can sign in with a Bluesky handle. Status: first pass implemented with explicit handle/DID/PDS input and browser OAuth SDK redirect; end-to-end production OAuth verification remains pending.
+- Session survives refresh without our backend. Status: partial; SDK local restore path and active DID marker are wired, with reload and multi-tab verification pending.
+- Sign-out is always visible to signed-in users. Status: partial; visible in right-rail account panel and Settings after session restore, with left-rail/profile-menu placement still pending.
+- Sign-out clears local auth state and account-specific browser-local data without a BigBSky backend. Status: partial; sign-out clears `bigbsky:auth:*` and the SDK OAuth IndexedDB store after a best-effort revocation attempt.
 - Sign-out does not clear static app-shell/service-worker cache unless the user explicitly clears site data.
 - Public profile/thread/feed pages work while signed out.
 - Home timeline and notifications work while signed in.
