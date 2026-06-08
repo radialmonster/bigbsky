@@ -23,11 +23,10 @@ import {
   type FeedPost,
   type Profile,
   type ThreadNode,
-  getAuthorFeed,
   getEmbedImages,
   getExternalEmbed,
+  getFeed,
   getPostThread,
-  getProfile,
 } from "./api";
 import { getRouteState, type RouteState } from "./router";
 import { displayName, feedSources, navigationItems, type FeedSource } from "./sources";
@@ -47,7 +46,6 @@ export function App() {
   const [route, setRoute] = useState<RouteState>(() => getRouteState());
   const [activeSourceId, setActiveSourceId] = useState(feedSources[0].id);
   const [feedState, setFeedState] = useState<FeedState>({ items: [], status: "idle" });
-  const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [composerText, setComposerText] = useState("");
   const [density, setDensity] = useState(() => localStorage.getItem("bigbsky:density") || "comfortable");
   const [scrollTop, setScrollTop] = useState(0);
@@ -82,7 +80,7 @@ export function App() {
     }));
 
     try {
-      const response = await getAuthorFeed(source.actor, cursor, controller.signal);
+      const response = await getFeed(source.uri, cursor, controller.signal);
       setFeedState((current) => ({
         items: cursor ? [...current.items, ...response.feed] : response.feed,
         cursor: response.cursor,
@@ -108,18 +106,6 @@ export function App() {
 
     return void loadFeed(activeSource);
   }, [activeSource, loadFeed, route.kind]);
-
-  useEffect(() => {
-    if (route.kind === "post") {
-      return undefined;
-    }
-
-    const controller = new AbortController();
-    getProfile(activeSource.actor, controller.signal)
-      .then((profile) => setProfiles((current) => ({ ...current, [activeSource.actor]: profile })))
-      .catch(() => undefined);
-    return () => controller.abort();
-  }, [activeSource.actor, route.kind]);
 
   useEffect(() => {
     const onPopState = () => setRoute(getRouteState());
@@ -272,7 +258,7 @@ export function App() {
           <Search size={18} />
           <input aria-label="Search" placeholder="Search Bluesky" />
         </div>
-        <ProfilePanel profile={profiles[activeSource.actor]} source={activeSource} />
+        <FeedContextPanel source={activeSource} />
         <section className="context-panel">
           <h2>Build Posture</h2>
           <p>Static SPA. No Pages Functions, Workers, bindings, KV, D1, R2, or backend sessions for v1.</p>
@@ -406,20 +392,22 @@ function renderThreadNode(node: ThreadNode, depth: number): React.ReactNode {
   );
 }
 
-function ProfilePanel({ profile, source }: { profile?: Profile; source: FeedSource }) {
+function FeedContextPanel({ source }: { source: FeedSource }) {
   return (
     <section className="profile-panel">
-      <Avatar profile={profile} />
-      <h2>{displayName(profile) || source.label}</h2>
-      <p>@{profile?.handle || source.actor}</p>
+      <span className="feed-glyph">
+        <Hash size={22} />
+      </span>
+      <h2>{source.label}</h2>
+      <p>{source.description}</p>
       <dl>
         <div>
-          <dt>Followers</dt>
-          <dd>{profile?.followersCount?.toLocaleString() ?? "-"}</dd>
+          <dt>Type</dt>
+          <dd>Feed</dd>
         </div>
         <div>
-          <dt>Posts</dt>
-          <dd>{profile?.postsCount?.toLocaleString() ?? "-"}</dd>
+          <dt>Source</dt>
+          <dd>Public</dd>
         </div>
       </dl>
     </section>

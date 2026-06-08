@@ -40,7 +40,7 @@ export type FeedItem = {
   };
 };
 
-export type AuthorFeedResponse = {
+export type FeedResponse = {
   cursor?: string;
   feed: FeedItem[];
 };
@@ -69,20 +69,16 @@ async function getJson<T>(path: string, params: Record<string, string>, signal?:
   return response.json() as Promise<T>;
 }
 
-export function getAuthorFeed(actor: string, cursor?: string, signal?: AbortSignal) {
-  return getJson<AuthorFeedResponse>(
-    "app.bsky.feed.getAuthorFeed",
+export function getFeed(feed: string, cursor?: string, signal?: AbortSignal) {
+  return getJson<FeedResponse>(
+    "app.bsky.feed.getFeed",
     {
-      actor,
+      feed,
       limit: "30",
       ...(cursor ? { cursor } : {}),
     },
     signal,
   );
-}
-
-export function getProfile(actor: string, signal?: AbortSignal) {
-  return getJson<Profile>("app.bsky.actor.getProfile", { actor }, signal);
 }
 
 export async function resolveHandle(handleOrDid: string, signal?: AbortSignal) {

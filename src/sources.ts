@@ -3,32 +3,39 @@ import type { Profile } from "./api";
 export type FeedSource = {
   id: string;
   label: string;
-  actor: string;
-  group: "Core" | "People" | "Project";
+  uri: string;
+  group: "Core" | "Media" | "Project";
   description: string;
 };
 
 export const feedSources: FeedSource[] = [
   {
-    id: "bsky",
-    label: "Bluesky",
-    actor: "bsky.app",
+    id: "discover",
+    label: "Discover",
+    uri: "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot",
     group: "Core",
-    description: "Official Bluesky account feed for public API smoke testing.",
+    description: "Bluesky's public discovery feed for broad network activity.",
   },
   {
-    id: "atproto",
-    label: "AT Protocol",
-    actor: "atproto.com",
+    id: "popular-with-friends",
+    label: "Popular With Friends",
+    uri: "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/with-friends",
     group: "Core",
-    description: "Protocol updates and AT ecosystem posts.",
+    description: "A Bluesky feed-generator source for popular posts and likes.",
+  },
+  {
+    id: "video",
+    label: "Video",
+    uri: "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/thevids",
+    group: "Media",
+    description: "Trending videos in the public Bluesky network.",
   },
   {
     id: "bigbsky",
     label: "BigBSky Route Test",
-    actor: "bsky.app",
+    uri: "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot",
     group: "Project",
-    description: "Placeholder source for validating shell state and deployment.",
+    description: "Project placeholder using the public Discover feed while app-specific feeds are deferred.",
   },
 ];
 

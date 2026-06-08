@@ -494,6 +494,16 @@ button {
   text-transform: none;
 }
 
+.feed-glyph {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: rgba(5, 96, 255, 0.18);
+  color: var(--bsky-blue-soft);
+}
+
 .profile-panel p,
 .context-panel p {
   margin: 0;
