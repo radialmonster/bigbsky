@@ -1,6 +1,19 @@
 const CACHE_NAME = "bigbsky-shell-v1";
 const SHELL_URLS = ["/", "/index.html"];
 
+async function cacheShellResponse(request) {
+  const cache = await caches.open(CACHE_NAME);
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      await cache.put("/index.html", response.clone());
+    }
+    return response;
+  } catch {
+    return cache.match("/index.html");
+  }
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
@@ -31,7 +44,17 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request).catch(() => caches.match("/index.html")));
+    event.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const cachedShell = await cache.match("/index.html");
+        const freshShell = cacheShellResponse(request);
+        if (cachedShell) {
+          event.waitUntil(freshShell.catch(() => undefined));
+          return cachedShell;
+        }
+        return freshShell;
+      }),
+    );
     return;
   }
 

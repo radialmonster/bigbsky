@@ -2,6 +2,7 @@
   "client_id": "https://bigbsky.com/oauth-client-metadata.json",
   "client_name": "BigBSky",
   "client_uri": "https://bigbsky.com",
+  "logo_uri": "https://bigbsky.com/icon.svg",
   "redirect_uris": [
     "https://bigbsky.com/oauth/callback",
     "https://bigbsky.pages.dev/oauth/callback"

@@ -15,3 +15,11 @@
 /oauth-client-metadata.json
   Cache-Control: public, max-age=0, must-revalidate
   Content-Type: application/json; charset=utf-8
+
+/site.webmanifest
+  Cache-Control: public, max-age=0, must-revalidate
+  Content-Type: application/manifest+json; charset=utf-8
+
+/icon.svg
+  Cache-Control: public, max-age=31536000, immutable
+  Content-Type: image/svg+xml; charset=utf-8

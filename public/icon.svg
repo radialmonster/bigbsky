@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">BigBSky icon</title>
+  <desc id="desc">A blue desktop reader mark with layered skyline cards.</desc>
+  <rect width="512" height="512" rx="88" fill="#0f172a"/>
+  <path fill="#38bdf8" d="M96 170c0-38 31-69 69-69h182c38 0 69 31 69 69v143c0 38-31 69-69 69H165c-38 0-69-31-69-69V170Z"/>
+  <path fill="#e0f2fe" d="M137 185c0-23 19-42 42-42h154c23 0 42 19 42 42v96c0 23-19 42-42 42H179c-23 0-42-19-42-42v-96Z"/>
+  <path fill="#0284c7" d="M164 354h184v38H164z"/>
+  <path fill="#bae6fd" d="M193 224h126v20H193zM193 262h87v20h-87z"/>
+  <path fill="#0f172a" d="M118 413h276v38H118z"/>
+</svg>

@@ -52,6 +52,8 @@ requireFile("index.html");
 requireFile("_redirects");
 requireFile("oauth-client-metadata.json");
 requireFile("sw.js");
+requireFile("icon.svg");
+requireFile("site.webmanifest");
 
 if (existsSync(join(root, "_redirects"))) {
   const redirects = readFileSync(join(root, "_redirects"), "utf8");
@@ -65,6 +67,9 @@ if (existsSync(join(root, "oauth-client-metadata.json"))) {
   const callbacks = Array.isArray(metadata.redirect_uris) ? metadata.redirect_uris : [];
   if (!callbacks.some((uri) => typeof uri === "string" && uri.includes("/oauth/callback"))) {
     failures.push("oauth-client-metadata.json:missing-callback");
+  }
+  if (metadata.logo_uri !== "https://bigbsky.com/icon.svg") {
+    failures.push("oauth-client-metadata.json:missing-logo-uri");
   }
 }
 
