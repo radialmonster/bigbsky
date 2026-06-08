@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BigBSky Static API Proof</title>
+    <style>
+      body {
+        margin: 0;
+        font: 16px/1.45 system-ui, sans-serif;
+        background: #111827;
+        color: #e5e7eb;
+      }
+
+      main {
+        max-width: 900px;
+        margin: 40px auto;
+        padding: 0 24px;
+      }
+
+      pre {
+        overflow: auto;
+        padding: 16px;
+        border: 1px solid #334155;
+        background: #020617;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>BigBSky Static API Proof</h1>
+      <p id="status">Loading Bluesky public API from a static file...</p>
+      <pre id="output"></pre>
+    </main>
+
+    <script>
+      const statusNode = document.querySelector("#status");
+      const outputNode = document.querySelector("#output");
+
+      async function getJson(path, params) {
+        const url = new URL(`https://public.api.bsky.app/xrpc/${path}`);
+        for (const [key, value] of Object.entries(params)) {
+          url.searchParams.set(key, value);
+        }
+
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`${response.status} ${response.statusText}`);
+        }
+        return response.json();
+      }
+
+      async function run() {
+        const profile = await getJson("app.bsky.actor.getProfile", {
+          actor: "bsky.app",
+        });
+        const feed = await getJson("app.bsky.feed.getAuthorFeed", {
+          actor: "bsky.app",
+          limit: "3",
+        });
+
+        statusNode.textContent = "Success: static browser page fetched Bluesky API data directly.";
+        outputNode.textContent = JSON.stringify(
+          {
+            pageOrigin: location.origin,
+            profile: {
+              handle: profile.handle,
+              displayName: profile.displayName,
+              followersCount: profile.followersCount,
+              postsCount: profile.postsCount,
+            },
+            firstPosts: feed.feed.map((item) => ({
+              author: item.post.author.handle,
+              text: item.post.record.text,
+              likeCount: item.post.likeCount,
+              repostCount: item.post.repostCount,
+            })),
+          },
+          null,
+          2,
+        );
+      }
+
+      run().catch((error) => {
+        statusNode.textContent = "Failed";
+        outputNode.textContent = error.stack || String(error);
+      });
+    </script>
+  </body>
+</html>

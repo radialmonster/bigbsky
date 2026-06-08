@@ -1,0 +1,16 @@
+{
+  "name": "bigbsky-oauth-loopback-poc",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite --host 127.0.0.1 --port 5173"
+  },
+  "dependencies": {
+    "@atproto/api": "^0.16.6",
+    "@atproto/oauth-client-browser": "^0.4.1",
+    "vite": "^6.0.0"
+  },
+  "devDependencies": {}
+}

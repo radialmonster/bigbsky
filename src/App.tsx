@@ -1,0 +1,449 @@
+import {
+  Bell,
+  Bookmark,
+  Compass,
+  Feather,
+  Hash,
+  Home,
+  Image,
+  LayoutList,
+  List,
+  Loader2,
+  MessageCircle,
+  MoreHorizontal,
+  Repeat2,
+  Search,
+  Send,
+  Settings,
+  User,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type FeedItem,
+  type FeedPost,
+  type Profile,
+  type ThreadNode,
+  getAuthorFeed,
+  getEmbedImages,
+  getExternalEmbed,
+  getPostThread,
+  getProfile,
+} from "./api";
+import { getRouteState, type RouteState } from "./router";
+import { displayName, feedSources, navigationItems, type FeedSource } from "./sources";
+import { useVirtualWindow } from "./useVirtualWindow";
+
+const navIcons = [Home, Compass, Bell, MessageCircle, Hash, List, Bookmark, User, Settings];
+const POST_ESTIMATE_HEIGHT = 332;
+
+type FeedState = {
+  items: FeedItem[];
+  cursor?: string;
+  status: "idle" | "loading" | "ready" | "error";
+  error?: string;
+};
+
+export function App() {
+  const [route, setRoute] = useState<RouteState>(() => getRouteState());
+  const [activeSourceId, setActiveSourceId] = useState(feedSources[0].id);
+  const [feedState, setFeedState] = useState<FeedState>({ items: [], status: "idle" });
+  const [profiles, setProfiles] = useState<Record<string, Profile>>({});
+  const [composerText, setComposerText] = useState("");
+  const [density, setDensity] = useState(() => localStorage.getItem("bigbsky:density") || "comfortable");
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(window.innerHeight);
+  const [thread, setThread] = useState<{ status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string }>({
+    status: "idle",
+  });
+  const timelineRef = useRef<HTMLDivElement | null>(null);
+
+  const activeSource = feedSources.find((source) => source.id === activeSourceId) ?? feedSources[0];
+  const groupedSources = useMemo(
+    () =>
+      feedSources.reduce<Record<string, FeedSource[]>>((groups, source) => {
+        groups[source.group] = [...(groups[source.group] ?? []), source];
+        return groups;
+      }, {}),
+    [],
+  );
+  const virtualWindow = useVirtualWindow({
+    itemCount: feedState.items.length,
+    scrollTop,
+    viewportHeight,
+    estimateSize: density === "compact" ? 246 : POST_ESTIMATE_HEIGHT,
+  });
+
+  const loadFeed = useCallback(async (source: FeedSource, cursor?: string) => {
+    const controller = new AbortController();
+    setFeedState((current) => ({
+      ...current,
+      status: cursor ? current.status : "loading",
+      error: undefined,
+    }));
+
+    try {
+      const response = await getAuthorFeed(source.actor, cursor, controller.signal);
+      setFeedState((current) => ({
+        items: cursor ? [...current.items, ...response.feed] : response.feed,
+        cursor: response.cursor,
+        status: "ready",
+      }));
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setFeedState((current) => ({
+          ...current,
+          status: "error",
+          error: error instanceof Error ? error.message : String(error),
+        }));
+      }
+    }
+
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (route.kind === "post") {
+      return undefined;
+    }
+
+    return void loadFeed(activeSource);
+  }, [activeSource, loadFeed, route.kind]);
+
+  useEffect(() => {
+    if (route.kind === "post") {
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    getProfile(activeSource.actor, controller.signal)
+      .then((profile) => setProfiles((current) => ({ ...current, [activeSource.actor]: profile })))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [activeSource.actor, route.kind]);
+
+  useEffect(() => {
+    const onPopState = () => setRoute(getRouteState());
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("bigbsky:density", density);
+  }, [density]);
+
+  useEffect(() => {
+    const onResize = () => setViewportHeight(window.innerHeight);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
+    if (route.kind !== "post") {
+      setThread({ status: "idle" });
+      return;
+    }
+
+    const controller = new AbortController();
+    setThread({ status: "loading" });
+    getPostThread(route.actor, route.rkey, controller.signal)
+      .then((response) => setThread({ status: "ready", node: response.thread }))
+      .catch((error) =>
+        setThread({
+          status: "error",
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    return () => controller.abort();
+  }, [route]);
+
+  function navigate(nextRoute: RouteState, path = "/") {
+    window.history.pushState(null, "", path);
+    setRoute(nextRoute);
+  }
+
+  const remainingChars = 300 - composerText.length;
+
+  return (
+    <div className="app-shell">
+      <aside className="left-rail" aria-label="Primary">
+        <button className="brand-button" type="button" onClick={() => navigate({ kind: "feed" })} title="BigBSky">
+          <Feather size={22} />
+        </button>
+        <nav className="rail-nav">
+          {navigationItems.map((item, index) => {
+            const Icon = navIcons[index];
+            return (
+              <button key={item} className="rail-button" type="button" title={item}>
+                <Icon size={20} />
+                <span>{item}</span>
+              </button>
+            );
+          })}
+        </nav>
+        <button className="compose-button" type="button" title="New post">
+          <Send size={20} />
+        </button>
+      </aside>
+
+      <aside className="feed-map" aria-label="Feeds">
+        <div className="feed-map-header">
+          <strong>Feeds</strong>
+          <button type="button" title="Search feeds">
+            <Search size={16} />
+          </button>
+        </div>
+        {Object.entries(groupedSources).map(([group, sources]) => (
+          <section className="feed-group" key={group}>
+            <h2>{group}</h2>
+            {sources?.map((source) => (
+              <button
+                className={source.id === activeSourceId ? "feed-source active" : "feed-source"}
+                key={source.id}
+                type="button"
+                onClick={() => {
+                  setActiveSourceId(source.id);
+                  navigate({ kind: "feed" });
+                  timelineRef.current?.scrollTo({ top: 0 });
+                }}
+              >
+                <span>{source.label}</span>
+                <small>{source.description}</small>
+              </button>
+            ))}
+          </section>
+        ))}
+      </aside>
+
+      <main className="workspace">
+        <header className="workspace-header">
+          <div>
+            <p>{route.kind === "post" ? "Thread" : "Active Feed"}</p>
+            <h1>{route.kind === "post" ? "Post Conversation" : activeSource.label}</h1>
+          </div>
+          <div className="segmented" aria-label="Density">
+            {["comfortable", "compact", "media"].map((mode) => (
+              <button
+                className={density === mode ? "selected" : ""}
+                key={mode}
+                type="button"
+                onClick={() => setDensity(mode)}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+        </header>
+
+        {route.kind === "post" ? (
+          <ThreadView thread={thread} />
+        ) : (
+          <div
+            className={`timeline ${density}`}
+            ref={timelineRef}
+            onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+          >
+            <Composer
+              remainingChars={remainingChars}
+              text={composerText}
+              onTextChange={setComposerText}
+            />
+            {feedState.status === "loading" && <LoadingState label="Loading public Bluesky posts" />}
+            {feedState.status === "error" && <ErrorState message={feedState.error || "Feed failed to load."} />}
+            {feedState.status === "ready" && (
+              <>
+                <div style={{ height: virtualWindow.beforeHeight }} />
+                {virtualWindow.indexes.map((index) => (
+                  <PostCard item={feedState.items[index]} key={feedState.items[index].post.uri} />
+                ))}
+                <div style={{ height: virtualWindow.afterHeight }} />
+                {feedState.cursor && (
+                  <button className="load-more" type="button" onClick={() => void loadFeed(activeSource, feedState.cursor)}>
+                    Load more
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </main>
+
+      <aside className="right-rail" aria-label="Context">
+        <div className="search-box">
+          <Search size={18} />
+          <input aria-label="Search" placeholder="Search Bluesky" />
+        </div>
+        <ProfilePanel profile={profiles[activeSource.actor]} source={activeSource} />
+        <section className="context-panel">
+          <h2>Build Posture</h2>
+          <p>Static SPA. No Pages Functions, Workers, bindings, KV, D1, R2, or backend sessions for v1.</p>
+        </section>
+        <section className="context-panel">
+          <h2>Trending</h2>
+          <button type="button">#atproto</button>
+          <button type="button">#bluesky</button>
+          <button type="button">#socialweb</button>
+        </section>
+      </aside>
+    </div>
+  );
+}
+
+function Composer({
+  text,
+  remainingChars,
+  onTextChange,
+}: {
+  text: string;
+  remainingChars: number;
+  onTextChange: (value: string) => void;
+}) {
+  return (
+    <section className="composer" aria-label="Composer">
+      <textarea
+        placeholder="What should BigBSky post after OAuth is added?"
+        value={text}
+        onChange={(event) => onTextChange(event.target.value)}
+      />
+      <div className="composer-actions">
+        <button type="button" title="Attach image">
+          <Image size={18} />
+        </button>
+        <span className={remainingChars < 0 ? "over-limit" : ""}>{remainingChars}</span>
+        <button type="button" disabled={remainingChars < 0 || text.trim().length === 0}>
+          Post
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function PostCard({ item }: { item: FeedItem }) {
+  const post = item.post;
+  const images = getEmbedImages(post.embed);
+  const external = getExternalEmbed(post.embed);
+
+  return (
+    <article className="post-card">
+      <header className="post-header">
+        <Avatar profile={post.author} />
+        <div>
+          <strong>{displayName(post.author)}</strong>
+          <span>@{post.author.handle}</span>
+        </div>
+        <button type="button" title="More">
+          <MoreHorizontal size={18} />
+        </button>
+      </header>
+      {item.reason?.by && <p className="reason">Reposted by {displayName(item.reason.by)}</p>}
+      {item.reply?.parent && <p className="reason">Replying in a thread from @{item.reply.parent.author.handle}</p>}
+      <p className="post-text">{post.record.text || "Post has no plain text."}</p>
+      {images.length > 0 && (
+        <div className={`image-grid count-${Math.min(images.length, 4)}`}>
+          {images.slice(0, 4).map((image) => (
+            <img alt={image.alt || ""} key={image.thumb || image.fullsize} src={image.thumb || image.fullsize} loading="lazy" />
+          ))}
+        </div>
+      )}
+      {external && (
+        <a className="link-card" href={external.uri} target="_blank" rel="noreferrer">
+          {external.thumb && <img alt="" src={external.thumb} loading="lazy" />}
+          <span>
+            <strong>{external.title || external.uri}</strong>
+            <small>{external.description}</small>
+          </span>
+        </a>
+      )}
+      <footer className="post-actions">
+        <span>
+          <MessageCircle size={16} /> {post.replyCount ?? 0}
+        </span>
+        <span>
+          <Repeat2 size={16} /> {post.repostCount ?? 0}
+        </span>
+        <span>
+          <Bell size={16} /> {post.likeCount ?? 0}
+        </span>
+      </footer>
+    </article>
+  );
+}
+
+function ThreadView({
+  thread,
+}: {
+  thread: { status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string };
+}) {
+  if (thread.status === "loading") {
+    return <LoadingState label="Loading thread" />;
+  }
+
+  if (thread.status === "error") {
+    return <ErrorState message={thread.error || "Thread failed to load."} />;
+  }
+
+  if (!thread.node) {
+    return <ErrorState message="No thread selected." />;
+  }
+
+  return <div className="thread-view">{renderThreadNode(thread.node, 0)}</div>;
+}
+
+function renderThreadNode(node: ThreadNode, depth: number): React.ReactNode {
+  if (!("post" in node)) {
+    return (
+      <div className="thread-alert" style={{ marginLeft: depth * 22 }}>
+        {node.message || "Thread item is unavailable."}
+      </div>
+    );
+  }
+
+  return (
+    <div className="thread-node" key={node.post.uri} style={{ marginLeft: depth * 22 }}>
+      <PostCard item={{ post: node.post }} />
+      {node.replies?.slice(0, 8).map((reply) => renderThreadNode(reply, depth + 1))}
+      {(node.replies?.length ?? 0) > 8 && <button className="load-more">Load more replies</button>}
+    </div>
+  );
+}
+
+function ProfilePanel({ profile, source }: { profile?: Profile; source: FeedSource }) {
+  return (
+    <section className="profile-panel">
+      <Avatar profile={profile} />
+      <h2>{displayName(profile) || source.label}</h2>
+      <p>@{profile?.handle || source.actor}</p>
+      <dl>
+        <div>
+          <dt>Followers</dt>
+          <dd>{profile?.followersCount?.toLocaleString() ?? "-"}</dd>
+        </div>
+        <div>
+          <dt>Posts</dt>
+          <dd>{profile?.postsCount?.toLocaleString() ?? "-"}</dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
+function Avatar({ profile }: { profile?: Profile }) {
+  return profile?.avatar ? <img className="avatar" src={profile.avatar} alt="" loading="lazy" /> : <span className="avatar fallback" />;
+}
+
+function LoadingState({ label }: { label: string }) {
+  return (
+    <div className="state">
+      <Loader2 className="spin" size={24} />
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function ErrorState({ message }: { message: string }) {
+  return (
+    <div className="state error">
+      <strong>Unable to load</strong>
+      <span>{message}</span>
+    </div>
+  );
+}

@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# Local/editor/system files
+.DS_Store
+Thumbs.db
+*.log
+
+# Local Codex/Hermes planning state
+.hermes/
+
+# Environment/secrets
+.env
+.env.*
+!.env.example
