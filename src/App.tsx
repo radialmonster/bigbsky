@@ -414,6 +414,49 @@ function videoKindLabel(type?: string) {
   return "Video";
 }
 
+function threadUnavailableState(node: Exclude<ThreadNode, { post: FeedPost }>) {
+  const type = node.$type?.toLowerCase() || "";
+  const message = node.message?.trim();
+
+  if (type.includes("blocked")) {
+    return {
+      tone: "blocked",
+      title: "Blocked reply",
+      detail: message || "Bluesky did not return this branch because one of the accounts is blocked.",
+    };
+  }
+
+  if (type.includes("notfound") || type.includes("not-found")) {
+    return {
+      tone: "missing",
+      title: "Reply not found",
+      detail: message || "This reply is no longer available from Bluesky.",
+    };
+  }
+
+  if (type.includes("tombstone") || type.includes("deleted")) {
+    return {
+      tone: "deleted",
+      title: "Deleted reply",
+      detail: message || "This reply was deleted, but the surrounding conversation is still shown.",
+    };
+  }
+
+  if (type.includes("rate") || message?.toLowerCase().includes("rate")) {
+    return {
+      tone: "rate-limit",
+      title: "Reply temporarily unavailable",
+      detail: message || "Bluesky rate-limited this branch. Try opening it again later.",
+    };
+  }
+
+  return {
+    tone: "unavailable",
+    title: "Unavailable reply",
+    detail: message || "Bluesky did not return this thread item.",
+  };
+}
+
 export function App() {
   const [route, setRoute] = useState<RouteState>(() => getRouteState());
   const [activeSourceId, setActiveSourceId] = useState(feedSources[0].id);
@@ -3865,9 +3908,15 @@ function renderThreadNode(
   },
 ): React.ReactNode {
   if (!("post" in node)) {
+    const state = threadUnavailableState(node);
+
     return (
-      <div className="thread-alert" style={{ marginLeft: depth * 22 }}>
-        {node.message || "Thread item is unavailable."}
+      <div className={`thread-alert ${state.tone}`} style={{ marginLeft: depth * 22 }}>
+        <ShieldAlert size={16} />
+        <span>
+          <strong>{state.title}</strong>
+          <small>{state.detail}</small>
+        </span>
       </div>
     );
   }

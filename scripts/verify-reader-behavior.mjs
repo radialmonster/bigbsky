@@ -22,6 +22,8 @@ requirePattern(/const submitSearch = \(query: string\) => \{[\s\S]*const path = 
 requirePattern(/onQueryChange=\{setGlobalSearchText\}/, "search input should edit draft query state without direct fetch callbacks");
 requirePattern(/scrollCacheRef\.current\[activeScrollKey\] = timeline\.scrollTop/, "timeline scroll should be cached per active feed/profile key");
 requirePattern(/scrollCacheRef\.current\[cacheKey\] \|\| 0/, "cached feed/profile loads should restore cached scroll offset");
+requirePattern(/function threadUnavailableState\([\s\S]*Blocked reply[\s\S]*Reply not found[\s\S]*Deleted reply[\s\S]*Reply temporarily unavailable/s, "thread unavailable states should distinguish blocked, deleted, not-found, and rate-limited branches");
+requirePattern(/<div className=\{`thread-alert \$\{state\.tone\}`\}/, "thread unavailable branches should render typed alert tones");
 forbidPattern(/timelineRef\.current\?\.scrollTo\(\{ top: 0 \}\)/, "feed switching should not force the timeline back to the top");
 
 if (failures.length > 0) {
