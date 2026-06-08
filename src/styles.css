@@ -273,6 +273,7 @@ button {
 }
 
 .composer,
+.search-workspace,
 .post-card,
 .profile-panel,
 .context-panel,
@@ -287,6 +288,28 @@ button {
 .composer {
   margin-bottom: 18px;
   padding: 14px;
+}
+
+.search-workspace {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+}
+
+.search-workspace input {
+  min-width: 0;
+  height: 38px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--app-text);
+}
+
+.search-workspace .segmented button {
+  min-width: 76px;
 }
 
 .composer textarea {
@@ -715,6 +738,15 @@ button {
   color: var(--app-danger);
 }
 
+.state.empty {
+  flex-direction: column;
+  text-align: center;
+}
+
+.state.empty strong {
+  color: var(--app-text);
+}
+
 .spin {
   animation: spin 900ms linear infinite;
 }
@@ -806,5 +838,13 @@ button {
 
   .link-card img {
     aspect-ratio: 16 / 9;
+  }
+
+  .search-workspace {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+
+  .search-workspace .segmented {
+    grid-column: 1 / -1;
   }
 }

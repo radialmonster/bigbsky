@@ -25,6 +25,7 @@ import {
   type FeedItem,
   type FeedPost,
   type Profile,
+  type SearchPostsResponse,
   type ThreadNode,
   getAuthorFeed,
   getEmbedImages,
@@ -32,6 +33,7 @@ import {
   getFeed,
   getPostThread,
   getProfile,
+  searchPosts,
 } from "./api";
 import { getRouteState, type RouteState } from "./router";
 import { displayName, feedSources, navigationItems, type FeedSource } from "./sources";
@@ -40,6 +42,13 @@ const navIcons = [Home, Compass, Bell, MessageCircle, Hash, List, Bookmark, User
 
 type FeedState = {
   items: FeedItem[];
+  cursor?: string;
+  status: "idle" | "loading" | "ready" | "error";
+  error?: string;
+};
+
+type SearchState = {
+  posts: FeedPost[];
   cursor?: string;
   status: "idle" | "loading" | "ready" | "error";
   error?: string;
@@ -90,7 +99,13 @@ export function App() {
   const [route, setRoute] = useState<RouteState>(() => getRouteState());
   const [activeSourceId, setActiveSourceId] = useState(feedSources[0].id);
   const [feedSearch, setFeedSearch] = useState("");
+  const [globalSearchText, setGlobalSearchText] = useState(() => {
+    const initialRoute = getRouteState();
+    return initialRoute.kind === "search" ? initialRoute.query || "" : "";
+  });
+  const [searchSort, setSearchSort] = useState<"top" | "latest">("top");
   const [feedState, setFeedState] = useState<FeedState>({ items: [], status: "idle" });
+  const [searchState, setSearchState] = useState<SearchState>({ posts: [], status: "idle" });
   const [profile, setProfile] = useState<Profile | null>(null);
   const [composerText, setComposerText] = useState("");
   const [imageViewer, setImageViewer] = useState<ImageViewerState>(null);
@@ -185,8 +200,36 @@ export function App() {
     return () => controller.abort();
   }, []);
 
+  const loadSearch = useCallback(async (query: string, sort: "top" | "latest", cursor?: string) => {
+    const controller = new AbortController();
+    setSearchState((current) => ({
+      ...current,
+      status: cursor ? current.status : "loading",
+      error: undefined,
+    }));
+
+    try {
+      const response: SearchPostsResponse = await searchPosts(query, sort, cursor, controller.signal);
+      setSearchState((current) => ({
+        posts: cursor ? [...current.posts, ...response.posts] : response.posts,
+        cursor: response.cursor,
+        status: "ready",
+      }));
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setSearchState((current) => ({
+          ...current,
+          status: "error",
+          error: error instanceof Error ? error.message : String(error),
+        }));
+      }
+    }
+
+    return () => controller.abort();
+  }, []);
+
   useEffect(() => {
-    if (route.kind === "post") {
+    if (route.kind === "post" || route.kind === "search") {
       return undefined;
     }
 
@@ -198,6 +241,21 @@ export function App() {
     setProfile(null);
     return void loadFeed(activeSource);
   }, [activeSource, loadFeed, loadProfileFeed, route]);
+
+  useEffect(() => {
+    if (route.kind !== "search") {
+      setSearchState({ posts: [], status: "idle" });
+      return undefined;
+    }
+
+    setGlobalSearchText(route.query || "");
+    if (!route.query) {
+      setSearchState({ posts: [], status: "idle" });
+      return undefined;
+    }
+
+    return void loadSearch(route.query, searchSort);
+  }, [loadSearch, route, searchSort]);
 
   useEffect(() => {
     const onPopState = () => setRoute(getRouteState());
@@ -249,9 +307,26 @@ export function App() {
 
   const remainingChars = 300 - composerText.length;
   const isProfileRoute = route.kind === "profile";
-  const workspaceLabel = route.kind === "post" ? "Thread" : isProfileRoute ? "Profile Feed" : "Active Feed";
-  const workspaceTitle = route.kind === "post" ? "Post Conversation" : isProfileRoute ? displayName(profile ?? undefined) : activeSource.label;
+  const workspaceLabel =
+    route.kind === "post" ? "Thread" : route.kind === "search" ? "Search" : isProfileRoute ? "Profile Feed" : "Active Feed";
+  const workspaceTitle =
+    route.kind === "post"
+      ? "Post Conversation"
+      : route.kind === "search"
+        ? route.query
+          ? `Search: ${route.query}`
+          : "Search Bluesky"
+        : isProfileRoute
+          ? displayName(profile ?? undefined)
+          : activeSource.label;
   const loadMore = () => {
+    if (route.kind === "search") {
+      if (route.query && searchState.cursor) {
+        void loadSearch(route.query, searchSort, searchState.cursor);
+      }
+      return;
+    }
+
     if (!feedState.cursor) {
       return;
     }
@@ -262,6 +337,49 @@ export function App() {
     }
 
     void loadFeed(activeSource, feedState.cursor);
+  };
+  const openPost = (post: FeedPost) => {
+    const path = postPath(post);
+    if (!path) {
+      return;
+    }
+
+    const routeState = { kind: "post", actor: post.author.handle, rkey: path.split("/").pop() || "" } as const;
+    remember({
+      label: post.record.text?.slice(0, 72) || "Post conversation",
+      detail: `@${post.author.handle}`,
+      path,
+      route: routeState,
+    });
+    navigate(routeState, path);
+  };
+  const openProfile = (author: Profile) => {
+    const path = `/profile/${encodeURIComponent(author.handle)}`;
+    const routeState = { kind: "profile", actor: author.handle } as const;
+    remember({
+      label: displayName(author),
+      detail: `@${author.handle}`,
+      path,
+      route: routeState,
+    });
+    navigate(routeState, path);
+  };
+  const submitSearch = (query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      navigate({ kind: "search" }, "/search");
+      return;
+    }
+
+    const path = `/search?q=${encodeURIComponent(trimmed)}`;
+    const routeState = { kind: "search", query: trimmed } as const;
+    remember({
+      label: trimmed,
+      detail: "Search",
+      path,
+      route: routeState,
+    });
+    navigate(routeState, path);
   };
 
   return (
@@ -351,6 +469,19 @@ export function App() {
 
         {route.kind === "post" ? (
           <ThreadView thread={thread} />
+        ) : route.kind === "search" ? (
+          <SearchView
+            query={globalSearchText}
+            searchState={searchState}
+            sort={searchSort}
+            onLoadMore={loadMore}
+            onOpenImage={setImageViewer}
+            onOpenPost={openPost}
+            onOpenProfile={openProfile}
+            onQueryChange={setGlobalSearchText}
+            onSearch={submitSearch}
+            onSortChange={setSearchSort}
+          />
         ) : (
           <div
             className={`timeline ${density}`}
@@ -370,31 +501,8 @@ export function App() {
                     item={item}
                     key={item.post.uri}
                     onOpenImage={setImageViewer}
-                    onOpenPost={(post) => {
-                      const path = postPath(post);
-                      if (!path) {
-                        return;
-                      }
-                      const routeState = { kind: "post", actor: post.author.handle, rkey: path.split("/").pop() || "" } as const;
-                      remember({
-                        label: post.record.text?.slice(0, 72) || "Post conversation",
-                        detail: `@${post.author.handle}`,
-                        path,
-                        route: routeState,
-                      });
-                      navigate(routeState, path);
-                    }}
-                    onOpenProfile={(author) => {
-                      const path = `/profile/${encodeURIComponent(author.handle)}`;
-                      const routeState = { kind: "profile", actor: author.handle } as const;
-                      remember({
-                        label: displayName(author),
-                        detail: `@${author.handle}`,
-                        path,
-                        route: routeState,
-                      });
-                      navigate(routeState, path);
-                    }}
+                    onOpenPost={openPost}
+                    onOpenProfile={openProfile}
                   />
                 ))}
                 {feedState.cursor && (
@@ -409,10 +517,7 @@ export function App() {
       </main>
 
       <aside className="right-rail" aria-label="Context">
-        <div className="search-box">
-          <Search size={18} />
-          <input aria-label="Search" placeholder="Search Bluesky" />
-        </div>
+        <SearchBox value={globalSearchText} onChange={setGlobalSearchText} onSearch={submitSearch} />
         {route.kind === "profile" ? <ProfileContextPanel actor={route.actor} profile={profile} /> : <FeedContextPanel source={activeSource} />}
         <RecentPanel
           items={recentItems}
@@ -466,6 +571,115 @@ function Composer({
         </button>
       </div>
     </section>
+  );
+}
+
+function SearchBox({
+  value,
+  onChange,
+  onSearch,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onSearch: (query: string) => void;
+}) {
+  return (
+    <form
+      className="search-box"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSearch(value);
+      }}
+    >
+      <Search size={18} />
+      <input
+        aria-label="Search"
+        placeholder="Search Bluesky"
+        value={value}
+        onInput={(event) => onChange(event.currentTarget.value)}
+      />
+    </form>
+  );
+}
+
+function SearchView({
+  query,
+  searchState,
+  sort,
+  onLoadMore,
+  onOpenImage,
+  onOpenPost,
+  onOpenProfile,
+  onQueryChange,
+  onSearch,
+  onSortChange,
+}: {
+  query: string;
+  searchState: SearchState;
+  sort: "top" | "latest";
+  onLoadMore: () => void;
+  onOpenImage: (image: ImageViewerState) => void;
+  onOpenPost: (post: FeedPost) => void;
+  onOpenProfile: (profile: Profile) => void;
+  onQueryChange: (query: string) => void;
+  onSearch: (query: string) => void;
+  onSortChange: (sort: "top" | "latest") => void;
+}) {
+  return (
+    <div className="timeline comfortable">
+      <form
+        className="search-workspace"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSearch(query);
+        }}
+      >
+        <Search size={18} />
+        <input
+          aria-label="Search posts"
+          placeholder="Search posts, hashtags, or links"
+          value={query}
+          onInput={(event) => onQueryChange(event.currentTarget.value)}
+        />
+        <div className="segmented" aria-label="Search sort">
+          {(["top", "latest"] as const).map((mode) => (
+            <button
+              className={sort === mode ? "selected" : ""}
+              key={mode}
+              type="button"
+              onClick={() => onSortChange(mode)}
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
+      </form>
+
+      {searchState.status === "idle" && <EmptyState title="Search public posts" message="Enter a term to search Bluesky without signing in." />}
+      {searchState.status === "loading" && <LoadingState label="Searching public Bluesky posts" />}
+      {searchState.status === "error" && <ErrorState message={searchState.error || "Search failed to load."} />}
+      {searchState.status === "ready" && searchState.posts.length === 0 && (
+        <EmptyState title="No posts found" message="Try a broader query or switch between top and latest results." />
+      )}
+      {searchState.status === "ready" && searchState.posts.length > 0 && (
+        <>
+          {searchState.posts.map((post) => (
+            <PostCard
+              item={{ post }}
+              key={post.uri}
+              onOpenImage={onOpenImage}
+              onOpenPost={onOpenPost}
+              onOpenProfile={onOpenProfile}
+            />
+          ))}
+          {searchState.cursor && (
+            <button className="load-more" type="button" onClick={onLoadMore}>
+              Load more
+            </button>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -780,6 +994,15 @@ function ErrorState({ message }: { message: string }) {
   return (
     <div className="state error">
       <strong>Unable to load</strong>
+      <span>{message}</span>
+    </div>
+  );
+}
+
+function EmptyState({ title, message }: { title: string; message: string }) {
+  return (
+    <div className="state empty">
+      <strong>{title}</strong>
       <span>{message}</span>
     </div>
   );

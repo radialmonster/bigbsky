@@ -2,7 +2,7 @@ export type RouteState =
   | { kind: "feed" }
   | { kind: "profile"; actor: string }
   | { kind: "post"; actor: string; rkey: string }
-  | { kind: "search" };
+  | { kind: "search"; query?: string };
 
 export function getRouteState(pathname = window.location.pathname): RouteState {
   const parts = pathname.split("/").filter(Boolean).map(decodeURIComponent);
@@ -16,7 +16,7 @@ export function getRouteState(pathname = window.location.pathname): RouteState {
   }
 
   if (parts[0] === "search") {
-    return { kind: "search" };
+    return { kind: "search", query: new URLSearchParams(window.location.search).get("q") || undefined };
   }
 
   return { kind: "feed" };

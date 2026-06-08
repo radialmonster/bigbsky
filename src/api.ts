@@ -1,4 +1,5 @@
 const API_HOST = "https://public.api.bsky.app/xrpc";
+const SEARCH_API_HOST = "https://api.bsky.app/xrpc";
 
 export type Profile = {
   did: string;
@@ -45,6 +46,11 @@ export type FeedResponse = {
   feed: FeedItem[];
 };
 
+export type SearchPostsResponse = {
+  cursor?: string;
+  posts: FeedPost[];
+};
+
 export type ThreadPostNode = {
   post: FeedPost;
   replies?: ThreadNode[];
@@ -57,8 +63,8 @@ export type ThreadNode =
       message?: string;
     };
 
-async function getJson<T>(path: string, params: Record<string, string>, signal?: AbortSignal): Promise<T> {
-  const url = new URL(`${API_HOST}/${path}`);
+async function getJson<T>(path: string, params: Record<string, string>, signal?: AbortSignal, host = API_HOST): Promise<T> {
+  const url = new URL(`${host}/${path}`);
   Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
 
   const response = await fetch(url, { signal });
@@ -95,6 +101,20 @@ export function getAuthorFeed(actor: string, cursor?: string, signal?: AbortSign
 
 export function getProfile(actor: string, signal?: AbortSignal) {
   return getJson<Profile>("app.bsky.actor.getProfile", { actor }, signal);
+}
+
+export function searchPosts(query: string, sort: "top" | "latest", cursor?: string, signal?: AbortSignal) {
+  return getJson<SearchPostsResponse>(
+    "app.bsky.feed.searchPosts",
+    {
+      q: query,
+      sort,
+      limit: "30",
+      ...(cursor ? { cursor } : {}),
+    },
+    signal,
+    SEARCH_API_HOST,
+  );
 }
 
 export async function resolveHandle(handleOrDid: string, signal?: AbortSignal) {
