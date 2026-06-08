@@ -159,6 +159,7 @@ const pinnedSearchesStorageKey = "bigbsky:pinned-searches";
 const pinnedProfilesStorageKey = "bigbsky:pinned-profiles";
 const pinnedNotificationsStorageKey = "bigbsky:pinned-notifications";
 const collapsedFeedGroupsStorageKey = "bigbsky:collapsed-feed-groups";
+const timelineScrollStorageKey = "bigbsky:timeline-scroll";
 const replyDraftPrefix = "bigbsky:reply-draft:";
 const emptyFeedState: FeedState = { items: [], status: "idle" };
 const emptySearchState: SearchState = { posts: [], status: "idle" };
@@ -299,6 +300,29 @@ function readCollapsedFeedGroups() {
     return stored && typeof stored === "object" ? stored : {};
   } catch {
     return {};
+  }
+}
+
+function readTimelineScrollCache() {
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(timelineScrollStorageKey) || "{}") as Record<string, number>;
+    if (!stored || typeof stored !== "object") {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(stored).filter((entry): entry is [string, number] => typeof entry[0] === "string" && Number.isFinite(entry[1])),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function writeTimelineScrollCache(cache: Record<string, number>) {
+  try {
+    sessionStorage.setItem(timelineScrollStorageKey, JSON.stringify(cache));
+  } catch {
+    // Scroll restoration is best-effort browser state.
   }
 }
 
@@ -546,7 +570,7 @@ export function App() {
   const actorSearchCacheRef = useRef<Record<string, ActorSearchState>>({});
   const threadCacheRef = useRef<Record<string, ThreadNode>>({});
   const threadBranchCacheRef = useRef<Record<string, ThreadNode>>({});
-  const scrollCacheRef = useRef<Record<string, number>>({});
+  const scrollCacheRef = useRef<Record<string, number>>(readTimelineScrollCache());
 
   useEffect(() => {
     let cancelled = false;
@@ -712,6 +736,9 @@ export function App() {
         feedCacheRef.current[cacheKey] = next;
         return next;
       });
+      if (!cursor) {
+        requestAnimationFrame(() => timelineRef.current?.scrollTo({ top: scrollCacheRef.current[cacheKey] || 0 }));
+      }
     } catch (error) {
       if (!signal?.aborted) {
         setFeedState((current) => ({
@@ -760,6 +787,9 @@ export function App() {
         profileCacheRef.current[cacheKey] = { feed: next, profile: profileResponse ?? profileCacheRef.current[cacheKey]?.profile ?? null };
         return next;
       });
+      if (!cursor) {
+        requestAnimationFrame(() => timelineRef.current?.scrollTo({ top: scrollCacheRef.current[cacheKey] || 0 }));
+      }
     } catch (error) {
       if (!signal?.aborted) {
         setFeedState((current) => ({
@@ -1087,6 +1117,9 @@ export function App() {
     Object.keys(localStorage)
       .filter((key) => key.startsWith("bigbsky:"))
       .forEach((key) => localStorage.removeItem(key));
+    Object.keys(sessionStorage)
+      .filter((key) => key.startsWith("bigbsky:"))
+      .forEach((key) => sessionStorage.removeItem(key));
     await clearOAuthSessionStorage();
     setDensityByContext({});
     setWorkspaceWidth("balanced");
@@ -1382,10 +1415,16 @@ export function App() {
     const rememberScroll = () => {
       scrollCacheRef.current[activeScrollKey] = timeline.scrollTop;
     };
-    timeline.addEventListener("scroll", rememberScroll, { passive: true });
-    return () => {
+    const persistScroll = () => {
       rememberScroll();
+      writeTimelineScrollCache(scrollCacheRef.current);
+    };
+    timeline.addEventListener("scroll", rememberScroll, { passive: true });
+    window.addEventListener("pagehide", persistScroll);
+    return () => {
+      persistScroll();
       timeline.removeEventListener("scroll", rememberScroll);
+      window.removeEventListener("pagehide", persistScroll);
     };
   }, [activeScrollKey]);
 
