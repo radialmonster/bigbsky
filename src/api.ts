@@ -216,6 +216,10 @@ export async function resolveHandle(handleOrDid: string, signal?: AbortSignal) {
 export async function getPostThread(handleOrDid: string, rkey: string, signal?: AbortSignal) {
   const did = await resolveHandle(handleOrDid, signal);
   const uri = `at://${did}/app.bsky.feed.post/${rkey}`;
+  return getPostThreadByUri(uri, signal);
+}
+
+export function getPostThreadByUri(uri: string, signal?: AbortSignal) {
   return getJson<{ thread: ThreadNode }>(
     "app.bsky.feed.getPostThread",
     {

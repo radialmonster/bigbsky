@@ -40,6 +40,7 @@ import {
   getFeed,
   getFeedGenerator,
   getPostThread,
+  getPostThreadByUri,
   getProfile,
   getRecordEmbed,
   getVideoEmbed,
@@ -222,6 +223,21 @@ function countThreadRows(node?: ThreadNode): number {
   return 1 + (node.replies ?? []).reduce((total, reply) => total + countThreadRows(reply), 0);
 }
 
+function replaceThreadBranch(node: ThreadNode, uri: string, replacement: ThreadNode): ThreadNode {
+  if (!("post" in node)) {
+    return node;
+  }
+
+  if (node.post.uri === uri) {
+    return replacement;
+  }
+
+  return {
+    ...node,
+    replies: node.replies?.map((reply) => replaceThreadBranch(reply, uri, replacement)),
+  };
+}
+
 export function App() {
   const [route, setRoute] = useState<RouteState>(() => getRouteState());
   const [activeSourceId, setActiveSourceId] = useState(feedSources[0].id);
@@ -247,6 +263,7 @@ export function App() {
   const [thread, setThread] = useState<{ status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string }>({
     status: "idle",
   });
+  const [loadingThreadBranches, setLoadingThreadBranches] = useState<Record<string, boolean>>({});
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const feedCacheRef = useRef<Record<string, FeedState>>({});
   const feedMetadataCacheRef = useRef<Record<string, FeedGeneratorView>>({});
@@ -254,6 +271,7 @@ export function App() {
   const searchCacheRef = useRef<Record<string, SearchState>>({});
   const actorSearchCacheRef = useRef<Record<string, ActorSearchState>>({});
   const threadCacheRef = useRef<Record<string, ThreadNode>>({});
+  const threadBranchCacheRef = useRef<Record<string, ThreadNode>>({});
   const scrollCacheRef = useRef<Record<string, number>>({});
 
   const routeFeedSource =
@@ -648,6 +666,7 @@ export function App() {
   useEffect(() => {
     if (route.kind !== "post") {
       setThread({ status: "idle" });
+      setLoadingThreadBranches({});
       return;
     }
 
@@ -676,6 +695,58 @@ export function App() {
       });
     return () => controller.abort();
   }, [route]);
+
+  function loadThreadBranch(uri: string) {
+    if (thread.status !== "ready" || !thread.node || loadingThreadBranches[uri]) {
+      return;
+    }
+
+    const cachedBranch = threadBranchCacheRef.current[uri];
+    if (cachedBranch) {
+      setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
+      setThread((current) => {
+        if (current.status !== "ready" || !current.node) {
+          return current;
+        }
+
+        const nextNode = replaceThreadBranch(current.node, uri, cachedBranch);
+        if (route.kind === "post") {
+          threadCacheRef.current[`${route.actor}:${route.rkey}`] = nextNode;
+        }
+        return { ...current, node: nextNode };
+      });
+      return;
+    }
+
+    setLoadingThreadBranches((current) => ({ ...current, [uri]: true }));
+    getPostThreadByUri(uri)
+      .then((response) => {
+        threadBranchCacheRef.current[uri] = response.thread;
+        setThread((current) => {
+          if (current.status !== "ready" || !current.node) {
+            return current;
+          }
+
+          const nextNode = replaceThreadBranch(current.node, uri, response.thread);
+          if (route.kind === "post") {
+            threadCacheRef.current[`${route.actor}:${route.rkey}`] = nextNode;
+          }
+          return { ...current, node: nextNode };
+        });
+      })
+      .catch((error) => {
+        setThread((current) => ({
+          ...current,
+          error: error instanceof Error ? error.message : String(error),
+        }));
+      })
+      .finally(() => {
+        setLoadingThreadBranches((current) => {
+          const { [uri]: _removed, ...rest } = current;
+          return rest;
+        });
+      });
+  }
 
   function updateDensity(nextDensity: string) {
     const nextPreferences = {
@@ -978,9 +1049,11 @@ export function App() {
         {route.kind === "post" ? (
           <ThreadView
             thread={thread}
+            loadingBranches={loadingThreadBranches}
             onOpenImage={setImageViewer}
             onOpenPost={openPost}
             onOpenProfile={openProfile}
+            onLoadBranch={loadThreadBranch}
           />
         ) : route.kind === "surface" ? (
           <SurfaceView name={route.name} />
@@ -1189,6 +1262,7 @@ function SurfaceView({ name }: { name: string }) {
     feeds: "Feeds are available in the desktop selector now. Signed-in saved feeds, pin controls, and feed editing will attach here after OAuth.",
     lists: "Lists will become timeline sources after signed-in reads are available.",
     notifications: "Notifications need OAuth, account context, and local session restore.",
+    "oauth-callback": "The OAuth callback has a static SPA route now. Browser-side state validation and token exchange will attach here in Phase 2.",
     profile: "Self-profile needs OAuth before edit controls, likes, feeds, starter packs, and lists can be shown.",
     saved: "Saved posts need authenticated reads and account-aware rendering.",
     settings: "Settings will start with local preferences, sign-out, and account/session controls.",
@@ -1775,12 +1849,16 @@ function replyPermissionLabel(post: FeedPost) {
 
 function ThreadView({
   thread,
+  loadingBranches,
   onOpenImage,
+  onLoadBranch,
   onOpenPost,
   onOpenProfile,
 }: {
   thread: { status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string };
+  loadingBranches: Record<string, boolean>;
   onOpenImage: (image: ImageViewerState) => void;
+  onLoadBranch: (uri: string) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
 }) {
@@ -1851,7 +1929,7 @@ function ThreadView({
       </section>
       {renderThreadNode(thread.node, 0, expandedBranches, (uri) =>
         setExpandedBranches((current) => ({ ...current, [uri]: !current[uri] })),
-        { onOpenImage, onOpenPost, onOpenProfile },
+        { loadingBranches, onLoadBranch, onOpenImage, onOpenPost, onOpenProfile },
       )}
     </div>
   );
@@ -2018,6 +2096,8 @@ function renderThreadNode(
   expandedBranches: Record<string, boolean>,
   onToggleBranch: (uri: string) => void,
   handlers: {
+    loadingBranches: Record<string, boolean>;
+    onLoadBranch: (uri: string) => void;
     onOpenImage: (image: ImageViewerState) => void;
     onOpenPost: (post: FeedPost) => void;
     onOpenProfile: (profile: Profile) => void;
@@ -2035,6 +2115,9 @@ function renderThreadNode(
   const isExpanded = !!expandedBranches[node.post.uri];
   const visibleReplies = isExpanded ? replies : replies.slice(0, 8);
   const hiddenReplyCount = Math.max(0, replies.length - visibleReplies.length);
+  const knownReplyCount = node.post.replyCount ?? 0;
+  const hasUnloadedReplies = knownReplyCount > replies.length;
+  const isLoadingBranch = !!handlers.loadingBranches[node.post.uri];
 
   return (
     <div className="thread-node" key={node.post.uri} style={{ marginLeft: depth * 22 }}>
@@ -2048,6 +2131,16 @@ function renderThreadNode(
       {replies.length > 8 && (
         <button className="load-more branch-toggle" type="button" onClick={() => onToggleBranch(node.post.uri)}>
           {isExpanded ? "Show fewer replies" : `Show ${hiddenReplyCount} more replies`}
+        </button>
+      )}
+      {hasUnloadedReplies && (
+        <button
+          className="load-more branch-toggle"
+          type="button"
+          disabled={isLoadingBranch}
+          onClick={() => handlers.onLoadBranch(node.post.uri)}
+        >
+          {isLoadingBranch ? "Loading branch" : `Load ${knownReplyCount - replies.length} more from Bluesky`}
         </button>
       )}
     </div>

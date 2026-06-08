@@ -28,6 +28,10 @@ export function getRouteState(pathname = window.location.pathname): RouteState {
     return { kind: "search", query: new URLSearchParams(window.location.search).get("q") || undefined };
   }
 
+  if (parts[0] === "oauth" && parts[1] === "callback") {
+    return { kind: "surface", name: "oauth-callback" };
+  }
+
   const surfaces = new Set(["explore", "feeds", "notifications", "chat", "lists", "saved", "settings"]);
   if (parts[0] && surfaces.has(parts[0])) {
     return { kind: "surface", name: parts[0] };

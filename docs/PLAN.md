@@ -968,7 +968,7 @@ Request budget mindset:
 - Experiment with wider post/card formats for text, media, link cards, quote posts, and threads. Status: implemented as first pass; quote-post cards, quoted media/link/video previews, alt badges, content-label chips, and engagement density markers now render from loaded post data.
 - Add public timeline/feed/profile/thread data loading. Status: implemented.
 - Add standalone post-thread data loading for `/profile/:handleOrDid/post/:rkey`, including direct-open support for Bluesky-style copied post URLs. Status: implemented.
-- Render standalone post routes as full threaded conversation pages: root post first, then nested replies/comments, with branch expansion for additional replies when Bluesky truncates the initial thread response. Status: partial; nested replies render and loaded reply branches can now expand/collapse locally, deeper Bluesky branch fetches for API-truncated branches still pending.
+- Render standalone post routes as full threaded conversation pages: root post first, then nested replies/comments, with branch expansion for additional replies when Bluesky truncates the initial thread response. Status: partial; nested replies render, loaded reply branches can expand/collapse locally, and posts with more known replies than loaded replies can explicitly fetch a deeper branch from Bluesky by post URI with a session cache. More complete continuation handling for alternate thread APIs remains pending.
 - Add normalized in-memory entities for loaded posts, authors, embeds, and Feed metadata before building right-rail previews. Status: first pass implemented for loaded posts, author profiles, active Feed Generator metadata, link URLs, media previews, and local smart-group summaries.
 - Add request cancellation and source-level cache retention so switching Feeds or previews does not produce stale renders or repeated first-page fetches. Status: implemented for feed/profile/search/thread first-page loads with session cache and route scroll restoration.
 - Support client-side URL routes served by the single static app shell:
@@ -985,13 +985,14 @@ Request budget mindset:
 - Add service worker/app-shell caching once the shell stabilizes. Status: implemented as a static `public/sw.js` app-shell cache for `/`, `/index.html`, and hashed assets; `/sw.js` is served with must-revalidate caching.
 - Verify repeat visits and in-app navigation do not depend on Cloudflare document reloads or paid/quota-triggering Cloudflare requests. Static asset update checks are allowed only as deliberate background checks. Status: local preview serves `/` and `/sw.js` as static assets; production Cloudflare dashboard verification still pending.
 - Verify DOM size remains bounded after scrolling multiple timeline pages. Status: partial; active Feed rendering is now windowed so only the visible overscan range mounts, but browser-driven multi-page scroll verification is still pending.
-- Verify all clean routes and OAuth callback routes are served by static SPA fallback, not by server-side handlers. Status: local preview verified `/`, `/search`, `/explore`, `/feeds`, and `/profile/suewho82.bsky.social/post/3mnpjvwbxq22b` return the static SPA shell; OAuth callback route still pending.
+- Verify all clean routes and OAuth callback routes are served by static SPA fallback, not by server-side handlers. Status: local preview verified `/`, `/search`, `/explore`, `/feeds`, `/oauth/callback?code=test&state=test`, and `/profile/suewho82.bsky.social/post/3mnpjvwbxq22b` return the static SPA shell.
 - Verify a direct standalone post route such as `/profile/suewho82.bsky.social/post/3mnpjvwbxq22b` renders through the static SPA shell, makes only direct Bluesky/AT Protocol data calls after load, shows the root post plus threaded replies/comments, and triggers zero Pages Function/Worker invocations. Status: local static-shell/thread rendering verified; Cloudflare dashboard zero-invocation verification still pending.
 
 ### Phase 2: OAuth Login
 
 - Add AT Protocol OAuth client metadata.
 - Serve OAuth client metadata, icons, and callback shell as static assets only.
+- Add static OAuth callback route/surface through the SPA shell. Status: placeholder route implemented for `/oauth/callback`; browser-side OAuth state validation and token exchange remain pending.
 - Implement sign-in with handle input.
 - Complete callback handling.
 - Handle OAuth callback parsing, state validation, token exchange, session restore, and refresh in browser code or the OAuth SDK without a BigBSky backend.
