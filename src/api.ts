@@ -113,7 +113,14 @@ export function getEmbedImages(embed: unknown) {
     return [];
   }
 
-  const candidate = embed as { images?: Array<{ thumb?: string; fullsize?: string; alt?: string }> };
+  const candidate = embed as {
+    images?: Array<{
+      thumb?: string;
+      fullsize?: string;
+      alt?: string;
+      aspectRatio?: { width?: number; height?: number };
+    }>;
+  };
   return Array.isArray(candidate.images) ? candidate.images : [];
 }
 

@@ -383,24 +383,24 @@ button {
 .image-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  justify-items: start;
   gap: 8px;
   margin: 12px 0;
 }
 
 .image-grid.count-1 {
-  grid-template-columns: minmax(0, 720px);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .image-grid img {
-  width: 100%;
-  aspect-ratio: 16 / 10;
+  display: block;
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  max-height: calc(100vh - 140px);
   border-radius: 8px;
-  object-fit: cover;
   background: var(--app-surface-2);
-}
-
-.media .image-grid img {
-  aspect-ratio: 16 / 12;
 }
 
 .link-card {
