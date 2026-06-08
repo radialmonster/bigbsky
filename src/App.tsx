@@ -9,6 +9,7 @@ import {
   Home,
   Image,
   LayoutList,
+  Link as LinkIcon,
   List,
   Loader2,
   LogOut,
@@ -91,6 +92,14 @@ type ImageViewerState = {
   index: number;
 } | null;
 
+type LinkPreviewState = {
+  uri: string;
+  title?: string;
+  description?: string;
+  thumb?: string;
+  sourcePost?: FeedPost;
+} | null;
+
 type RecentItem = {
   label: string;
   path: string;
@@ -131,6 +140,7 @@ type AuthState = {
 };
 
 const densityModes = ["comfortable", "compact", "media"];
+const widthModes = ["balanced", "wide", "focus"] as const;
 const searchTabs = ["posts", "people", "feeds"] as const;
 const profileTabs = ["posts", "replies", "media", "videos"] as const;
 const searchLanguages = [
@@ -144,12 +154,8 @@ const searchLanguages = [
 const recentStorageKey = "bigbsky:recent";
 const savedPostsStorageKey = "bigbsky:saved-posts";
 const composerDraftStorageKey = "bigbsky:composer-draft";
+const workspaceWidthStorageKey = "bigbsky:workspace-width";
 const replyDraftPrefix = "bigbsky:reply-draft:";
-const estimatedPostHeights: Record<string, number> = {
-  comfortable: 310,
-  compact: 238,
-  media: 390,
-};
 const emptyFeedState: FeedState = { items: [], status: "idle" };
 const emptySearchState: SearchState = { posts: [], status: "idle" };
 const emptyActorSearchState: ActorSearchState = { actors: [], status: "idle" };
@@ -203,6 +209,15 @@ function readComposerDraft() {
     };
   } catch {
     return { posts: [""], mediaSlots: {} };
+  }
+}
+
+function readWorkspaceWidthPreference() {
+  try {
+    const stored = localStorage.getItem(workspaceWidthStorageKey);
+    return widthModes.includes(stored as (typeof widthModes)[number]) ? (stored as (typeof widthModes)[number]) : "balanced";
+  } catch {
+    return "balanced";
   }
 }
 
@@ -314,7 +329,9 @@ export function App() {
   const [composerDraft, setComposerDraft] = useState(() => readComposerDraft());
   const [savedPosts, setSavedPosts] = useState<FeedPost[]>(() => readSavedPosts());
   const [imageViewer, setImageViewer] = useState<ImageViewerState>(null);
+  const [linkPreview, setLinkPreview] = useState<LinkPreviewState>(null);
   const [densityByContext, setDensityByContext] = useState<Record<string, string>>(() => readDensityPreferences());
+  const [workspaceWidth, setWorkspaceWidth] = useState<(typeof widthModes)[number]>(() => readWorkspaceWidthPreference());
   const [recentItems, setRecentItems] = useState<RecentItem[]>(() => readRecentItems());
   const [devMetrics, setDevMetrics] = useState<DevMetrics>(initialDevMetrics);
   const [authState, setAuthState] = useState<AuthState>(initialAuthState);
@@ -861,12 +878,18 @@ export function App() {
     localStorage.setItem("bigbsky:density-by-context", JSON.stringify(nextPreferences));
   }
 
+  function updateWorkspaceWidth(nextWidth: (typeof widthModes)[number]) {
+    setWorkspaceWidth(nextWidth);
+    localStorage.setItem(workspaceWidthStorageKey, nextWidth);
+  }
+
   async function clearLocalReaderData() {
     Object.keys(localStorage)
       .filter((key) => key.startsWith("bigbsky:"))
       .forEach((key) => localStorage.removeItem(key));
     await clearOAuthSessionStorage();
     setDensityByContext({});
+    setWorkspaceWidth("balanced");
     setRecentItems([]);
     setComposerDraft({ posts: [""], mediaSlots: {} });
     setSavedPosts([]);
@@ -1134,8 +1157,12 @@ export function App() {
     navigate({ kind: "search" }, "/search");
   };
 
+  const openLinkPreview = (link: NonNullable<LinkPreviewState>) => {
+    setLinkPreview(link);
+  };
+
   return (
-    <div className="app-shell">
+    <div className={`app-shell width-${workspaceWidth}`}>
       <aside className="left-rail" aria-label="Primary">
         <button className="brand-button" type="button" onClick={() => navigate({ kind: "feed" })} title="BigBSky">
           <Feather size={22} />
@@ -1218,17 +1245,31 @@ export function App() {
             <p>{workspaceLabel}</p>
             <h1>{workspaceTitle}</h1>
           </div>
-          <div className="segmented" aria-label="Density">
-            {densityModes.map((mode) => (
-              <button
-                className={density === mode ? "selected" : ""}
-                key={mode}
-                type="button"
-                onClick={() => updateDensity(mode)}
-              >
-                {mode}
-              </button>
-            ))}
+          <div className="header-controls">
+            <div className="segmented" aria-label="Density">
+              {densityModes.map((mode) => (
+                <button
+                  className={density === mode ? "selected" : ""}
+                  key={mode}
+                  type="button"
+                  onClick={() => updateDensity(mode)}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+            <div className="segmented compact-segmented" aria-label="Feed width">
+              {widthModes.map((mode) => (
+                <button
+                  className={workspaceWidth === mode ? "selected" : ""}
+                  key={mode}
+                  type="button"
+                  onClick={() => updateWorkspaceWidth(mode)}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
           </div>
         </header>
 
@@ -1239,6 +1280,7 @@ export function App() {
             onOpenImage={setImageViewer}
             onOpenPost={openPost}
             onOpenProfile={openProfile}
+            onOpenLinkPreview={openLinkPreview}
             onLoadBranch={loadThreadBranch}
             onToggleSaved={toggleSavedPost}
             savedUris={new Set(savedPosts.map((post) => post.uri))}
@@ -1250,6 +1292,7 @@ export function App() {
             onOpenImage={setImageViewer}
             onOpenPost={openPost}
             onOpenProfile={openProfile}
+            onOpenLinkPreview={openLinkPreview}
             onToggleSaved={toggleSavedPost}
           />
         ) : route.kind === "surface" ? (
@@ -1260,10 +1303,23 @@ export function App() {
             recentCount={recentItems.length}
             savedPostCount={savedPosts.length}
             savedPreferenceCount={Object.keys(densityByContext).length}
+            workspaceWidth={workspaceWidth}
             onClearLocalData={clearLocalReaderData}
+            onOpenFeed={(source) => {
+              setActiveSourceId(source.id);
+              remember({
+                label: source.label,
+                detail: source.description,
+                path: feedRoutePath(source),
+                route: { kind: "feed", uri: source.id },
+                sourceId: source.id,
+              });
+              navigate({ kind: "feed", uri: source.id }, feedRoutePath(source));
+            }}
             onOpenSearch={() => navigate({ kind: "search" }, "/search")}
             onSignIn={handleSignIn}
             onSignOut={handleSignOut}
+            onWorkspaceWidthChange={updateWorkspaceWidth}
           />
         ) : route.kind === "search" ? (
           <SearchView
@@ -1278,6 +1334,7 @@ export function App() {
             onOpenImage={setImageViewer}
             onOpenPost={openPost}
             onOpenProfile={openProfile}
+            onOpenLinkPreview={openLinkPreview}
             savedUris={new Set(savedPosts.map((post) => post.uri))}
             onToggleSaved={toggleSavedPost}
             onQueryChange={setGlobalSearchText}
@@ -1320,6 +1377,7 @@ export function App() {
                 onOpenImage={setImageViewer}
                 onOpenPost={openPost}
                 onOpenProfile={openProfile}
+                onOpenLinkPreview={openLinkPreview}
                 savedUris={new Set(savedPosts.map((post) => post.uri))}
                 onToggleSaved={toggleSavedPost}
                 onRenderedRowsChange={setVirtualRenderedRows}
@@ -1353,6 +1411,7 @@ export function App() {
                 onOpenImage={setImageViewer}
                 onOpenPost={openPost}
                 onOpenProfile={openProfile}
+                onOpenLinkPreview={openLinkPreview}
                 savedUris={new Set(savedPosts.map((post) => post.uri))}
                 onToggleSaved={toggleSavedPost}
                 onRenderedRowsChange={setVirtualRenderedRows}
@@ -1377,6 +1436,12 @@ export function App() {
           <FeedContextPanel source={activeSource} metadata={feedMetadata} entityCache={entityCache} />
         )}
         <FeedMapPanel groups={feedMapSummary} />
+        <LinkPreviewPanel
+          preview={linkPreview}
+          relatedPosts={linkPreview ? feedState.items.map((item) => item.post).filter((post) => getExternalEmbed(post.embed)?.uri === linkPreview.uri) : []}
+          onClose={() => setLinkPreview(null)}
+          onOpenPost={openPost}
+        />
         <SmartGroupsPanel groups={entityCache.smartGroups} />
         <MediaStripPanel mediaPosts={entityCache.mediaPosts} posts={entityCache.posts} onOpenPost={openPost} />
         <RecentPanel
@@ -1424,6 +1489,7 @@ function VirtualPostList({
   density,
   items,
   onOpenImage,
+  onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
   onToggleSaved,
@@ -1435,72 +1501,31 @@ function VirtualPostList({
   density: string;
   items: FeedItem[];
   onOpenImage: (image: ImageViewerState) => void;
+  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
   onToggleSaved: (post: FeedPost) => void;
   onRenderedRowsChange: (count: number) => void;
   savedUris: Set<string>;
 }) {
-  const listRef = useRef<HTMLDivElement | null>(null);
-  const [viewport, setViewport] = useState({ height: 900, top: 0 });
-  const estimatedHeight = estimatedPostHeights[density] ?? estimatedPostHeights.comfortable;
-
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) {
-      return undefined;
-    }
-
-    let frame = 0;
-    const updateViewport = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const listTop = listRef.current?.offsetTop ?? 0;
-        setViewport({
-          height: container.clientHeight,
-          top: Math.max(0, container.scrollTop - listTop),
-        });
-      });
-    };
-
-    updateViewport();
-    container.addEventListener("scroll", updateViewport, { passive: true });
-    window.addEventListener("resize", updateViewport);
-
-    return () => {
-      cancelAnimationFrame(frame);
-      container.removeEventListener("scroll", updateViewport);
-      window.removeEventListener("resize", updateViewport);
-    };
-  }, [containerRef, items.length]);
-
-  const overscan = 8;
-  const startIndex = Math.max(0, Math.floor(viewport.top / estimatedHeight) - overscan);
-  const visibleCount = Math.ceil(viewport.height / estimatedHeight) + overscan * 2;
-  const endIndex = Math.min(items.length, startIndex + visibleCount);
-  const visibleItems = items.slice(startIndex, endIndex);
-  const beforeHeight = startIndex * estimatedHeight;
-  const afterHeight = Math.max(0, (items.length - endIndex) * estimatedHeight);
-
-  useEffect(() => {
-    onRenderedRowsChange(visibleItems.length);
-  }, [onRenderedRowsChange, visibleItems.length]);
+    onRenderedRowsChange(items.length);
+  }, [items.length, onRenderedRowsChange]);
 
   return (
-    <div className="virtual-list" ref={listRef} data-total-rows={items.length} data-rendered-rows={visibleItems.length}>
-      <div style={{ height: beforeHeight }} />
-      {visibleItems.map((item) => (
+    <div className="virtual-list" data-total-rows={items.length} data-rendered-rows={items.length}>
+      {items.map((item) => (
         <PostCard
           item={item}
           key={item.post.uri}
           onOpenImage={onOpenImage}
+          onOpenLinkPreview={onOpenLinkPreview}
           onOpenPost={onOpenPost}
           onOpenProfile={onOpenProfile}
           isSaved={savedUris.has(item.post.uri)}
           onToggleSaved={onToggleSaved}
         />
       ))}
-      <div style={{ height: afterHeight }} />
       {children}
     </div>
   );
@@ -1513,10 +1538,13 @@ function SurfaceView({
   recentCount,
   savedPostCount,
   savedPreferenceCount,
+  workspaceWidth,
   onClearLocalData,
+  onOpenFeed,
   onOpenSearch,
   onSignIn,
   onSignOut,
+  onWorkspaceWidthChange,
 }: {
   auth: AuthState;
   name: string;
@@ -1524,10 +1552,13 @@ function SurfaceView({
   recentCount: number;
   savedPostCount: number;
   savedPreferenceCount: number;
+  workspaceWidth: (typeof widthModes)[number];
   onClearLocalData: () => void | Promise<void>;
+  onOpenFeed: (source: FeedSource) => void;
   onOpenSearch: () => void;
   onSignIn: (handle: string) => void | Promise<void>;
   onSignOut: () => void | Promise<void>;
+  onWorkspaceWidthChange: (width: (typeof widthModes)[number]) => void;
 }) {
   const title = name.charAt(0).toUpperCase() + name.slice(1);
   const surfaces: Record<string, { copy: string; cards: Array<{ title: string; detail: string; status: string }> }> = {
@@ -1631,6 +1662,19 @@ function SurfaceView({
               </div>
             </dl>
             <p>Density is stored locally per Feed or surface and applied before timeline rows paint.</p>
+            <div className="settings-control-group" aria-label="Feed width setting">
+              {widthModes.map((mode) => (
+                <button
+                  className={workspaceWidth === mode ? "selected-setting" : ""}
+                  key={mode}
+                  type="button"
+                  onClick={() => onWorkspaceWidthChange(mode)}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+            <p>Feed width is stored locally and changes how much desktop space the reader claims from side context.</p>
           </article>
           <article className="settings-panel">
             <span>Local</span>
@@ -1700,6 +1744,17 @@ function SurfaceView({
           </a>
         )}
       </section>
+      {name === "feeds" && (
+        <section className="feed-directory-grid" aria-label="Known Feed destinations">
+          {feedSources.map((source) => (
+            <button className="feed-directory-card" key={source.id} type="button" onClick={() => onOpenFeed(source)}>
+              <span>{source.group}</span>
+              <strong>{source.label}</strong>
+              <small>{source.description}</small>
+            </button>
+          ))}
+        </section>
+      )}
       <section className="surface-grid" aria-label={`${title} sections`}>
         {surface.cards.map((card) => (
           <article className="surface-card" key={card.title}>
@@ -2000,6 +2055,7 @@ function SavedPostsView({
   posts,
   savedUris,
   onOpenImage,
+  onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
   onToggleSaved,
@@ -2007,6 +2063,7 @@ function SavedPostsView({
   posts: FeedPost[];
   savedUris: Set<string>;
   onOpenImage: (image: ImageViewerState) => void;
+  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
   onToggleSaved: (post: FeedPost) => void;
@@ -2027,6 +2084,7 @@ function SavedPostsView({
               key={post.uri}
               isSaved={savedUris.has(post.uri)}
               onOpenImage={onOpenImage}
+              onOpenLinkPreview={onOpenLinkPreview}
               onOpenPost={onOpenPost}
               onOpenProfile={onOpenProfile}
               onToggleSaved={onToggleSaved}
@@ -2052,6 +2110,7 @@ function SearchView({
   onLanguageChange,
   onOpenFeed,
   onOpenImage,
+  onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
   onQueryChange,
@@ -2072,6 +2131,7 @@ function SearchView({
   onToggleSaved: (post: FeedPost) => void;
   onOpenFeed: (source: FeedSource) => void;
   onOpenImage: (image: ImageViewerState) => void;
+  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
   onQueryChange: (query: string) => void;
@@ -2211,6 +2271,7 @@ function SearchView({
                   item={{ post }}
                   key={post.uri}
                   onOpenImage={onOpenImage}
+                  onOpenLinkPreview={onOpenLinkPreview}
                   onOpenPost={onOpenPost}
                   onOpenProfile={onOpenProfile}
                   isSaved={savedUris.has(post.uri)}
@@ -2285,6 +2346,7 @@ function PostCard({
   isSaved = false,
   item,
   onOpenImage,
+  onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
   onToggleSaved,
@@ -2292,6 +2354,7 @@ function PostCard({
   isSaved?: boolean;
   item: FeedItem;
   onOpenImage?: (image: ImageViewerState) => void;
+  onOpenLinkPreview?: (link: NonNullable<LinkPreviewState>) => void;
   onOpenPost?: (post: FeedPost) => void;
   onOpenProfile?: (profile: Profile) => void;
   onToggleSaved?: (post: FeedPost) => void;
@@ -2405,13 +2468,22 @@ function PostCard({
         </a>
       )}
       {external && (
-        <a className="link-card" href={external.uri} target="_blank" rel="noreferrer">
-          {external.thumb && <img alt="" src={external.thumb} loading="lazy" decoding="async" />}
-          <span>
-            <strong>{external.title || external.uri}</strong>
-            <small>{external.description}</small>
-          </span>
-        </a>
+        <div className="link-card">
+          <a href={external.uri} target="_blank" rel="noreferrer">
+            {external.thumb && <img alt="" src={external.thumb} loading="lazy" decoding="async" />}
+            <span>
+              <strong>{external.title || external.uri}</strong>
+              <small>{external.description}</small>
+            </span>
+          </a>
+          <button
+            type="button"
+            onClick={() => onOpenLinkPreview?.({ ...external, sourcePost: post, uri: external.uri || "" })}
+            title="Preview link context"
+          >
+            <LinkIcon size={15} /> Preview
+          </button>
+        </div>
       )}
       {recordEmbed && (
         <QuotedPostCard
@@ -2585,6 +2657,7 @@ function ThreadView({
   thread,
   loadingBranches,
   onOpenImage,
+  onOpenLinkPreview,
   onLoadBranch,
   onOpenPost,
   onOpenProfile,
@@ -2594,6 +2667,7 @@ function ThreadView({
   thread: { status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string };
   loadingBranches: Record<string, boolean>;
   onOpenImage: (image: ImageViewerState) => void;
+  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
   onLoadBranch: (uri: string) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
@@ -2685,6 +2759,7 @@ function ThreadView({
       {renderThreadNode(thread.node, 0, expandedBranches, (uri) =>
         setExpandedBranches((current) => ({ ...current, [uri]: !current[uri] })),
         { loadingBranches, onLoadBranch, onOpenImage, onOpenPost, onOpenProfile },
+        onOpenLinkPreview,
         { onToggleSaved, savedUris },
       )}
     </div>
@@ -2858,6 +2933,7 @@ function renderThreadNode(
     onOpenPost: (post: FeedPost) => void;
     onOpenProfile: (profile: Profile) => void;
   },
+  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void,
   savedState: {
     onToggleSaved: (post: FeedPost) => void;
     savedUris: Set<string>;
@@ -2884,12 +2960,15 @@ function renderThreadNode(
       <PostCard
         item={{ post: node.post }}
         onOpenImage={handlers.onOpenImage}
+        onOpenLinkPreview={onOpenLinkPreview}
         onOpenPost={handlers.onOpenPost}
         onOpenProfile={handlers.onOpenProfile}
         isSaved={savedState.savedUris.has(node.post.uri)}
         onToggleSaved={savedState.onToggleSaved}
       />
-      {visibleReplies.map((reply) => renderThreadNode(reply, depth + 1, expandedBranches, onToggleBranch, handlers, savedState))}
+      {visibleReplies.map((reply) =>
+        renderThreadNode(reply, depth + 1, expandedBranches, onToggleBranch, handlers, onOpenLinkPreview, savedState),
+      )}
       {replies.length > 8 && (
         <button className="load-more branch-toggle" type="button" onClick={() => onToggleBranch(node.post.uri)}>
           {isExpanded ? "Show fewer replies" : `Show ${hiddenReplyCount} more replies`}
@@ -3070,6 +3149,53 @@ function SmartGroupsPanel({ groups }: { groups: EntityCache["smartGroups"] }) {
           <small>{group.label}</small>
         </button>
       ))}
+    </section>
+  );
+}
+
+function LinkPreviewPanel({
+  preview,
+  relatedPosts,
+  onClose,
+  onOpenPost,
+}: {
+  preview: LinkPreviewState;
+  relatedPosts: FeedPost[];
+  onClose: () => void;
+  onOpenPost: (post: FeedPost) => void;
+}) {
+  if (!preview) {
+    return null;
+  }
+
+  let hostname = "Link";
+  try {
+    hostname = preview.uri ? new URL(preview.uri).hostname : "Link";
+  } catch {
+    hostname = preview.uri;
+  }
+
+  return (
+    <section className="context-panel link-preview-panel">
+      <div className="context-panel-header">
+        <h2>Link Preview</h2>
+        <button type="button" onClick={onClose} aria-label="Close link preview">
+          <X size={14} />
+        </button>
+      </div>
+      {preview.thumb && <img src={preview.thumb} alt="" loading="lazy" decoding="async" />}
+      <strong>{preview.title || preview.uri}</strong>
+      <small>{hostname}</small>
+      {preview.description && <p>{preview.description}</p>}
+      <a href={preview.uri} target="_blank" rel="noreferrer">
+        Open link
+      </a>
+      {preview.sourcePost && (
+        <button type="button" onClick={() => onOpenPost(preview.sourcePost as FeedPost)}>
+          Open source post
+        </button>
+      )}
+      {relatedPosts.length > 1 && <p>{relatedPosts.length.toLocaleString()} loaded posts share this link.</p>}
     </section>
   );
 }

@@ -280,6 +280,13 @@ button {
   line-height: 1.1;
 }
 
+.header-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .segmented {
   display: flex;
   padding: 3px;
@@ -300,6 +307,22 @@ button {
 .segmented .selected {
   background: var(--bsky-blue);
   color: #fff;
+}
+
+.compact-segmented button {
+  min-width: 72px;
+}
+
+.width-wide {
+  grid-template-columns: 76px 260px minmax(780px, 1.35fr) 280px;
+}
+
+.width-focus {
+  grid-template-columns: 76px 228px minmax(860px, 1.5fr) 0;
+}
+
+.width-focus .right-rail {
+  display: none;
 }
 
 .timeline,
@@ -759,6 +782,23 @@ button {
   opacity: 0.55;
 }
 
+.settings-control-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.settings-control-group button {
+  margin-top: 0;
+  text-transform: capitalize;
+}
+
+.settings-control-group .selected-setting {
+  background: var(--bsky-blue);
+  color: #fff;
+}
+
 .settings-warning,
 .account-warning {
   color: var(--app-danger) !important;
@@ -832,6 +872,52 @@ button {
   color: #fff;
   font-weight: 700;
   text-decoration: none;
+}
+
+.feed-directory-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 980px;
+  margin-top: 14px;
+}
+
+.feed-directory-card {
+  min-height: 132px;
+  padding: 15px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  text-align: left;
+}
+
+.feed-directory-card span,
+.feed-directory-card strong,
+.feed-directory-card small {
+  display: block;
+}
+
+.feed-directory-card span {
+  color: var(--app-text-soft);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.feed-directory-card strong {
+  margin-top: 10px;
+}
+
+.feed-directory-card small {
+  margin-top: 7px;
+  color: var(--app-text-muted);
+  line-height: 1.4;
+}
+
+.feed-directory-card:hover {
+  border-color: rgba(117, 175, 255, 0.42);
+  background: rgba(5, 96, 255, 0.12);
 }
 
 .profile-detail-header {
@@ -1225,7 +1311,8 @@ button {
   font-weight: 800;
 }
 
-.link-card {
+.link-card,
+.link-card a {
   display: grid;
   grid-template-columns: 148px 1fr;
   gap: 12px;
@@ -1236,6 +1323,32 @@ button {
   border-radius: 8px;
   color: inherit;
   text-decoration: none;
+}
+
+.link-card {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.link-card a {
+  min-height: 100%;
+  margin: 0;
+  overflow: hidden;
+  border: 0;
+}
+
+.link-card button {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  margin-right: 10px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--app-surface-2);
+  color: var(--app-text);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .link-card img {
@@ -1319,6 +1432,14 @@ button {
   grid-template-columns: 112px 1fr;
   min-height: 86px;
   margin: 10px 0;
+}
+
+.quote-link-card {
+  border: 1px solid var(--app-border);
+}
+
+.quote-link-card img {
+  min-height: 86px;
 }
 
 .quote-video-card {
@@ -1563,6 +1684,65 @@ button {
   color: var(--app-text);
   text-align: left;
   padding: 0 10px;
+}
+
+.context-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.context-panel-header h2 {
+  margin: 0;
+}
+
+.context-panel-header button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  min-height: 28px;
+  margin: 0;
+  padding: 0;
+}
+
+.link-preview-panel > img {
+  display: block;
+  width: 100%;
+  max-height: 160px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--app-surface-2);
+}
+
+.link-preview-panel strong,
+.link-preview-panel small {
+  display: block;
+}
+
+.link-preview-panel small {
+  margin-top: 3px;
+  color: var(--app-text-muted);
+}
+
+.link-preview-panel p {
+  margin-top: 10px;
+}
+
+.link-preview-panel a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  margin-top: 12px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--app-surface-2);
+  color: var(--app-text);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
 }
 
 .feed-map-panel {
@@ -1883,6 +2063,10 @@ button {
   }
 
   .surface-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .feed-directory-grid {
     grid-template-columns: 1fr;
   }
 

@@ -254,8 +254,8 @@ Initial performance budgets:
 - Cloudflare Pages preview deployments are public by default.
 - Target Cloudflare Pages Free compatibility for v1.
 - Root Vite/React/TypeScript app is scaffolded at the repository root, so Cloudflare can run `npm run build` and publish `dist`.
-- Current root app includes a desktop reader shell, grouped/filterable Feed selector, right context rail, browser-local recent trail, local composer UI with 300-character validation, per-feed density preferences, direct public Bluesky feed-generator loading for Home, direct public Feed Generator metadata loading for active Feed detail/header context, direct public author-feed loading for `/profile/:handleOrDid`, standalone post-thread route loading, public post and people search at `/search?q=...`, local Feed search over known static Feed destinations, a browser-only OAuth SDK scaffold with signed-out account controls, static service worker/app-shell caching, a development inspector for source/request/cache/static-runtime posture, static `_headers`, static `_redirects`, and a build-output audit for forbidden server/runtime artifacts.
-- Latest local production build passed with `npm run build`; audit result: static-only `dist` output. Local preview returned `200` for `/`, `/settings`, `/profile/bsky.app`, `/sw.js`, and `/oauth-client-metadata.json`. Browser-plugin visual verification was attempted on 2026-06-08 but the in-app browser backend was unavailable in this session; fallback Puppeteer smoke testing verified the built `/settings` account controls and confirmed a cold signed-out Settings visit loads only the main JS/CSS plus favicon, not the lazy OAuth SDK chunks.
+- Current root app includes a desktop reader shell, grouped/filterable Feed selector, right context rail, browser-local recent trail, local composer UI with 300-character validation, per-feed density preferences, local feed-width preferences, direct public Bluesky feed-generator loading for Home, direct public Feed Generator metadata loading for active Feed detail/header context, direct public author-feed loading for `/profile/:handleOrDid`, standalone post-thread route loading, public post and people search at `/search?q=...`, local Feed search over known static Feed destinations, a browser-only OAuth SDK scaffold with signed-out account controls, static service worker/app-shell caching, a development inspector for source/request/cache/static-runtime posture, static `_headers`, static `_redirects`, and a build-output audit for forbidden server/runtime artifacts.
+- Latest local production build passed with `npm run build`; audit result: static-only `dist` output. Local preview returned `200` for `/`, `/settings`, `/profile/bsky.app`, `/sw.js`, and `/oauth-client-metadata.json`. Browser-plugin visual verification was attempted on 2026-06-08 but the in-app browser backend was unavailable in this session; fallback Puppeteer smoke testing verified the built `/settings` account controls, confirmed a cold signed-out Settings visit loads only the main JS/CSS plus favicon, and verified Home feed scroll stayed at `1200px` after a pause instead of snapping upward.
 - Default visual theme is dark, using Bluesky brand colors as anchors: Blue `#0560FF`, Light Blue `#75AFFF`, Dark Gray `#232E3E`, and Light Gray `#F9FAFB`.
 - `https://bigbsky.pages.dev/` and `https://bigbsky.com/` are serving the static app. Clean profile routes such as `https://bigbsky.com/profile/radialmonster.com` return the SPA shell through static fallback.
 - Signed-out Home feed has been tested working against public feed-generator sources. Current default sources intentionally avoid official feed generators that returned `502` signed out, and avoid `What's Hot Classic` because it surfaced NSFW content despite returning `200`.
@@ -958,7 +958,7 @@ Request budget mindset:
 - Add a manual Cloudflare verification step after deploy: normal reader browsing should show zero Pages Function/Worker invocations.
 - Establish the primary layout regions: left sidebar, improved feed selector, right sidebar, and central endless-scroll feed. Status: implemented.
 - Build the active Feed timeline as the central product surface. Status: implemented.
-- Implement timeline virtualization before large-feed polish so card/layout choices are tested against the real scrolling model. Status: first pass implemented for the active Feed timeline with estimated row windows, overscan, and development inspector rendered-row counts.
+- Implement timeline virtualization before large-feed polish so card/layout choices are tested against the real scrolling model. Status: revised; the first estimated-height row window was removed because natural-height media caused upward scroll jumps. Loaded rows now render directly for stable scrolling, and measured-row virtualization remains pending before large-feed/power-user polish.
 - Reserve stable media/embed dimensions in post cards to reduce layout shift during image, video, GIF, and link-card loading. Status: partial; image cards apply Bluesky aspect-ratio metadata and stable minimum space, video embeds now render stable thumbnail/placeholder cards, and link-card sizing is stable; richer GIF/video controls still pending.
 - Include the signed-in inline composer/input at the top of the active Feed timeline. Status: UI placeholder implemented for signed-out/static shell.
 - Include composer image attachment UI and upload/posting flow. Status: partial; client-only image attachment placeholders are available per draft post, with actual upload/posting deferred until OAuth and write APIs are added.
@@ -978,13 +978,13 @@ Request budget mindset:
   - `/feed/:uri` Status: implemented for known Feed source IDs and matching Feed URIs.
   - `/search` Status: implemented with `q` query parameter for post search.
   - `/explore` Status: implemented as a static SPA placeholder surface linked to public search/discovery.
-  - `/feeds` Status: implemented as a static SPA placeholder surface linked to the desktop Feed selector.
+  - `/feeds` Status: implemented as a static SPA surface with a local known-Feed directory that opens Feed destinations without a document reload.
 - Add loading, empty, error, and rate-limit states. Status: implemented for current public feed/search surfaces; additional labeled/blocked/deleted states still pending.
-- Add local layout preferences. Status: implemented for density.
-- Apply local density/layout preferences before initial timeline paint. Status: implemented for per-feed/default density.
+- Add local layout preferences. Status: implemented for density and feed-width mode.
+- Apply local density/layout preferences before initial timeline paint. Status: implemented for per-feed/default density and local feed-width mode.
 - Add service worker/app-shell caching once the shell stabilizes. Status: implemented as a static `public/sw.js` app-shell cache for `/`, `/index.html`, and hashed assets; `/sw.js` is served with must-revalidate caching.
 - Verify repeat visits and in-app navigation do not depend on Cloudflare document reloads or paid/quota-triggering Cloudflare requests. Static asset update checks are allowed only as deliberate background checks. Status: local preview serves `/` and `/sw.js` as static assets; production Cloudflare dashboard verification still pending.
-- Verify DOM size remains bounded after scrolling multiple timeline pages. Status: partial; active Feed rendering is now windowed so only the visible overscan range mounts, but browser-driven multi-page scroll verification is still pending.
+- Verify DOM size remains bounded after scrolling multiple timeline pages. Status: pending; the unstable estimated-height window was removed to fix feed scroll snap-back, so measured-row virtualization must be added before this can pass.
 - Verify all clean routes and OAuth callback routes are served by static SPA fallback, not by server-side handlers. Status: local preview verified `/`, `/search`, `/explore`, `/feeds`, `/oauth/callback?code=test&state=test`, and `/profile/suewho82.bsky.social/post/3mnpjvwbxq22b` return the static SPA shell.
 - Verify a direct standalone post route such as `/profile/suewho82.bsky.social/post/3mnpjvwbxq22b` renders through the static SPA shell, makes only direct Bluesky/AT Protocol data calls after load, shows the root post plus threaded replies/comments, and triggers zero Pages Function/Worker invocations. Status: local static-shell/thread rendering verified; Cloudflare dashboard zero-invocation verification still pending.
 
@@ -1051,7 +1051,7 @@ Request budget mindset:
 
 ### Phase 5: Desktop Power Features
 
-- Configurable feed width and density.
+- Configurable feed width and density. Status: first pass implemented with browser-local Balanced, Wide, and Focus width modes plus existing density modes.
 - Optional multiple timelines side by side for users who want it, not as the default requirement.
 - Pinned feeds/profiles/searches/notifications.
 - Feed grouping, filtering, ordering, and quick switching.
@@ -1066,7 +1066,7 @@ Request budget mindset:
 - Per-Feed layout memory. Status: implemented for density mode.
 - Smart post grouping by repeated link/topic/quote activity. Status: first pass implemented in the right rail from already-loaded posts by repeated links, quoted post URIs, reply roots, and normalized text.
 - Feed map grouped by topic/community-style categories. Status: first pass implemented from the local Feed source groups with left-panel group counts and a right-rail Feed Map summary.
-- Link preview reader.
+- Link preview reader. Status: first pass implemented as a right-rail preview panel from loaded Bluesky external embed metadata, with source-post and external-link actions; no third-party crawling or BigBSky backend is used.
 - Session history trail. Status: implemented as a browser-local recent trail for feeds, profiles, threads, and searches.
 - Optional media strip/panel for visual Feeds. Status: first pass implemented in the right rail from already-loaded image/video thumbnails, with in-app navigation back to the source post.
 - Performance inspector for development builds showing active source, loaded pages, rendered rows, API requests, cache hits, and service-worker state. Status: implemented as a development-only right-rail inspector showing source, rendered rows, Bluesky API request count, session cache hits, and service-worker state.
@@ -1134,13 +1134,13 @@ Request budget mindset:
 - Public profile/thread/feed pages work while signed out.
 - Home timeline and notifications work while signed in.
 - Signed-in layout exposes the same core surfaces as `bsky.app`: Home, Explore/Discover, Following, Notifications, Chat entry point, Feeds, Lists, Saved, Profile, Settings, Search, Trending, Composer, and pinned/custom feeds. Status: partial; primary rail controls now open Home, Explore/Search, Feeds focus, and structured static routes for Notifications, Chat, Lists, Saved, Profile, and Settings.
-- At 1920px, the active endless-scroll Feed timeline uses width better than `bsky.app`'s narrow mobile column.
+- At 1920px, the active endless-scroll Feed timeline uses width better than `bsky.app`'s narrow mobile column. Status: partial; local feed-width modes now let the reader claim more desktop width while preserving compact rails.
 - At 2560px, the feed presentation becomes richer or more useful instead of expanding empty gutters.
 - No user data is sent to a backend we control.
 - Browser-local preferences/drafts/history can be cleared locally and are not persisted on our infrastructure. Status: implemented for density preferences, recent trail, saved posts, composer draft, reply drafts, and OAuth/local auth markers through the Settings clear-data control.
 - Desktop screenshot at 1920x1080 shows the intended wide layout.
 - Mobile viewport remains usable enough, even though desktop is the priority.
-- Scrolling a long Feed keeps DOM node count bounded and does not degrade after several loaded pages.
+- Scrolling a long Feed keeps DOM node count bounded and does not degrade after several loaded pages. Status: pending measured-row virtualization; fallback Puppeteer verification confirms the current loaded-row renderer no longer snaps scroll upward after scrolling down.
 - Media-heavy Feed cards avoid visible layout jumps by reserving stable image/video/link-card space.
 - Opening profile and thread previews reuses already-loaded post/author data before making detail requests.
 - Switching between Feeds restores cached pages and scroll position without refetching the visible page from scratch.
