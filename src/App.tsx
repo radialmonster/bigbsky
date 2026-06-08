@@ -970,26 +970,33 @@ function ImageViewer({
 }) {
   const selected = image.images[image.index] ?? image.images[0];
   const hasMultiple = image.images.length > 1;
+  const clearSelection = useCallback(() => {
+    window.getSelection()?.removeAllRanges();
+  }, []);
   const goPrevious = useCallback(() => {
     if (!hasMultiple) {
       return;
     }
 
+    clearSelection();
     onChange({
       images: image.images,
       index: (image.index - 1 + image.images.length) % image.images.length,
     });
-  }, [hasMultiple, image, onChange]);
+    requestAnimationFrame(clearSelection);
+  }, [clearSelection, hasMultiple, image, onChange]);
   const goNext = useCallback(() => {
     if (!hasMultiple) {
       return;
     }
 
+    clearSelection();
     onChange({
       images: image.images,
       index: (image.index + 1) % image.images.length,
     });
-  }, [hasMultiple, image, onChange]);
+    requestAnimationFrame(clearSelection);
+  }, [clearSelection, hasMultiple, image, onChange]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1016,10 +1023,22 @@ function ImageViewer({
       role="dialog"
       aria-modal="true"
       aria-label="Image viewer"
+      onPointerDown={(event) => {
+        event.preventDefault();
+        clearSelection();
+      }}
       onMouseDown={(event) => {
         event.preventDefault();
+        clearSelection();
+      }}
+      onMouseUp={clearSelection}
+      onSelect={clearSelection}
+      onDragStart={(event) => {
+        event.preventDefault();
+        clearSelection();
       }}
       onClick={(event) => {
+        clearSelection();
         const halfway = window.innerWidth / 2;
         if (!hasMultiple) {
           onClose();
@@ -1079,8 +1098,13 @@ function ImageViewer({
         src={selected.src}
         alt={selected.alt}
         draggable={false}
+        onDragStart={(event) => {
+          event.preventDefault();
+          clearSelection();
+        }}
         onClick={(event) => {
           event.stopPropagation();
+          clearSelection();
           onClose();
         }}
       />
