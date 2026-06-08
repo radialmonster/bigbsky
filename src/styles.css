@@ -374,7 +374,6 @@ button {
 }
 
 .composer,
-.feed-detail-header,
 .profile-detail-header,
 .search-workspace,
 .feed-result-card,
@@ -452,88 +451,6 @@ button {
   color: var(--app-text);
 }
 
-.feed-detail-header {
-  position: sticky;
-  z-index: 4;
-  top: 0;
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  gap: 14px;
-  margin-bottom: 18px;
-  padding: 16px;
-  backdrop-filter: blur(14px);
-  background: rgba(22, 31, 47, 0.96);
-}
-
-.feed-detail-avatar {
-  display: grid;
-  place-items: center;
-  width: 56px;
-  height: 56px;
-  overflow: hidden;
-  border-radius: 8px;
-  background: rgba(5, 96, 255, 0.18);
-  color: var(--bsky-blue-soft);
-}
-
-.feed-detail-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.feed-detail-header span {
-  color: var(--app-text-soft);
-  font-size: 12px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.feed-detail-header h2 {
-  margin: 2px 0 6px;
-  font-size: 20px;
-}
-
-.feed-detail-header p {
-  margin: 0;
-  color: var(--app-text-muted);
-  line-height: 1.45;
-}
-
-.feed-detail-header dl {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin: 12px 0 0;
-}
-
-.feed-detail-header dt {
-  color: var(--app-text-soft);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.feed-detail-header dd {
-  min-width: 0;
-  margin: 2px 0 0;
-  overflow: hidden;
-  color: var(--app-text);
-  font-size: 13px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.feed-detail-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.feed-detail-actions button,
-.feed-detail-actions a,
 .composer-footer button {
   display: inline-flex;
   align-items: center;
@@ -548,7 +465,6 @@ button {
   text-decoration: none;
 }
 
-.feed-detail-actions button:disabled,
 .composer-footer button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
@@ -1051,6 +967,22 @@ button.surface-action {
   border: 1px solid var(--app-border);
   border-radius: 8px;
   background: var(--app-surface);
+}
+
+.notification-item.pinned {
+  border-color: rgba(117, 175, 255, 0.52);
+  background: rgba(5, 96, 255, 0.11);
+}
+
+.notification-item button {
+  min-height: 32px;
+  margin-top: 10px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--app-surface-2);
+  color: var(--app-text);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .notification-item > span,
@@ -2124,66 +2056,31 @@ button.surface-action {
   padding: 0 10px;
 }
 
-.secondary-source-picker {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 5px;
-  margin-bottom: 10px;
-}
-
-.secondary-source-picker button {
-  min-height: 30px;
-  margin-top: 0;
-  padding: 0 6px;
-  text-align: center;
-  text-transform: capitalize;
-}
-
-.secondary-source-picker .selected {
-  background: var(--bsky-blue);
-  color: #fff;
-}
-
-.secondary-post-list {
-  display: grid;
-  gap: 10px;
-}
-
-.secondary-post-list .post-card {
-  margin: 0;
-  padding: 12px;
-}
-
-.secondary-post-list .post-header {
-  grid-template-columns: 34px minmax(0, 1fr) 28px;
-}
-
-.secondary-post-list .avatar {
-  width: 34px;
-  height: 34px;
-}
-
-.secondary-post-list .post-text {
-  font-size: 13px;
-  line-height: 1.38;
-}
-
-.secondary-post-list .post-actions {
-  gap: 12px;
-  font-size: 12px;
-}
-
-.secondary-post-list .image-grid img,
-.secondary-post-list .video-card img,
-.secondary-post-list .video-placeholder {
-  min-height: 130px;
-}
-
 .context-panel button small {
   float: right;
   color: var(--app-text-soft);
   font-size: 12px;
   font-weight: 800;
+}
+
+.context-actions {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.context-actions button,
+.context-actions a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--app-surface-2);
+  color: var(--app-text);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
 }
 
 .pinned-searches-panel {
@@ -2726,14 +2623,6 @@ button.surface-action {
   .search-options select {
     max-width: none;
     flex: 1;
-  }
-
-  .feed-detail-header {
-    grid-template-columns: 1fr;
-  }
-
-  .feed-detail-header dl {
-    grid-template-columns: 1fr;
   }
 
   .surface-grid {

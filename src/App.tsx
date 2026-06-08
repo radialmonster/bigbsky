@@ -155,8 +155,8 @@ const workspaceWidthStorageKey = "bigbsky:workspace-width";
 const pinnedFeedsStorageKey = "bigbsky:pinned-feeds";
 const pinnedSearchesStorageKey = "bigbsky:pinned-searches";
 const pinnedProfilesStorageKey = "bigbsky:pinned-profiles";
+const pinnedNotificationsStorageKey = "bigbsky:pinned-notifications";
 const collapsedFeedGroupsStorageKey = "bigbsky:collapsed-feed-groups";
-const secondaryColumnStorageKey = "bigbsky:secondary-column";
 const replyDraftPrefix = "bigbsky:reply-draft:";
 const emptyFeedState: FeedState = { items: [], status: "idle" };
 const emptySearchState: SearchState = { posts: [], status: "idle" };
@@ -172,8 +172,6 @@ const initialAuthState: AuthState = {
   status: looksLikeOAuthCallback() ? "callback" : "checking",
   session: null,
 };
-
-const secondaryColumnSources = ["off", "active", "saved", "search"] as const;
 
 function countBigbskyLocalKeys() {
   try {
@@ -284,23 +282,21 @@ function readPinnedProfiles() {
   }
 }
 
+function readPinnedNotifications() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(pinnedNotificationsStorageKey) || "[]") as string[];
+    return Array.isArray(stored) ? stored.filter((id) => typeof id === "string" && id.trim()).slice(0, 20) : [];
+  } catch {
+    return [];
+  }
+}
+
 function readCollapsedFeedGroups() {
   try {
     const stored = JSON.parse(localStorage.getItem(collapsedFeedGroupsStorageKey) || "{}") as Record<string, boolean>;
     return stored && typeof stored === "object" ? stored : {};
   } catch {
     return {};
-  }
-}
-
-function readSecondaryColumnPreference() {
-  try {
-    const stored = localStorage.getItem(secondaryColumnStorageKey);
-    return secondaryColumnSources.includes(stored as (typeof secondaryColumnSources)[number])
-      ? (stored as (typeof secondaryColumnSources)[number])
-      : "off";
-  } catch {
-    return "off";
   }
 }
 
@@ -404,9 +400,8 @@ export function App() {
   const [pinnedFeedIds, setPinnedFeedIds] = useState<string[]>(() => readPinnedFeedIds());
   const [pinnedSearches, setPinnedSearches] = useState<string[]>(() => readPinnedSearches());
   const [pinnedProfiles, setPinnedProfiles] = useState<Profile[]>(() => readPinnedProfiles());
+  const [pinnedNotificationIds, setPinnedNotificationIds] = useState<string[]>(() => readPinnedNotifications());
   const [collapsedFeedGroups, setCollapsedFeedGroups] = useState<Record<string, boolean>>(() => readCollapsedFeedGroups());
-  const [secondaryColumnSource, setSecondaryColumnSource] =
-    useState<(typeof secondaryColumnSources)[number]>(() => readSecondaryColumnPreference());
   const [recentItems, setRecentItems] = useState<RecentItem[]>(() => readRecentItems());
   const [devMetrics, setDevMetrics] = useState<DevMetrics>(initialDevMetrics);
   const [authState, setAuthState] = useState<AuthState>(initialAuthState);
@@ -974,8 +969,8 @@ export function App() {
     setPinnedFeedIds([]);
     setPinnedSearches([]);
     setPinnedProfiles([]);
+    setPinnedNotificationIds([]);
     setCollapsedFeedGroups({});
-    setSecondaryColumnSource("off");
     feedCacheRef.current = {};
     feedMetadataCacheRef.current = {};
     profileCacheRef.current = {};
@@ -1129,17 +1124,20 @@ export function App() {
     });
   }
 
+  function togglePinnedNotification(id: string) {
+    setPinnedNotificationIds((current) => {
+      const next = current.includes(id) ? current.filter((item) => item !== id) : [id, ...current].slice(0, 20);
+      localStorage.setItem(pinnedNotificationsStorageKey, JSON.stringify(next));
+      return next;
+    });
+  }
+
   function toggleCollapsedFeedGroup(group: string) {
     setCollapsedFeedGroups((current) => {
       const next = { ...current, [group]: !current[group] };
       localStorage.setItem(collapsedFeedGroupsStorageKey, JSON.stringify(next));
       return next;
     });
-  }
-
-  function updateSecondaryColumnSource(nextSource: (typeof secondaryColumnSources)[number]) {
-    setSecondaryColumnSource(nextSource);
-    localStorage.setItem(secondaryColumnStorageKey, nextSource);
   }
 
   function navigate(nextRoute: RouteState, path = "/") {
@@ -1508,6 +1506,8 @@ export function App() {
             localLists={localLists}
             pinnedFeedCount={pinnedFeedIds.length}
             pinnedFeedIds={pinnedFeedIds}
+            pinnedNotificationCount={pinnedNotificationIds.length}
+            pinnedNotificationIds={pinnedNotificationIds}
             pinnedProfileCount={pinnedProfiles.length}
             pinnedSearchCount={pinnedSearches.length}
             workspaceWidth={workspaceWidth}
@@ -1538,6 +1538,7 @@ export function App() {
             onOpenPost={openPost}
             onOpenLinkPreview={openLinkPreview}
             onToggleSaved={toggleSavedPost}
+            onTogglePinnedNotification={togglePinnedNotification}
           />
         ) : route.kind === "search" ? (
           <SearchView
@@ -1619,12 +1620,6 @@ export function App() {
             className={`timeline ${density}`}
             ref={timelineRef}
           >
-            <FeedDetailHeader
-              source={activeSource}
-              metadata={feedMetadata}
-              isPinned={pinnedFeedIds.includes(activeSource.id)}
-              onTogglePinned={togglePinnedFeed}
-            />
             <Composer
               draft={composerDraft}
               onDraftChange={setComposerDraft}
@@ -1657,27 +1652,17 @@ export function App() {
 
       <aside className="right-rail" aria-label="Context">
         <SearchBox value={globalSearchText} onChange={setGlobalSearchText} onSearch={submitSearch} />
-        <SecondaryColumnPanel
-          currentDid={authState.session?.did}
-          source={secondaryColumnSource}
-          activePosts={feedState.items.map((item) => item.post)}
-          savedPosts={savedPosts}
-          searchPosts={searchState.posts}
-          savedUris={savedUriSet}
-          localLists={localLists}
-          onSourceChange={updateSecondaryColumnSource}
-          onOpenImage={setImageViewer}
-          onOpenLinkPreview={openLinkPreview}
-          onOpenPost={openPost}
-          onOpenProfile={openProfile}
-          onToggleSaved={toggleSavedPost}
-          onToggleListPost={togglePostInLocalList}
-        />
         <AccountPanel auth={authState} onSignIn={handleSignIn} onSignOut={handleSignOut} />
         {route.kind === "profile" ? (
           <ProfileContextPanel actor={route.actor} profile={profile ?? entityCache.profiles[route.actor] ?? null} />
         ) : (
-          <FeedContextPanel source={activeSource} metadata={feedMetadata} entityCache={entityCache} />
+          <FeedContextPanel
+            source={activeSource}
+            metadata={feedMetadata}
+            entityCache={entityCache}
+            isPinned={pinnedFeedIds.includes(activeSource.id)}
+            onTogglePinned={togglePinnedFeed}
+          />
         )}
         <FeedMapPanel groups={feedMapSummary} />
         <PinnedSearchesPanel searches={pinnedSearches} onOpen={submitSearch} onToggle={togglePinnedSearch} />
@@ -1980,6 +1965,8 @@ function SurfaceView({
   localLists,
   pinnedFeedCount,
   pinnedFeedIds,
+  pinnedNotificationCount,
+  pinnedNotificationIds,
   pinnedProfileCount,
   pinnedSearchCount,
   workspaceWidth,
@@ -1997,6 +1984,7 @@ function SurfaceView({
   onSignOut,
   onToggleSaved,
   onTogglePinnedFeed,
+  onTogglePinnedNotification,
   onWorkspaceWidthChange,
   currentDid,
   savedUris,
@@ -2011,6 +1999,8 @@ function SurfaceView({
   localLists: LocalList[];
   pinnedFeedCount: number;
   pinnedFeedIds: string[];
+  pinnedNotificationCount: number;
+  pinnedNotificationIds: string[];
   pinnedProfileCount: number;
   pinnedSearchCount: number;
   workspaceWidth: (typeof widthModes)[number];
@@ -2028,6 +2018,7 @@ function SurfaceView({
   onSignOut: () => void | Promise<void>;
   onToggleSaved: (post: FeedPost) => void;
   onTogglePinnedFeed: (source: FeedSource) => void;
+  onTogglePinnedNotification: (id: string) => void;
   onWorkspaceWidthChange: (width: (typeof widthModes)[number]) => void;
   currentDid?: string;
   savedUris: Set<string>;
@@ -2175,6 +2166,10 @@ function SurfaceView({
                 <dd>{pinnedSearchCount.toLocaleString()}</dd>
               </div>
               <div>
+                <dt>Pinned notifications</dt>
+                <dd>{pinnedNotificationCount.toLocaleString()}</dd>
+              </div>
+              <div>
                 <dt>Local lists</dt>
                 <dd>{localLists.length.toLocaleString()}</dd>
               </div>
@@ -2234,10 +2229,12 @@ function SurfaceView({
         auth={auth}
         savedPostCount={savedPostCount}
         pinnedFeedCount={pinnedFeedCount}
+        pinnedNotificationIds={pinnedNotificationIds}
         pinnedProfileCount={pinnedProfileCount}
         pinnedSearchCount={pinnedSearchCount}
         localListCount={localLists.length}
         onOpenSearch={onOpenSearch}
+        onTogglePinnedNotification={onTogglePinnedNotification}
       />
     );
   }
@@ -2361,21 +2358,26 @@ function NotificationsSurface({
   auth,
   savedPostCount,
   pinnedFeedCount,
+  pinnedNotificationIds,
   pinnedProfileCount,
   pinnedSearchCount,
   localListCount,
   onOpenSearch,
+  onTogglePinnedNotification,
 }: {
   auth: AuthState;
   savedPostCount: number;
   pinnedFeedCount: number;
+  pinnedNotificationIds: string[];
   pinnedProfileCount: number;
   pinnedSearchCount: number;
   localListCount: number;
   onOpenSearch: () => void;
+  onTogglePinnedNotification: (id: string) => void;
 }) {
   const events = [
     {
+      id: "account",
       title: auth.session ? `Signed in as @${auth.session.handle}` : "Public reader mode",
       detail: auth.session
         ? "Account identity restored from browser OAuth storage."
@@ -2383,30 +2385,39 @@ function NotificationsSurface({
       status: auth.session ? "Account" : "Signed out",
     },
     {
+      id: "saved",
       title: `${savedPostCount.toLocaleString()} saved post${savedPostCount === 1 ? "" : "s"}`,
       detail: "Local saves are available in the Saved timeline and remain browser-only.",
       status: "Saved",
     },
     {
+      id: "feeds",
       title: `${pinnedFeedCount.toLocaleString()} pinned feed${pinnedFeedCount === 1 ? "" : "s"}`,
       detail: "Pinned Feed destinations stay at the top of the desktop selector.",
       status: "Feeds",
     },
     {
+      id: "profiles",
       title: `${pinnedProfileCount.toLocaleString()} pinned profile${pinnedProfileCount === 1 ? "" : "s"}`,
       detail: "Pinned profiles are browser-local shortcuts for public profile readers.",
       status: "Profiles",
     },
     {
+      id: "searches",
       title: `${pinnedSearchCount.toLocaleString()} pinned search${pinnedSearchCount === 1 ? "" : "es"}`,
       detail: "Pinned searches are kept in the right rail for quick return.",
       status: "Search",
     },
     {
+      id: "lists",
       title: `${localListCount.toLocaleString()} local list workspace${localListCount === 1 ? "" : "s"}`,
       detail: "List shells are local staging areas until authenticated list reads are added.",
       status: "Lists",
     },
+  ];
+  const sortedEvents = [
+    ...events.filter((event) => pinnedNotificationIds.includes(event.id)),
+    ...events.filter((event) => !pinnedNotificationIds.includes(event.id)),
   ];
 
   return (
@@ -2427,15 +2438,21 @@ function NotificationsSurface({
         </button>
       </section>
       <section className="notification-list" aria-label="Local notifications">
-        {events.map((event) => (
-          <article className="notification-item" key={event.title}>
-            <span>{event.status}</span>
-            <div>
-              <h3>{event.title}</h3>
-              <p>{event.detail}</p>
-            </div>
-          </article>
-        ))}
+        {sortedEvents.map((event) => {
+          const isPinned = pinnedNotificationIds.includes(event.id);
+          return (
+            <article className={isPinned ? "notification-item pinned" : "notification-item"} key={event.id}>
+              <span>{event.status}</span>
+              <div>
+                <h3>{event.title}</h3>
+                <p>{event.detail}</p>
+                <button type="button" onClick={() => onTogglePinnedNotification(event.id)}>
+                  {isPinned ? "Unpin notification" : "Pin notification"}
+                </button>
+              </div>
+            </article>
+          );
+        })}
       </section>
     </div>
   );
@@ -2849,83 +2866,6 @@ function SearchBox({
   );
 }
 
-function SecondaryColumnPanel({
-  activePosts,
-  currentDid,
-  localLists,
-  onOpenImage,
-  onOpenLinkPreview,
-  onOpenPost,
-  onOpenProfile,
-  onSourceChange,
-  onToggleListPost,
-  onToggleSaved,
-  savedPosts,
-  savedUris,
-  searchPosts: secondarySearchPosts,
-  source,
-}: {
-  activePosts: FeedPost[];
-  currentDid?: string;
-  localLists: LocalList[];
-  onOpenImage: (image: ImageViewerState) => void;
-  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
-  onOpenPost: (post: FeedPost) => void;
-  onOpenProfile: (profile: Profile) => void;
-  onSourceChange: (source: (typeof secondaryColumnSources)[number]) => void;
-  onToggleListPost: (listId: string, post: FeedPost) => void;
-  onToggleSaved: (post: FeedPost) => void;
-  savedPosts: FeedPost[];
-  savedUris: Set<string>;
-  searchPosts: FeedPost[];
-  source: (typeof secondaryColumnSources)[number];
-}) {
-  const sourcePosts =
-    source === "active" ? activePosts : source === "saved" ? savedPosts : source === "search" ? secondarySearchPosts : [];
-  const sourceLabel = source === "active" ? "Active feed" : source === "saved" ? "Saved" : source === "search" ? "Search" : "Off";
-
-  return (
-    <section className="context-panel secondary-column-panel">
-      <h2>Second Column</h2>
-      <div className="secondary-source-picker" aria-label="Secondary column source">
-        {secondaryColumnSources.map((option) => (
-          <button
-            className={source === option ? "selected" : ""}
-            key={option}
-            type="button"
-            onClick={() => onSourceChange(option)}
-          >
-            {option}
-          </button>
-        ))}
-      </div>
-      {source === "off" ? (
-        <p>Pick a source to keep a compact secondary reader in the right rail.</p>
-      ) : sourcePosts.length === 0 ? (
-        <p>{sourceLabel} has no loaded posts available for the secondary reader yet.</p>
-      ) : (
-        <div className="secondary-post-list" aria-label={`${sourceLabel} secondary posts`}>
-          {sourcePosts.slice(0, 3).map((post) => (
-            <PostCard
-              currentDid={currentDid}
-              isSaved={savedUris.has(post.uri)}
-              item={{ post }}
-              key={`${source}:${post.uri}`}
-              localLists={localLists}
-              onOpenImage={onOpenImage}
-              onOpenLinkPreview={onOpenLinkPreview}
-              onOpenPost={onOpenPost}
-              onOpenProfile={onOpenProfile}
-              onToggleListPost={onToggleListPost}
-              onToggleSaved={onToggleSaved}
-            />
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
 function SavedPostsView({
   currentDid,
   localLists,
@@ -3187,67 +3127,6 @@ function SearchView({
         </>
       )}
     </div>
-  );
-}
-
-function FeedDetailHeader({
-  source,
-  metadata,
-  isPinned,
-  onTogglePinned,
-}: {
-  source: FeedSource;
-  metadata: FeedGeneratorView | null;
-  isPinned: boolean;
-  onTogglePinned: (source: FeedSource) => void;
-}) {
-  const [copied, setCopied] = useState(false);
-  const creatorHandle = metadata?.creator?.handle;
-  const bskyUrl = creatorHandle ? `https://bsky.app/profile/${creatorHandle}/feed/${source.uri.split("/").pop()}` : "https://bsky.app";
-
-  return (
-    <section className="feed-detail-header">
-      <div className="feed-detail-avatar">
-        {metadata?.avatar ? <img src={metadata.avatar} alt="" loading="lazy" /> : <Hash size={24} />}
-      </div>
-      <div>
-        <span>{source.group} Feed</span>
-        <h2>{metadata?.displayName || source.label}</h2>
-        <p>{metadata?.description || source.description}</p>
-        <dl>
-          <div>
-            <dt>Creator</dt>
-            <dd>{metadata?.creator ? `@${metadata.creator.handle}` : "Public AppView"}</dd>
-          </div>
-          <div>
-            <dt>Likes</dt>
-            <dd>{(metadata?.likeCount ?? metadata?.likedByCount)?.toLocaleString() ?? "-"}</dd>
-          </div>
-          <div>
-            <dt>URI</dt>
-            <dd>{source.uri.split("/").pop()}</dd>
-          </div>
-        </dl>
-        <div className="feed-detail-actions" aria-label="Feed options">
-          <button type="button" onClick={() => onTogglePinned(source)}>
-            {isPinned ? "Unpin feed" : "Pin locally"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              void navigator.clipboard?.writeText(source.uri);
-              setCopied(true);
-              window.setTimeout(() => setCopied(false), 1600);
-            }}
-          >
-            {copied ? "Copied URI" : "Copy URI"}
-          </button>
-          <a href={bskyUrl} target="_blank" rel="noreferrer">
-            Open on Bluesky
-          </a>
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -4038,11 +3917,20 @@ function FeedContextPanel({
   source,
   metadata,
   entityCache,
+  isPinned,
+  onTogglePinned,
 }: {
   source: FeedSource;
   metadata: FeedGeneratorView | null;
   entityCache: EntityCache;
+  isPinned: boolean;
+  onTogglePinned: (source: FeedSource) => void;
 }) {
+  const [copied, setCopied] = useState(false);
+  const creatorHandle = metadata?.creator?.handle;
+  const feedRkey = source.uri.split("/").pop();
+  const bskyUrl = creatorHandle && feedRkey ? `https://bsky.app/profile/${creatorHandle}/feed/${feedRkey}` : "https://bsky.app";
+
   return (
     <section className="profile-panel">
       {metadata?.avatar ? (
@@ -4072,6 +3960,24 @@ function FeedContextPanel({
           <dd>{Object.keys(entityCache.posts).length.toLocaleString()}</dd>
         </div>
       </dl>
+      <div className="context-actions" aria-label="Feed options">
+        <button type="button" onClick={() => onTogglePinned(source)}>
+          {isPinned ? "Unpin feed" : "Pin feed"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            void navigator.clipboard?.writeText(source.uri);
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1600);
+          }}
+        >
+          {copied ? "Copied URI" : "Copy URI"}
+        </button>
+        <a href={bskyUrl} target="_blank" rel="noreferrer">
+          Open on Bluesky
+        </a>
+      </div>
     </section>
   );
 }
