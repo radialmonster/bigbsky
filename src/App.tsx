@@ -22,6 +22,8 @@ import {
   Search,
   Send,
   Settings,
+  Share2,
+  ShieldAlert,
   User,
   Users,
 } from "lucide-react";
@@ -365,12 +367,51 @@ function hasPostVideo(post: FeedPost) {
   return !!getVideoEmbed(post.embed);
 }
 
+function postBskyUrl(post: FeedPost) {
+  const rkey = post.uri.split("/").pop();
+  return rkey ? `https://bsky.app/profile/${post.author.handle}/post/${rkey}` : `https://bsky.app/profile/${post.author.handle}`;
+}
+
 function extractHashtags(text?: string) {
   if (!text) {
     return [];
   }
 
   return Array.from(text.matchAll(/(^|[\s([{])#([\p{L}\p{N}_-]{2,64})/gu), (match) => `#${match[2]}`);
+}
+
+function moderationLabelText(label: { val?: string }) {
+  const value = label.val?.trim();
+  if (!value) {
+    return "Content label";
+  }
+
+  return value
+    .replace(/^!/, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function isSensitiveLabel(label: { val?: string }) {
+  const value = label.val?.toLowerCase() || "";
+  return [
+    "adult",
+    "graphic",
+    "gore",
+    "nudity",
+    "porn",
+    "sexual",
+    "spam",
+    "violence",
+  ].some((term) => value.includes(term));
+}
+
+function videoKindLabel(type?: string) {
+  if (type?.toLowerCase().includes("gif")) {
+    return "GIF";
+  }
+
+  return "Video";
 }
 
 export function App() {
@@ -3154,6 +3195,7 @@ function PostCard({
   onToggleSaved?: (post: FeedPost) => void;
 }) {
   const post = item.post;
+  const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
   const images = getEmbedImages(post.embed);
   const external = getExternalEmbed(post.embed);
   const recordEmbed = getRecordEmbed(post.embed);
@@ -3163,6 +3205,40 @@ function PostCard({
   const hasRichContent = images.length > 0 || !!external || !!recordEmbed || !!video;
   const postVariant = images.length > 0 || !!video ? "has-media" : external ? "has-link" : recordEmbed ? "has-quote" : "text-only";
   const isOwnPost = !!currentDid && post.author.did === currentDid;
+  const labels = post.labels ?? [];
+  const sensitiveLabels = labels.filter(isSensitiveLabel);
+  const moderationNotes = [
+    ...(post.viewer?.threadMuted ? ["Thread muted"] : []),
+    ...(post.viewer?.replyDisabled ? ["Replies limited"] : []),
+    ...(post.viewer?.embeddingDisabled ? ["Embedding disabled"] : []),
+    ...sensitiveLabels.map(moderationLabelText),
+  ];
+  const handleShare = async () => {
+    const url = postBskyUrl(post);
+    const title = `${displayName(post.author)} on Bluesky`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, text: text || title, url });
+        setShareState("shared");
+      } else {
+        await navigator.clipboard?.writeText(url);
+        setShareState("copied");
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+      try {
+        await navigator.clipboard?.writeText(url);
+        setShareState("copied");
+      } catch {
+        setShareState("error");
+      }
+    }
+
+    window.setTimeout(() => setShareState("idle"), 1800);
+  };
 
   return (
     <article className={`post-card ${postVariant}`}>
@@ -3178,14 +3254,20 @@ function PostCard({
       </header>
       {item.reason?.by && <p className="reason">Reposted by {displayName(item.reason.by)}</p>}
       {item.reply?.parent && <p className="reason">Replying in a thread from @{item.reply.parent.author.handle}</p>}
-      {(isOwnPost || (post.labels?.length ?? 0) > 0) && (
+      {(isOwnPost || labels.length > 0 || moderationNotes.length > 0) && (
         <div className="post-badges" aria-label="Post context">
           {isOwnPost && <span>Your post</span>}
-          {post.labels?.slice(0, 3).map((label) => (
-            <span key={`${post.uri}:${label.val || label.src || label.uri}`}>
-              {label.val || "Content label"}
+          {labels.slice(0, 3).map((label) => (
+            <span className={isSensitiveLabel(label) ? "sensitive" : ""} key={`${post.uri}:${label.val || label.src || label.uri}`}>
+              {moderationLabelText(label)}
             </span>
           ))}
+        </div>
+      )}
+      {moderationNotes.length > 0 && (
+        <div className="moderation-notice">
+          <ShieldAlert size={15} />
+          <span>{moderationNotes.join(", ")}</span>
         </div>
       )}
       {text ? (
@@ -3248,8 +3330,9 @@ function PostCard({
             <span className="video-placeholder" />
           )}
           <span className="video-label">
-            <Film size={16} /> Video
+            <Film size={16} /> {videoKindLabel(video.type)}
           </span>
+          {video.alt && <span className="video-alt-text">{video.alt}</span>}
         </a>
       )}
       {external && (
@@ -3294,6 +3377,9 @@ function PostCard({
           title={isSaved ? "Remove from saved" : "Save post locally"}
         >
           <Bookmark size={16} /> {isSaved ? "Saved" : "Save"}
+        </button>
+        <button type="button" onClick={handleShare} title="Share post">
+          <Share2 size={16} /> {shareState === "copied" ? "Copied" : shareState === "shared" ? "Shared" : shareState === "error" ? "Copy failed" : "Share"}
         </button>
         {localLists.length > 0 && (
           <details className="post-list-menu">
@@ -3406,8 +3492,9 @@ function QuotedPostCard({
             <span className="video-placeholder" />
           )}
           <span className="video-label">
-            <Film size={16} /> Video
+            <Film size={16} /> {videoKindLabel(embeddedVideo.type)}
           </span>
+          {embeddedVideo.alt && <span className="video-alt-text">{embeddedVideo.alt}</span>}
         </a>
       )}
       {embeddedExternal && (

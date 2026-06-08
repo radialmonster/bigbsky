@@ -59,6 +59,13 @@ export type FeedPost = {
     src?: string;
     uri?: string;
   }>;
+  viewer?: {
+    like?: string;
+    repost?: string;
+    threadMuted?: boolean;
+    replyDisabled?: boolean;
+    embeddingDisabled?: boolean;
+  };
   indexedAt?: string;
 };
 
@@ -264,6 +271,7 @@ export function getVideoEmbed(embed: unknown) {
   }
 
   const candidate = embed as {
+    $type?: string;
     playlist?: string;
     thumbnail?: string;
     aspectRatio?: { width?: number; height?: number };
@@ -274,6 +282,7 @@ export function getVideoEmbed(embed: unknown) {
   }
 
   return {
+    type: candidate.$type,
     playlist: candidate.playlist,
     thumbnail: candidate.thumbnail,
     aspectRatio: candidate.aspectRatio,
