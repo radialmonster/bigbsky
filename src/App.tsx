@@ -544,6 +544,18 @@ function isSensitiveLabel(label: { val?: string }) {
   ].some((term) => value.includes(term));
 }
 
+// Whether a post should be hidden entirely when the NSFW preference is set to
+// hidden: it (or its author) carries an adult/graphic media label. Mirrors the
+// media-gate label set (spam excluded) so "hidden" removes exactly the posts
+// whose media would otherwise be gated.
+function isAdultPost(post: FeedPost): boolean {
+  const labels = [
+    ...((post.labels ?? []) as Array<{ val?: string }>),
+    ...((post.author?.labels ?? []) as Array<{ val?: string }>),
+  ];
+  return sensitiveMediaValues(labels).length > 0;
+}
+
 function videoKindLabel(type?: string) {
   if (type?.toLowerCase().includes("gif")) {
     return "GIF";
@@ -2314,7 +2326,7 @@ function VirtualPostList({
   containerRef,
   currentDid,
   density,
-  items,
+  items: incomingItems,
   localLists,
   onOpenImage,
   onOpenLinkPreview,
@@ -2340,6 +2352,13 @@ function VirtualPostList({
   onRenderedRowsChange: (count: number) => void;
   savedUris: Set<string>;
 }) {
+  // When the NSFW preference is hidden, drop adult/graphic-labeled posts from
+  // the feed entirely (not just gate their media), so they never appear.
+  const showNsfw = useContext(ShowNsfwContext);
+  const items = useMemo(
+    () => (showNsfw ? incomingItems : incomingItems.filter((item) => !isAdultPost(item.post))),
+    [incomingItems, showNsfw],
+  );
   const defaultRowHeight = density === "compact" ? 190 : density === "media" ? 360 : 260;
   const overscanPixels = defaultRowHeight * 3;
   const [scrollTop, setScrollTop] = useState(0);
