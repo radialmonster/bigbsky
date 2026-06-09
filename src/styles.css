@@ -2339,10 +2339,18 @@ button.surface-action {
   padding: 10px 12px 10px 0;
 }
 
+/* Link-card text sized to read with the post body: title matches post text
+   (17px), description one step smaller (16px), instead of the small browser
+   defaults (16px / 13px) that looked cramped in the wide column. */
+.link-card strong {
+  font-size: 17px;
+}
+
 .link-card small {
   display: -webkit-box;
   overflow: hidden;
   margin-top: 5px;
+  font-size: 16px;
   color: var(--app-text-muted);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
