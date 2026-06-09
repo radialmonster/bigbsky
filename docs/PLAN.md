@@ -17,8 +17,10 @@ Build a desktop-first Bluesky reader that uses the AT Protocol and Bluesky APIs 
 
 Standing instructions from the operator. These override autonomous judgment (including the `/loop` cron task):
 
-- **Do not add new features to the sidebars (left rail or right rail) unless explicitly asked.** The current sidebars are fine as-is. The right sidebar is for search/feed-suggestions/trending/discovery/secondary context; the left rail is for app/account navigation. Do not put author/profile or thread previews in a sidebar. The operator checks the sidebars occasionally and will request changes when wanted.
-- When unsure whether a change touches a sidebar, ask first.
+- **Do not add new features to the sidebars (left rail or right rail) unless explicitly asked.** The current sidebars are fine as-is. The right sidebar is for search/feed-suggestions/trending/discovery/secondary context; the left rail is for app/account navigation. The operator checks the sidebars occasionally and will request changes when wanted.
+- **Do not add popups, previews, peeks, hover cards, modals, or similar interstitial UI unless explicitly asked.** (An author-peek and a thread-preview side-panel were both removed for this reason.) Authors open via the profile route; threads open by opening the post.
+- When unsure whether a change adds a sidebar item, popup, preview, or modal, ask first.
+- **AT Protocol API reference:** the canonical source for available XRPC methods, lexicons, and types is the atproto repository — `https://github.com/bluesky-social/atproto` (lexicons under `lexicons/`, e.g. `app/bsky/...`). Check it when choosing endpoints/fields rather than guessing.
 
 ## Product Direction
 
@@ -989,11 +991,13 @@ Request budget mindset:
 
 ### Phase 2: OAuth Login
 
+> Operator-confirmed (production): sign-in and app authorization work on the deployed `bigbsky.com` origin — the user can sign in and authorize the app successfully. The "partial / verification pending" wording on individual items below predates that confirmation; treat the core production OAuth login + callback + authorize flow as verified. Note: OAuth cannot be exercised in the localhost-only Claude preview, so authenticated flows must be tested on the deployed origin, not the in-editor preview.
+
 - Add AT Protocol OAuth client metadata. Status: first static public-client metadata document implemented at `/oauth-client-metadata.json` for the `https://bigbsky.com/oauth-client-metadata.json` client ID, including HTTPS callbacks, refresh-token grant declaration, `atproto transition:generic` scope, and DPoP-bound tokens.
 - Serve OAuth client metadata, icons, and callback shell as static assets only. Status: implemented for v1 static assets; `/oauth-client-metadata.json`, `/icon.svg`, `/site.webmanifest`, and the SPA callback shell are all static files, and the build audit now requires the icon, manifest, callback metadata, and OAuth `logo_uri`.
 - Add static OAuth callback route/surface through the SPA shell. Status: partial; `/oauth/callback` is served by the static SPA and now invokes the browser OAuth SDK callback/restore path, then returns to Settings when a callback session is restored. Loopback development OAuth now builds its client ID from the root path so signing in from `/settings` does not create an invalid path-bearing localhost client ID. Live production callback verification remains pending.
 - Implement sign-in with handle input. Status: first pass implemented in the right-rail account panel and Settings account panel; handle/DID/PDS input validates locally and starts the AT Protocol browser OAuth SDK redirect flow on explicit submit.
-- Complete callback handling. Status: partial; callback detection and SDK `init()` handling are wired, but production OAuth callback verification and error-state polish remain pending.
+- Complete callback handling. Status: done (operator-verified in production); callback detection and SDK `init()` handling are wired and the deployed sign-in/authorize/callback flow works. Error-state polish can still improve.
 - Handle OAuth callback parsing, state validation, token exchange, session restore, and refresh in browser code or the OAuth SDK without a BigBSky backend. Status: partial; the app lazy-loads `@atproto/oauth-client-browser` for known stored sessions, callbacks, sign-in, and sign-out, and avoids loading OAuth chunks on cold signed-out reader visits. End-to-end production token exchange still needs verification.
 - Persist session locally. Status: partial; the SDK-managed IndexedDB store is used and BigBSky records the active DID/handle in `bigbsky:auth:*` local keys for restore. Reload and multi-tab verification remain pending.
 - Show signed-in account identity. Status: first pass implemented after SDK restore/callback by fetching the signed-in profile through `@atproto/api` and showing handle/display name/avatar in the left rail, right-rail account panel, self-profile surface, and Settings.
@@ -1007,7 +1011,7 @@ Request budget mindset:
 - Home timeline.
 - Discover timeline.
 - Following feed.
-- Pinned/custom feeds in a scalable feed selector. Status: improved; known public Feeds and discovered public Feeds (arbitrary `at://` Feed generator URIs surfaced from Explore) can be pinned/unpinned locally in the browser, appear in a Pinned group at the top of the selector, persist their metadata across reloads under `bigbsky:pinned-feed-meta`, and are counted/clearable through Settings. Signed-in subscribed-feed loading is now implemented: when a session is restored, `getSubscribedFeeds()` (auth.ts) reads the user's AT Protocol preferences (`app.bsky.actor.getPreferences`, supporting `savedFeedsPrefV2` and legacy `savedFeedsPref`), resolves feed-generator metadata via `app.bsky.feed.getFeedGenerators`, and surfaces them in a "My Feeds" group shown right below Pinned in the selector so the user can select them; they open via the existing `/feed/:uri` synthetic-source path and clear on sign-out. Note: signed-out behavior is verified (no "My Feeds" group, clean no-op) and the code builds, but the authenticated path itself still needs live verification with a real Bluesky sign-in on the deployed origin (gated on the pending production OAuth verification). Manual feed reorder/pin still uses the local store, not yet write-back to account preferences.
+- Pinned/custom feeds in a scalable feed selector. Status: improved; known public Feeds and discovered public Feeds (arbitrary `at://` Feed generator URIs surfaced from Explore) can be pinned/unpinned locally in the browser, appear in a Pinned group at the top of the selector, persist their metadata across reloads under `bigbsky:pinned-feed-meta`, and are counted/clearable through Settings. Signed-in subscribed-feed loading is now implemented: when a session is restored, `getSubscribedFeeds()` (auth.ts) reads the user's AT Protocol preferences (`app.bsky.actor.getPreferences`, supporting `savedFeedsPrefV2` and legacy `savedFeedsPref`), resolves feed-generator metadata via `app.bsky.feed.getFeedGenerators`, and surfaces them in a "My Feeds" group shown right below Pinned in the selector so the user can select them; they open via the existing `/feed/:uri` synthetic-source path and clear on sign-out. Note: signed-out behavior is verified (no "My Feeds" group, clean no-op) and the code builds. Production OAuth sign-in/authorize is operator-verified on the deployed origin, so the authenticated "My Feeds" path runs in production (it cannot be exercised in the localhost-only Claude preview, which OAuth rejects); confirm on `bigbsky.com` that the group populates. Manual feed reorder/pin still uses the local store, not yet write-back to account preferences.
 - No horizontal feed-tab scrolling for normal feed selection. Status: done; feed selection uses a grouped, vertically-scrolling selector column (`.feed-group` list) rather than a horizontal tab strip. Verified live at 2560px that the selector column has no horizontal overflow (`scrollWidth === clientWidth`).
 - Feed organization that supports topic/community-style browsing while retaining Bluesky terminology.
 - Notifications. Status: partial; local inbox UI now renders account/session state, saved-post count, pinned Feed/search count, local list count, and a mention-search entry point. Authenticated notification reads remain pending.
@@ -1123,7 +1127,7 @@ Request budget mindset:
 - OAuth callback is served by the static SPA fallback and handled browser-side. Status: partial; SDK callback handling is wired in the SPA, with live production callback verification pending.
 - No server-side analytics, logging, redirects, image optimization, link previews, remote config, feature flags, or health checks are deployed.
 - OAuth client metadata is reachable at its final HTTPS URL. Status: local static asset implemented and verified at `/oauth-client-metadata.json`; production `https://bigbsky.com/oauth-client-metadata.json` verification remains pending after deploy.
-- User can sign in with a Bluesky handle. Status: first pass implemented with explicit handle/DID/PDS input and browser OAuth SDK redirect; end-to-end production OAuth verification remains pending.
+- User can sign in with a Bluesky handle. Status: done (operator-verified in production); explicit handle/DID/PDS input plus browser OAuth SDK redirect, and sign-in/authorize works on the deployed `bigbsky.com` origin.
 - Session survives refresh without our backend. Status: partial; SDK local restore path and active DID marker are wired, with reload and multi-tab verification pending.
 - Sign-out is always visible to signed-in users. Status: improved; visible in the right-rail account panel, Settings, signed-in left rail, signed-in Profile surface, and a compact left-rail account switcher after session restore. The switcher exposes identity, profile/settings actions, sign-out, and an add/switch OAuth form, while account-backed multi-account sync remains pending.
 - Sign-out clears local auth state and account-specific browser-local data without a BigBSky backend. Status: partial; sign-out clears `bigbsky:auth:*` and the SDK OAuth IndexedDB store after a best-effort revocation attempt.
@@ -1145,6 +1149,7 @@ Request budget mindset:
 
 ## Reference Sources
 
+- AT Protocol source / lexicons (canonical XRPC methods, types, lexicons): https://github.com/bluesky-social/atproto
 - Bluesky API docs: https://docs.bsky.app/
 - Bluesky API hosts and auth guide: https://docs.bsky.app/docs/advanced-guides/api-directory
 - Bluesky OAuth client implementation guide: https://docs.bsky.app/docs/advanced-guides/oauth-client
