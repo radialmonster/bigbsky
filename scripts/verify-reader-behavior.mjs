@@ -59,8 +59,9 @@ requirePattern(/setEngagement\(\(current\) => \(current === stat\.key \? null : 
 if (!/export function getLikes\(/.test(api) || !/export function getRepostedBy\(/.test(api) || !/export function getQuotes\(/.test(api)) {
   failures.push("api should expose public getLikes/getRepostedBy/getQuotes readers");
 }
-requirePattern(/function renderRichText\([\s\S]*app\.bsky\.richtext\.facet#link[\s\S]*app\.bsky\.richtext\.facet#mention/s, "post text should render link and mention facets from Bluesky rich text");
-requirePattern(/renderRichText\(post\.record\.facets\?\.length \? post\.record\.text \|\| "" : text, post\.record\.facets, onOpenProfile\)/, "post cards should render rich-text facets for post body text");
+requirePattern(/function renderRichText\([\s\S]*app\.bsky\.richtext\.facet#link[\s\S]*app\.bsky\.richtext\.facet#mention[\s\S]*app\.bsky\.richtext\.facet#tag/s, "post text should render link, mention, and tag facets from Bluesky rich text");
+requirePattern(/const TagSearchContext = createContext[\s\S]*onClick=\{\(event\) => \{[\s\S]*onOpenTag\(tag\)/s, "hashtag facets should open an in-app search via the tag-search context");
+requirePattern(/renderRichText\(post\.record\.facets\?\.length \? post\.record\.text \|\| "" : text, post\.record\.facets, onOpenProfile/, "post cards should render rich-text facets for post body text");
 if (!/export function getTrendingTopics\(/.test(api)) {
   failures.push("api should expose a public getTrendingTopics reader");
 }

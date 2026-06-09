@@ -1879,11 +1879,21 @@ button.surface-action {
 }
 
 .post-link,
-.post-mention {
+.post-mention,
+.post-tag {
   color: var(--bsky-blue-soft);
   font: inherit;
   background: transparent;
   padding: 0;
+}
+
+.post-tag {
+  display: inline;
+  cursor: pointer;
+}
+
+.post-tag:hover {
+  text-decoration: underline;
 }
 
 .post-link {

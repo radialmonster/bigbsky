@@ -27,7 +27,7 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, type ReactNode, type RefObject, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   type ActorSearchResponse,
@@ -73,6 +73,10 @@ import { getRouteState, type RouteState } from "./router";
 import { displayName, feedSources, navigationItems, type FeedSource } from "./sources";
 
 const navIcons = [Home, Compass, Bell, MessageCircle, Hash, List, Bookmark, User, Settings];
+
+// Lets deeply-nested post cards open an in-app hashtag search without threading
+// a callback through every PostCard/VirtualPostList call site.
+const TagSearchContext = createContext<((tag: string) => void) | null>(null);
 
 type FeedState = {
   items: FeedItem[];
@@ -1622,6 +1626,13 @@ export function App() {
     });
     navigate({ kind: "feed", uri: source.id }, feedRoutePath(source));
   };
+  const openTag = (tag: string) => {
+    const trimmed = tag.trim();
+    if (!trimmed) {
+      return;
+    }
+    submitSearch(trimmed.startsWith("#") ? trimmed : `#${trimmed}`);
+  };
   const submitSearch = (query: string) => {
     const trimmed = query.trim();
     if (!trimmed) {
@@ -1665,7 +1676,8 @@ export function App() {
   };
 
   return (
-    <div className={`app-shell width-${workspaceWidth}`}>
+    <TagSearchContext.Provider value={openTag}>
+      <div className={`app-shell width-${workspaceWidth}`}>
       <aside className="left-rail" aria-label="Primary">
         <button className="brand-button" type="button" onClick={() => navigate({ kind: "feed" })} title="BigBSky">
           <Feather size={22} />
@@ -2077,7 +2089,8 @@ export function App() {
       </aside>
 
       {imageViewer && <ImageViewer image={imageViewer} onChange={setImageViewer} onClose={() => setImageViewer(null)} />}
-    </div>
+      </div>
+    </TagSearchContext.Provider>
   );
 }
 
@@ -3953,7 +3966,12 @@ function SearchView({
   );
 }
 
-function renderRichText(text: string, facets: RichTextFacet[] | undefined, onOpenProfile?: (profile: Profile) => void): ReactNode {
+function renderRichText(
+  text: string,
+  facets: RichTextFacet[] | undefined,
+  onOpenProfile?: (profile: Profile) => void,
+  onOpenTag?: ((tag: string) => void) | null,
+): ReactNode {
   if (!text) {
     return text;
   }
@@ -4016,6 +4034,21 @@ function renderRichText(text: string, facets: RichTextFacet[] | undefined, onOpe
           {segment}
         </button>,
       );
+    } else if (type === "app.bsky.richtext.facet#tag" && (feature?.tag || segment) && onOpenTag) {
+      const tag = feature?.tag || segment.replace(/^#/, "");
+      nodes.push(
+        <button
+          key={index}
+          type="button"
+          className="post-tag"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenTag(tag);
+          }}
+        >
+          {segment}
+        </button>,
+      );
     } else {
       nodes.push(segment);
     }
@@ -4053,6 +4086,7 @@ function PostCard({
   onToggleSaved?: (post: FeedPost) => void;
 }) {
   const post = item.post;
+  const onOpenTag = useContext(TagSearchContext);
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
   const images = getEmbedImages(post.embed);
   const external = getExternalEmbed(post.embed);
@@ -4130,7 +4164,7 @@ function PostCard({
       )}
       {text ? (
         <p className={preservesLineBreaks ? "post-text has-line-breaks" : "post-text"}>
-          {renderRichText(post.record.facets?.length ? post.record.text || "" : text, post.record.facets, onOpenProfile)}
+          {renderRichText(post.record.facets?.length ? post.record.text || "" : text, post.record.facets, onOpenProfile, onOpenTag)}
         </p>
       ) : (
         !hasRichContent && <p className="post-text muted">Post has no plain text.</p>
