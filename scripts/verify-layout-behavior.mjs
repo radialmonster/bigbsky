@@ -47,6 +47,9 @@ forbidPattern(css, /min-width: 2560px/s, "do not add ultrawide-specific breakpoi
 // Prose holds a readable measure so the very wide reader stays pleasing,
 // as a single constant (no per-screen-size rule). Media keeps full width.
 requirePattern(css, /\.post-text \{[\s\S]*max-width: 70ch;/s, "post prose should keep a readable line-length measure in the wide column");
+// Text-flow elements (reason/header/badges/actions) align to one readable
+// left column on wide cards, while media/link/quote embeds break out full width.
+requirePattern(css, /\.post-card \.post-header,[\s\S]*\.post-card \.post-actions \{[\s\S]*max-width: 720px;/s, "post header/badges/actions should align to the readable content column on wide cards");
 requirePattern(css, /@media \(min-width: 1900px\) \{[\s\S]*\.timeline\.compact \.post-card\.has-link,[\s\S]*display: grid;[\s\S]*grid-template-columns: minmax\(280px, 0\.92fr\) minmax\(360px, 1\.08fr\);/s, "very wide compact rich cards should become two-zone cards");
 requirePattern(css, /@media \(max-width: 720px\) \{[\s\S]*\.compact \.post-card\.text-only \{[\s\S]*display: block;/s, "wide-only compact layout should collapse on mobile");
 
