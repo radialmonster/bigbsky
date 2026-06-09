@@ -152,7 +152,7 @@ BigBSky should make the active Feed timeline feel native to desktop monitors wit
 - Reading density modes: support Comfortable, Compact, and Media-heavy modes so users can choose between readable full-width cards, faster two-column scanning for rich posts, and visual browsing.
 - Sticky active Feed header: show current Feed name, creator, description/count, sort/filter controls, and composer access without consuming too much vertical space.
 - Contextual right rail: adapt the right rail to the current Feed or selected post, showing Feed info, related Feeds, trending topics, author previews, thread summaries, or search/discovery.
-- Preview side panel: show profile previews, quote posts, link cards, image details, or thread context without full navigation away from the active Feed.
+- Preview side panel: show profile previews, quote posts, link cards, or image details without full navigation away from the active Feed. Note: a thread-context side-panel/peek is descoped per user direction — opening a post already shows its content and comment thread, so threads are viewed by opening the post, not previewed in the rail.
 - Optional multi-column mode: allow power users to pin a second Feed, notifications, or search results beside the active Feed, but do not make multi-column dashboards the default requirement.
 
 The biggest design win is to make the active Feed timeline a desktop reading surface, not a phone-width column surrounded by empty space.
