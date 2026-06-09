@@ -173,6 +173,28 @@ export async function getFollowingTimeline(cursor?: string, signal?: AbortSignal
   };
 }
 
+// Authenticated feed-generator read. Many feeds (e.g. a "mentions" or
+// personalized feed) require the viewer's identity and fail on the public
+// AppView, so when signed in we route getFeed through the user's session.
+// Falls back to the public endpoint if there is no active session.
+export async function getFeedAuthed(feedUri: string, cursor?: string, signal?: AbortSignal): Promise<FeedResponse> {
+  const session = await ensureSession();
+  if (!session) {
+    const { getFeed } = await import("./api");
+    return getFeed(feedUri, cursor, signal);
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const response = await agent.app.bsky.feed.getFeed(
+    { feed: feedUri, limit: 30, ...(cursor ? { cursor } : {}) },
+    signal ? { signal } : undefined,
+  );
+  return {
+    feed: (response.data.feed ?? []) as unknown as FeedResponse["feed"],
+    cursor: response.data.cursor,
+  };
+}
+
 async function ensureSession(): Promise<OAuthSession | null> {
   if (activeSession) {
     return activeSession;

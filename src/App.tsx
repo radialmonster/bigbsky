@@ -71,6 +71,7 @@ import {
   type AuthSnapshot,
   type SubscribedFeed,
   clearOAuthSessionStorage,
+  getFeedAuthed,
   getFollowingTimeline,
   getSubscribedFeeds,
   initAuthSession,
@@ -182,6 +183,8 @@ type AuthState = {
 };
 
 const densityModes = ["comfortable", "compact", "media"];
+// Bluesky now allows up to 10 images per post (was 4).
+const maxPostImages = 10;
 
 // Authenticated reverse-chronological home timeline. Only shown/loaded when
 // signed in; its sentinel uri "following" routes the loader to getTimeline.
@@ -947,7 +950,9 @@ export function App() {
           ? await getFollowingTimeline(cursor, signal)
           : isListUri(source.uri)
             ? await getListFeed(source.uri, cursor, signal)
-            : await getFeed(source.uri, cursor, signal);
+            : signedInDid
+              ? await getFeedAuthed(source.uri, cursor, signal)
+              : await getFeed(source.uri, cursor, signal);
       setFeedState((current) => {
         const next = {
           items: cursor ? [...current.items, ...response.feed] : response.feed,
@@ -969,7 +974,7 @@ export function App() {
         );
       }
     }
-  }, []);
+  }, [signedInDid]);
 
   const loadProfileFeed = useCallback(async (actor: string, cursor?: string, signal?: AbortSignal) => {
     const cacheKey = `profile:${actor}`;
@@ -3866,7 +3871,7 @@ function Composer({
   function attachImage(index: number) {
     onDraftChange({
       posts: drafts,
-      mediaSlots: { ...mediaSlots, [index]: Math.min((mediaSlots[index] ?? 0) + 1, 4) },
+      mediaSlots: { ...mediaSlots, [index]: Math.min((mediaSlots[index] ?? 0) + 1, maxPostImages) },
     });
   }
 
@@ -3930,7 +3935,7 @@ function Composer({
                 </div>
               )}
               <div className="composer-actions">
-                <button type="button" title="Attach image" onClick={() => attachImage(index)} disabled={(mediaSlots[index] ?? 0) >= 4}>
+                <button type="button" title="Attach image" onClick={() => attachImage(index)} disabled={(mediaSlots[index] ?? 0) >= maxPostImages}>
                   <Image size={18} />
                 </button>
                 <span className={remainingChars < 0 ? "over-limit" : ""}>{remainingChars}</span>
@@ -4532,14 +4537,14 @@ function PostCard({
         <>
           {images.length > 0 && (
             <div className={`image-grid count-${Math.min(images.length, 4)}`}>
-              {images.slice(0, 4).map((image, imageIndex) => (
+              {images.slice(0, maxPostImages).map((image, imageIndex) => (
                 <button
                   className="image-button"
                   key={image.thumb || image.fullsize}
                   type="button"
                   onClick={() => {
                     const viewerImages = images
-                      .slice(0, 4)
+                      .slice(0, maxPostImages)
                       .map((viewerImage) => ({
                         src: viewerImage.fullsize || viewerImage.thumb || "",
                         alt: viewerImage.alt || "",
@@ -4562,7 +4567,9 @@ function PostCard({
                     }
                   />
                   {image.alt && <span className="alt-badge">ALT</span>}
-                  {images.length > 4 && imageIndex === 3 && <span className="more-media-badge">+{images.length - 4}</span>}
+                  {images.length > maxPostImages && imageIndex === maxPostImages - 1 && (
+                    <span className="more-media-badge">+{images.length - maxPostImages}</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -4717,7 +4724,7 @@ function QuotedPostCard({
         <>
           {embeddedImages.length > 0 && (
             <div className={`image-grid quote-images count-${Math.min(embeddedImages.length, 4)}`}>
-              {embeddedImages.slice(0, 4).map((image) => (
+              {embeddedImages.slice(0, maxPostImages).map((image) => (
                 <img
                   alt={image.alt || ""}
                   key={image.thumb || image.fullsize}
