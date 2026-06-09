@@ -13,6 +13,7 @@ import {
   List,
   Loader2,
   LogOut,
+  Menu,
   Plus,
   X,
   ChevronLeft,
@@ -695,6 +696,9 @@ export function App() {
   const [localLists, setLocalLists] = useState<LocalList[]>(() => readLocalLists());
   const [imageViewer, setImageViewer] = useState<ImageViewerState>(null);
   const [linkPreview, setLinkPreview] = useState<LinkPreviewState>(null);
+  // The primary nav icon bar is hidden by default and revealed with the
+  // hamburger control in the feed-title header.
+  const [navOpen, setNavOpen] = useState<boolean>(false);
   const [densityByContext, setDensityByContext] = useState<Record<string, string>>(() => readDensityPreferences());
   const [widthByContext, setWidthByContext] = useState<Record<string, string>>(() => readWidthPreferences());
   const [showNsfw, setShowNsfw] = useState<boolean>(() => readShowNsfw());
@@ -1718,16 +1722,6 @@ export function App() {
   }
 
   const isProfileRoute = route.kind === "profile";
-  const workspaceLabel =
-    route.kind === "post"
-      ? "Thread"
-      : route.kind === "search"
-        ? "Search"
-        : route.kind === "surface"
-          ? "Signed-In Surface"
-          : isProfileRoute
-            ? "Profile Feed"
-            : "Active Feed";
   const workspaceTitle =
     route.kind === "post"
       ? "Post Conversation"
@@ -1910,7 +1904,7 @@ export function App() {
   return (
     <TagSearchContext.Provider value={openTag}>
       <ShowNsfwContext.Provider value={showNsfw}>
-      <div className={`app-shell width-${workspaceWidth}`}>
+      <div className={`app-shell width-${workspaceWidth} ${navOpen ? "nav-open" : "nav-hidden"}`}>
       <aside className="left-rail" aria-label="Primary">
         <button className="brand-button" type="button" onClick={() => navigate({ kind: "feed" })} title="BigBSky">
           <Feather size={22} />
@@ -2064,10 +2058,16 @@ export function App() {
 
       <main className="workspace">
         <header className="workspace-header">
-          <div>
-            <p>{workspaceLabel}</p>
-            <h1>{workspaceTitle}</h1>
-          </div>
+          <h1>{workspaceTitle}</h1>
+          <button
+            className="nav-toggle"
+            type="button"
+            aria-label={navOpen ? "Hide navigation" : "Show navigation"}
+            aria-expanded={navOpen}
+            onClick={() => setNavOpen((open) => !open)}
+          >
+            <Menu size={20} />
+          </button>
         </header>
 
         {route.kind === "post" ? (

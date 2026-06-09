@@ -451,23 +451,42 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  height: 86px;
-  padding: 18px 26px;
+  height: 52px;
+  padding: 8px 20px;
   border-bottom: 1px solid var(--app-border);
   background: rgba(17, 24, 39, 0.92);
   backdrop-filter: blur(14px);
 }
 
-.workspace-header p {
-  margin: 0 0 4px;
-  color: var(--app-text-muted);
-  font-size: 13px;
-}
-
 .workspace-header h1 {
   margin: 0;
-  font-size: 25px;
-  line-height: 1.1;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav-toggle {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--app-text-muted);
+}
+
+.nav-toggle:hover {
+  background: var(--app-surface-2);
+  color: var(--app-text);
+}
+
+.app-shell.nav-open .nav-toggle {
+  background: rgba(5, 96, 255, 0.18);
+  color: var(--bsky-blue-soft);
 }
 
 .segmented {
@@ -501,6 +520,26 @@ button {
 }
 
 .width-focus .right-rail {
+  display: none;
+}
+
+/* The primary nav icon rail is hidden by default and revealed with the
+   hamburger in the feed-title header. When hidden, drop its grid track so
+   the remaining columns realign (a display:none grid child would otherwise
+   leave the last column empty). */
+.app-shell.nav-hidden {
+  grid-template-columns: 288px minmax(640px, 1fr) 320px;
+}
+
+.app-shell.nav-hidden.width-wide {
+  grid-template-columns: 260px minmax(780px, 1.35fr) 280px;
+}
+
+.app-shell.nav-hidden.width-focus {
+  grid-template-columns: 228px minmax(860px, 1.5fr) 0;
+}
+
+.app-shell.nav-hidden .left-rail {
   display: none;
 }
 
@@ -3448,13 +3487,31 @@ button.surface-action {
     z-index: 2;
     top: 0;
     flex-direction: row;
+    gap: 0;
     height: 64px;
+    padding: 8px 6px;
     border-bottom: 1px solid var(--app-border);
   }
 
   .rail-nav {
     flex-direction: row;
-    overflow: auto;
+    /* All nav icons must be visible without horizontal scroll (the off-screen
+       Profile/Settings icons were hidden behind an auto-scroll). Distribute
+       them across the full bar width instead. */
+    justify-content: space-around;
+    gap: 0;
+    overflow: visible;
+  }
+
+  /* The brand logo is redundant on the mobile bar (Home is its own icon) and
+     its width was crowding the nav icons off the right edge. */
+  .brand-button {
+    display: none;
+  }
+
+  .rail-button {
+    width: 38px;
+    height: 40px;
   }
 
   .rail-button span,
