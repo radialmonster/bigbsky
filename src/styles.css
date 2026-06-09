@@ -2580,6 +2580,34 @@ button.surface-action {
   color: var(--app-text);
 }
 
+.search-box-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  background: transparent;
+  color: var(--app-text-soft);
+}
+
+.search-box-clear:hover {
+  color: var(--app-text);
+}
+
+.panel-clear {
+  padding: 2px 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--app-text-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.panel-clear:hover {
+  border-color: var(--app-border-strong);
+  color: var(--app-text);
+}
+
 .profile-panel,
 .context-panel {
   margin-bottom: 14px;
@@ -2864,6 +2892,11 @@ button.surface-action {
 .recent-panel small {
   margin-top: 2px;
   color: var(--app-text-muted);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .state,

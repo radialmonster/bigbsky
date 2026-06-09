@@ -1308,6 +1308,11 @@ export function App() {
     });
   }
 
+  function clearRecentItems() {
+    setRecentItems([]);
+    localStorage.removeItem(recentStorageKey);
+  }
+
   function toggleSavedPost(post: FeedPost) {
     setSavedPosts((current) => {
       const exists = current.some((savedPost) => savedPost.uri === post.uri);
@@ -2039,6 +2044,7 @@ export function App() {
         />
         <RecentPanel
           items={recentItems}
+          onClear={clearRecentItems}
           onOpen={(item) => {
             if (item.sourceId) {
               setActiveSourceId(item.sourceId);
@@ -3661,6 +3667,11 @@ function SearchBox({
         value={value}
         onInput={(event) => onChange(event.currentTarget.value)}
       />
+      {value && (
+        <button type="button" className="search-box-clear" onClick={() => onChange("")} aria-label="Clear search box" title="Clear search">
+          <X size={16} />
+        </button>
+      )}
     </form>
   );
 }
@@ -4977,14 +4988,27 @@ function renderThreadNode(
   );
 }
 
-function RecentPanel({ items, onOpen }: { items: RecentItem[]; onOpen: (item: RecentItem) => void }) {
+function RecentPanel({
+  items,
+  onOpen,
+  onClear,
+}: {
+  items: RecentItem[];
+  onOpen: (item: RecentItem) => void;
+  onClear: () => void;
+}) {
   if (items.length === 0) {
     return null;
   }
 
   return (
     <section className="context-panel recent-panel">
-      <h2>Recent</h2>
+      <div className="context-panel-header">
+        <h2>Recent</h2>
+        <button type="button" className="panel-clear" onClick={onClear} aria-label="Clear recent trail" title="Clear recent">
+          Clear
+        </button>
+      </div>
       {items.map((item) => (
         <button key={item.path} type="button" onClick={() => onOpen(item)}>
           <span>{item.label}</span>
