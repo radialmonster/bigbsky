@@ -178,6 +178,25 @@ export function getPopularFeedGenerators(limit = 12, signal?: AbortSignal) {
   );
 }
 
+export type TrendingTopic = {
+  topic: string;
+  link: string;
+  description?: string;
+};
+
+export type TrendingTopicsResponse = {
+  topics: TrendingTopic[];
+  suggested: TrendingTopic[];
+};
+
+export function getTrendingTopics(limit = 10, signal?: AbortSignal) {
+  return getJson<TrendingTopicsResponse>(
+    "app.bsky.unspecced.getTrendingTopics",
+    { limit: String(limit) },
+    signal,
+  );
+}
+
 export function getAuthorFeed(actor: string, cursor?: string, signal?: AbortSignal) {
   return getJson<FeedResponse>(
     "app.bsky.feed.getAuthorFeed",

@@ -38,6 +38,7 @@ import {
   type RecordEmbedView,
   type SearchPostsResponse,
   type ThreadNode,
+  type TrendingTopic,
   getAuthorFeed,
   getEmbedImages,
   getExternalEmbed,
@@ -45,6 +46,7 @@ import {
   getFeedGenerator,
   getPopularFeedGenerators,
   getPostThread,
+  getTrendingTopics,
   getPostThreadByUri,
   getProfile,
   getRecordEmbed,
@@ -1830,6 +1832,7 @@ export function App() {
             }}
             onOpenProfile={openProfile}
             onOpenSearch={() => navigate({ kind: "search" }, "/search")}
+            onOpenSearchQuery={submitSearch}
             onSignIn={handleSignIn}
             onSignOut={handleSignOut}
             onTogglePinnedFeed={togglePinnedFeed}
@@ -2282,6 +2285,7 @@ function SurfaceView({
   onOpenProfile,
   onOpenPost,
   onOpenSearch,
+  onOpenSearchQuery,
   onSignIn,
   onSignOut,
   onToggleSaved,
@@ -2316,6 +2320,7 @@ function SurfaceView({
   onOpenProfile: (profile: Profile) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenSearch: () => void;
+  onOpenSearchQuery: (query: string) => void;
   onSignIn: (handle: string) => void | Promise<void>;
   onSignOut: () => void | Promise<void>;
   onToggleSaved: (post: FeedPost) => void;
@@ -2586,6 +2591,7 @@ function SurfaceView({
           </a>
         )}
       </section>
+      {name === "explore" && <ExploreTrendingTopics onOpenSearchQuery={onOpenSearchQuery} />}
       {name === "explore" && (
         <ExploreDiscoverFeeds
           onOpenFeed={onOpenFeed}
@@ -2623,6 +2629,59 @@ function SurfaceView({
         ))}
       </section>
     </div>
+  );
+}
+
+function ExploreTrendingTopics({ onOpenSearchQuery }: { onOpenSearchQuery: (query: string) => void }) {
+  const [state, setState] = useState<{ status: "loading" | "ready" | "error"; topics: TrendingTopic[] }>({
+    status: "loading",
+    topics: [],
+  });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getTrendingTopics(14, controller.signal)
+      .then((response) => {
+        const topics = [...(response.topics ?? []), ...(response.suggested ?? [])];
+        setState({ status: "ready", topics });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setState({ status: "error", topics: [] });
+        }
+      });
+    return () => controller.abort();
+  }, []);
+
+  if (state.status === "ready" && state.topics.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="trending-topics" aria-label="Trending topics">
+      <header className="trending-topics-header">
+        <h3>Trending Topics</h3>
+        <p>Live from Bluesky. Open one to search posts about it in BigBSky.</p>
+      </header>
+      {state.status === "loading" && <LoadingState label="Loading trending topics" />}
+      {state.status === "error" && <ErrorState message="Trending topics could not be loaded right now." />}
+      {state.status === "ready" && state.topics.length > 0 && (
+        <div className="trending-topics-list">
+          {state.topics.map((topic) => (
+            <button
+              key={`${topic.topic}:${topic.link}`}
+              type="button"
+              className="trending-topic-chip"
+              onClick={() => onOpenSearchQuery(topic.topic)}
+              title={topic.description || `Search posts about ${topic.topic}`}
+            >
+              <Hash size={13} />
+              <span>{topic.topic}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

@@ -1376,6 +1376,49 @@ button.surface-action {
   margin-top: 14px;
 }
 
+.trending-topics {
+  margin-bottom: 18px;
+}
+
+.trending-topics-header h3 {
+  margin: 0 0 2px;
+  font-size: 15px;
+}
+
+.trending-topics-header p {
+  margin: 0 0 12px;
+  color: var(--app-text-soft);
+  font-size: 12px;
+}
+
+.trending-topics-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.trending-topic-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.trending-topic-chip:hover {
+  border-color: rgba(117, 175, 255, 0.42);
+  background: rgba(5, 96, 255, 0.12);
+}
+
+.trending-topic-chip svg {
+  color: var(--bsky-blue-soft);
+}
+
 .discover-feed-card {
   display: flex;
   flex-direction: column;

@@ -37,6 +37,11 @@ requirePattern(/function readPinnedFeedMeta\(\)[\s\S]*isPinnedFeedMeta/s, "disco
 requirePattern(/const knownIds = new Set\(\[\.\.\.feedSources\.map\(\(source\) => source\.id\), \.\.\.metaSources\.map\(\(source\) => source\.id\)\]\)/, "pinned Feed ids should resolve against both static and discovered Feed sources");
 requirePattern(/setPinnedFeedMeta\(\(current\) => \{[\s\S]*localStorage\.setItem\(pinnedFeedMetaStorageKey/s, "toggling a discovered Feed pin should sync its local metadata store");
 
+requirePattern(/function ExploreTrendingTopics\([\s\S]*getTrendingTopics\([\s\S]*onOpenSearchQuery\(topic\.topic\)/s, "Explore trending topics should load live topics and open them as in-app searches");
+if (!/export function getTrendingTopics\(/.test(api)) {
+  failures.push("api should expose a public getTrendingTopics reader");
+}
+
 if (!/candidate\.media\?\.images/.test(api) || !/recordContainer[\s\S]*"record" in recordContainer[\s\S]*recordContainer\.record/s.test(api)) {
   failures.push("embed helpers should support AppView recordWithMedia image and quote records");
 }
