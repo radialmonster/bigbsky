@@ -1957,10 +1957,20 @@ button.surface-action {
 
 .post-text {
   width: 100%;
+  /* Keep the reader column very wide, but hold prose to a readable line
+     length so wide cards stay pleasing. This is a single constant measure,
+     not a per-screen-size rule: on narrow columns the container is smaller
+     than the cap so it has no effect; media/link/quote embeds are separate
+     elements and still use the full card width. */
+  max-width: 70ch;
   margin: 12px 0;
   color: var(--app-text);
   font-size: 17px;
   line-height: 1.48;
+}
+
+.quote-text {
+  max-width: 70ch;
 }
 
 .post-text.muted,
