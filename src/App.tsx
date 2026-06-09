@@ -2484,6 +2484,25 @@ function VirtualPostList({
   );
 }
 
+// The timeline scrolls inside an internal overflow container (`.timeline`),
+// not the window. An IntersectionObserver with `root: null` measures the
+// rootMargin against the viewport, so it cannot preload early through the
+// clipped scroller — auto-load would only fire once the sentinel reaches the
+// actual bottom. Observing against the nearest scrollable ancestor lets the
+// 640px margin preload the next page before the user hits the end, keeping
+// endless scroll seamless. Falls back to the viewport when nothing scrolls.
+function findScrollParent(el: HTMLElement | null): HTMLElement | null {
+  let node = el?.parentElement ?? null;
+  while (node) {
+    const overflowY = getComputedStyle(node).overflowY;
+    if ((overflowY === "auto" || overflowY === "scroll") && node.scrollHeight > node.clientHeight) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return null;
+}
+
 function AutoLoadMoreButton({ label, onLoadMore, error }: { label: string; onLoadMore: () => void; error?: string }) {
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const cooldownRef = useRef(false);
@@ -2508,7 +2527,7 @@ function AutoLoadMoreButton({ label, onLoadMore, error }: { label: string; onLoa
           cooldownRef.current = false;
         }, 900);
       },
-      { root: null, rootMargin: "640px 0px 640px 0px" },
+      { root: findScrollParent(button), rootMargin: "640px 0px 640px 0px" },
     );
 
     observer.observe(button);
