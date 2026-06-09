@@ -17,8 +17,9 @@ function forbidPattern(source, pattern, label) {
 }
 
 requirePattern(app, /const widthModes = \["balanced", "wide", "focus"\] as const;/, "reader should keep explicit desktop width modes");
-requirePattern(app, /const \[workspaceWidth, setWorkspaceWidth\][\s\S]*readWorkspaceWidthPreference\(\)/, "reader width preference should apply before first paint");
-requirePattern(app, /localStorage\.setItem\(workspaceWidthStorageKey, nextWidth\)/, "reader width preference should persist locally");
+requirePattern(app, /const \[widthByContext, setWidthByContext\][\s\S]*readWidthPreferences\(\)/, "reader width preference should be read per-context before first paint");
+requirePattern(app, /const storedWidth = widthByContext\[densityKey\] \|\| widthByContext\.default;[\s\S]*const workspaceWidth = /, "active width should resolve per-feed with a default fallback");
+requirePattern(app, /localStorage\.setItem\(widthByContextStorageKey, JSON\.stringify\(nextPreferences\)\)/, "per-feed width preference should persist locally");
 
 requirePattern(app, /function VirtualPostList\([\s\S]*defaultRowHeight = density === "compact" \? 190 : density === "media" \? 360 : 260/s, "virtual rows should use density-aware estimated heights");
 requirePattern(app, /const overscanPixels = defaultRowHeight \* 3/, "virtual list should overscan a bounded row window");

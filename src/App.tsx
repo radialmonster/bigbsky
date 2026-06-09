@@ -195,6 +195,7 @@ const savedPostsStorageKey = "bigbsky:saved-posts";
 const composerDraftStorageKey = "bigbsky:composer-draft";
 const localListsStorageKey = "bigbsky:local-lists";
 const workspaceWidthStorageKey = "bigbsky:workspace-width";
+const widthByContextStorageKey = "bigbsky:width-by-context";
 const showNsfwStorageKey = "bigbsky:show-nsfw";
 const pinnedFeedsStorageKey = "bigbsky:pinned-feeds";
 const pinnedFeedMetaStorageKey = "bigbsky:pinned-feed-meta";
@@ -294,6 +295,26 @@ function readWorkspaceWidthPreference() {
     return widthModes.includes(stored as (typeof widthModes)[number]) ? (stored as (typeof widthModes)[number]) : "balanced";
   } catch {
     return "balanced";
+  }
+}
+
+// Per-feed width memory, mirroring the per-context density map. Keyed the same
+// way as density (route.kind, or `feed:<id>`). Migrates the previous single
+// global width preference into the `default` slot so existing users keep their
+// chosen width.
+function readWidthPreferences(): Record<string, string> {
+  try {
+    const stored = JSON.parse(localStorage.getItem(widthByContextStorageKey) || "{}") as Record<string, string>;
+    if (stored && typeof stored === "object" && Object.keys(stored).length > 0) {
+      return stored;
+    }
+    const legacy = localStorage.getItem(workspaceWidthStorageKey);
+    if (widthModes.includes(legacy as (typeof widthModes)[number])) {
+      return { default: legacy as string };
+    }
+    return {};
+  } catch {
+    return {};
   }
 }
 
@@ -629,7 +650,7 @@ export function App() {
   const [imageViewer, setImageViewer] = useState<ImageViewerState>(null);
   const [linkPreview, setLinkPreview] = useState<LinkPreviewState>(null);
   const [densityByContext, setDensityByContext] = useState<Record<string, string>>(() => readDensityPreferences());
-  const [workspaceWidth, setWorkspaceWidth] = useState<(typeof widthModes)[number]>(() => readWorkspaceWidthPreference());
+  const [widthByContext, setWidthByContext] = useState<Record<string, string>>(() => readWidthPreferences());
   const [showNsfw, setShowNsfw] = useState<boolean>(() => readShowNsfw());
   const [pinnedFeedMeta, setPinnedFeedMeta] = useState<FeedSource[]>(() => readPinnedFeedMeta());
   const [pinnedFeedIds, setPinnedFeedIds] = useState<string[]>(() => readPinnedFeedIds(pinnedFeedMeta));
@@ -705,6 +726,10 @@ export function App() {
   const feedRoutePath = (source: FeedSource) => `/feed/${encodeURIComponent(source.id)}`;
   const densityKey = route.kind === "feed" ? `feed:${activeSource.id}` : route.kind;
   const density = densityByContext[densityKey] || densityByContext.default || "comfortable";
+  const storedWidth = widthByContext[densityKey] || widthByContext.default;
+  const workspaceWidth = (
+    widthModes.includes(storedWidth as (typeof widthModes)[number]) ? storedWidth : "balanced"
+  ) as (typeof widthModes)[number];
   const visibleSources = useMemo(() => {
     const query = feedSearch.trim().toLowerCase();
     if (!query) {
@@ -1292,8 +1317,13 @@ export function App() {
   }
 
   function updateWorkspaceWidth(nextWidth: (typeof widthModes)[number]) {
-    setWorkspaceWidth(nextWidth);
-    localStorage.setItem(workspaceWidthStorageKey, nextWidth);
+    const nextPreferences = {
+      ...widthByContext,
+      [densityKey]: nextWidth,
+      default: nextWidth,
+    };
+    setWidthByContext(nextPreferences);
+    localStorage.setItem(widthByContextStorageKey, JSON.stringify(nextPreferences));
   }
 
   function toggleShowNsfw() {
@@ -1313,7 +1343,7 @@ export function App() {
       .forEach((key) => sessionStorage.removeItem(key));
     await clearOAuthSessionStorage();
     setDensityByContext({});
-    setWorkspaceWidth("balanced");
+    setWidthByContext({});
     setRecentItems([]);
     setComposerDraft({ posts: [""], mediaSlots: {} });
     setSavedPosts([]);
