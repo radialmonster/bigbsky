@@ -4221,6 +4221,28 @@ function renderRichText(
   return nodes;
 }
 
+function sensitiveMediaValues(labels: Array<{ val?: string }>) {
+  return Array.from(
+    new Set(
+      labels
+        .filter(isSensitiveLabel)
+        .map((label) => label.val?.toLowerCase() || "")
+        .filter((value) => value && !value.includes("spam")),
+    ),
+  );
+}
+
+function SensitiveMediaGate({ values, onReveal }: { values: string[]; onReveal: () => void }) {
+  return (
+    <button type="button" className="sensitive-media-gate" onClick={onReveal}>
+      <EyeOff size={18} />
+      <strong>Sensitive content</strong>
+      <small>{values.map((value) => moderationLabelText({ val: value })).join(", ")}</small>
+      <span className="sensitive-media-show">Show</span>
+    </button>
+  );
+}
+
 function PostCard({
   currentDid,
   isSaved = false,
@@ -4264,13 +4286,7 @@ function PostCard({
   const sensitiveLabels = [...labels, ...(post.author.labels ?? [])].filter(isSensitiveLabel);
   // Gate adult/graphic media behind a click-to-reveal warning (spam labels are
   // not about media, so they don't hide images/video).
-  const mediaWarningValues = Array.from(
-    new Set(
-      sensitiveLabels
-        .map((label) => label.val?.toLowerCase() || "")
-        .filter((value) => value && !value.includes("spam")),
-    ),
-  );
+  const mediaWarningValues = sensitiveMediaValues([...labels, ...(post.author.labels ?? [])]);
   const gateMedia = !showNsfw && mediaWarningValues.length > 0 && (images.length > 0 || !!video) && !mediaRevealed;
   const moderationNotes = [
     ...(post.viewer?.threadMuted ? ["Thread muted"] : []),
@@ -4343,12 +4359,7 @@ function PostCard({
         !hasRichContent && <p className="post-text muted">Post has no plain text.</p>
       )}
       {gateMedia ? (
-        <button type="button" className="sensitive-media-gate" onClick={() => setMediaRevealed(true)}>
-          <EyeOff size={18} />
-          <strong>Sensitive content</strong>
-          <small>{mediaWarningValues.map((value) => moderationLabelText({ val: value })).join(", ")}</small>
-          <span className="sensitive-media-show">Show</span>
-        </button>
+        <SensitiveMediaGate values={mediaWarningValues} onReveal={() => setMediaRevealed(true)} />
       ) : (
         <>
           {images.length > 0 && (
@@ -4479,10 +4490,17 @@ function QuotedPostCard({
   onOpenProfile?: (profile: Profile) => void;
 }) {
   const onOpenTag = useContext(TagSearchContext);
+  const showNsfw = useContext(ShowNsfwContext);
+  const [mediaRevealed, setMediaRevealed] = useState(false);
   const embeddedExternal = getExternalEmbed(record.embeds?.[0] ?? record.value?.embed);
   const embeddedImages = getEmbedImages(record.embeds?.[0] ?? record.value?.embed);
   const embeddedVideo = getVideoEmbed(record.embeds?.[0] ?? record.value?.embed);
   const text = record.value?.text?.trim() || "";
+  const mediaWarningValues = sensitiveMediaValues([
+    ...((record.labels as Array<{ val?: string }> | undefined) ?? []),
+    ...(record.author?.labels ?? []),
+  ]);
+  const gateMedia = !showNsfw && mediaWarningValues.length > 0 && (embeddedImages.length > 0 || !!embeddedVideo) && !mediaRevealed;
   const quotedPost = record.author
     ? ({
         uri: record.uri,
@@ -4525,25 +4543,31 @@ function QuotedPostCard({
       ) : (
         <p className="quote-text muted">Quoted post has no plain text.</p>
       )}
-      {embeddedImages.length > 0 && (
-        <div className={`image-grid quote-images count-${Math.min(embeddedImages.length, 4)}`}>
-          {embeddedImages.slice(0, 4).map((image) => (
-            <img
-              alt={image.alt || ""}
-              key={image.thumb || image.fullsize}
-              src={image.thumb || image.fullsize}
-              loading="lazy"
-              decoding="async"
-              style={
-                image.aspectRatio?.width && image.aspectRatio?.height
-                  ? { aspectRatio: `${image.aspectRatio.width} / ${image.aspectRatio.height}` }
-                  : undefined
-              }
-            />
-          ))}
-        </div>
+      {gateMedia ? (
+        <SensitiveMediaGate values={mediaWarningValues} onReveal={() => setMediaRevealed(true)} />
+      ) : (
+        <>
+          {embeddedImages.length > 0 && (
+            <div className={`image-grid quote-images count-${Math.min(embeddedImages.length, 4)}`}>
+              {embeddedImages.slice(0, 4).map((image) => (
+                <img
+                  alt={image.alt || ""}
+                  key={image.thumb || image.fullsize}
+                  src={image.thumb || image.fullsize}
+                  loading="lazy"
+                  decoding="async"
+                  style={
+                    image.aspectRatio?.width && image.aspectRatio?.height
+                      ? { aspectRatio: `${image.aspectRatio.width} / ${image.aspectRatio.height}` }
+                      : undefined
+                  }
+                />
+              ))}
+            </div>
+          )}
+          {embeddedVideo && <VideoEmbedCard video={embeddedVideo} compact />}
+        </>
       )}
-      {embeddedVideo && <VideoEmbedCard video={embeddedVideo} compact />}
       {embeddedExternal && (
         <a className="link-card quote-link-card" href={embeddedExternal.uri} target="_blank" rel="noreferrer">
           {embeddedExternal.thumb && <img alt="" src={embeddedExternal.thumb} loading="lazy" decoding="async" />}

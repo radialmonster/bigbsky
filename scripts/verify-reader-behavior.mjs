@@ -74,7 +74,8 @@ requirePattern(/const gateMedia = !showNsfw && mediaWarningValues\.length > 0 &&
 requirePattern(/\[\.\.\.labels, \.\.\.\(post\.author\.labels \?\? \[\]\)\]\.filter\(isSensitiveLabel\)/, "media gating should consider account-level (author) labels, not just post labels");
 requirePattern(/const ShowNsfwContext = createContext<boolean>\(false\)/, "the NSFW preference should default to hidden for everyone");
 requirePattern(/localStorage\.setItem\(showNsfwStorageKey, next \? "true" : "false"\)/, "the NSFW preference should persist in browser-local storage");
-requirePattern(/gateMedia \? \(\s*<button type="button" className="sensitive-media-gate" onClick=\{\(\) => setMediaRevealed\(true\)\}/s, "sensitive media should require an explicit Show click before rendering");
+requirePattern(/gateMedia \? \(\s*<SensitiveMediaGate values=\{mediaWarningValues\} onReveal=\{\(\) => setMediaRevealed\(true\)\}/s, "sensitive media should require an explicit Show click before rendering");
+requirePattern(/const gateMedia = !showNsfw && mediaWarningValues\.length > 0 && \(embeddedImages\.length > 0 \|\| !!embeddedVideo\) && !mediaRevealed/, "quoted-post media should also be gated behind the sensitive-content warning");
 if (!/export function getTrendingTopics\(/.test(api)) {
   failures.push("api should expose a public getTrendingTopics reader");
 }
