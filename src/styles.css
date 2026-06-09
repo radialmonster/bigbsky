@@ -1720,6 +1720,33 @@ button.surface-action {
   margin-top: 12px;
 }
 
+.discover-feed-follow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--bsky-blue);
+  border-radius: 999px;
+  background: var(--bsky-blue);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.discover-feed-follow:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.discover-feed-follow:disabled {
+  opacity: 0.7;
+}
+
+.discover-feed-follow.following {
+  background: transparent;
+  border-color: rgba(5, 96, 255, 0.5);
+  color: var(--bsky-blue-soft);
+}
+
 .discover-feed-pin {
   display: inline-flex;
   align-items: center;

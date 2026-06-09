@@ -72,10 +72,12 @@ import {
   type AuthSnapshot,
   type SubscribedFeed,
   clearOAuthSessionStorage,
+  followFeed,
   getFeedAuthed,
   getFollowingTimeline,
   getSubscribedFeeds,
   initAuthSession,
+  unfollowFeed,
   looksLikeOAuthCallback,
   signOut,
   startSignIn,
@@ -727,6 +729,7 @@ export function App() {
   const [devMetrics, setDevMetrics] = useState<DevMetrics>(initialDevMetrics);
   const [authState, setAuthState] = useState<AuthState>(initialAuthState);
   const [subscribedFeeds, setSubscribedFeeds] = useState<FeedSource[]>([]);
+  const [followBusyUri, setFollowBusyUri] = useState<string | null>(null);
   const [isAccountSwitcherOpen, setIsAccountSwitcherOpen] = useState(false);
   const [virtualRenderedRows, setVirtualRenderedRows] = useState(0);
   const [thread, setThread] = useState<{ status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string }>({
@@ -806,6 +809,37 @@ export function App() {
       cancelled = true;
     };
   }, [signedInDid]);
+
+  const followedFeedUris = useMemo(() => new Set(subscribedFeeds.map((source) => source.uri)), [subscribedFeeds]);
+
+  // Follow/unfollow a feed generator against the signed-in account (real
+  // AT Protocol write to the user's saved feeds). Optimistically updates the
+  // local subscribed list so the button and "My Feeds" group reflect it; a
+  // failure reverts. No-op when signed out.
+  async function toggleFollowFeed(feedUri: string, label?: string) {
+    if (!signedInDid || followBusyUri) {
+      return;
+    }
+    const wasFollowing = followedFeedUris.has(feedUri);
+    setFollowBusyUri(feedUri);
+    try {
+      if (wasFollowing) {
+        await unfollowFeed(feedUri);
+        setSubscribedFeeds((prev) => prev.filter((source) => source.uri !== feedUri));
+      } else {
+        await followFeed(feedUri);
+        setSubscribedFeeds((prev) =>
+          prev.some((source) => source.uri === feedUri)
+            ? prev
+            : [...prev, { id: feedUri, uri: feedUri, label: label || "Feed", group: "My Feeds" as const, description: "Your subscribed feed." }],
+        );
+      }
+    } catch (error) {
+      console.error("Failed to update feed subscription", error);
+    } finally {
+      setFollowBusyUri(null);
+    }
+  }
 
   const activeSource = useMemo<FeedSource>(() => {
     if (route.kind === "feed" && route.uri) {
@@ -2156,6 +2190,10 @@ export function App() {
             onToggleNsfw={toggleShowNsfw}
             showMedia={showMedia}
             onToggleShowMedia={toggleShowMedia}
+            canFollowFeeds={!!signedInDid}
+            followedFeedUris={followedFeedUris}
+            followBusyUri={followBusyUri}
+            onToggleFollowFeed={toggleFollowFeed}
             currentDid={authState.session?.did}
             savedUris={savedUriSet}
             onOpenImage={setImageViewer}
@@ -2649,6 +2687,10 @@ function SurfaceView({
   onToggleNsfw,
   showMedia,
   onToggleShowMedia,
+  canFollowFeeds,
+  followedFeedUris,
+  followBusyUri,
+  onToggleFollowFeed,
   currentDid,
   savedUris,
 }: {
@@ -2689,6 +2731,10 @@ function SurfaceView({
   onToggleNsfw: () => void;
   showMedia: boolean;
   onToggleShowMedia: () => void;
+  canFollowFeeds: boolean;
+  followedFeedUris: Set<string>;
+  followBusyUri: string | null;
+  onToggleFollowFeed: (feedUri: string, label?: string) => void;
   currentDid?: string;
   savedUris: Set<string>;
 }) {
@@ -3007,6 +3053,10 @@ function SurfaceView({
           onOpenFeed={onOpenFeed}
           pinnedFeedIds={pinnedFeedIds}
           onTogglePinnedFeed={onTogglePinnedFeed}
+          canFollowFeeds={canFollowFeeds}
+          followedFeedUris={followedFeedUris}
+          followBusyUri={followBusyUri}
+          onToggleFollowFeed={onToggleFollowFeed}
         />
       )}
       {name === "feeds" && (
@@ -3099,10 +3149,18 @@ function ExploreDiscoverFeeds({
   onOpenFeed,
   pinnedFeedIds,
   onTogglePinnedFeed,
+  canFollowFeeds,
+  followedFeedUris,
+  followBusyUri,
+  onToggleFollowFeed,
 }: {
   onOpenFeed: (source: FeedSource) => void;
   pinnedFeedIds: string[];
   onTogglePinnedFeed: (source: FeedSource) => void;
+  canFollowFeeds: boolean;
+  followedFeedUris: Set<string>;
+  followBusyUri: string | null;
+  onToggleFollowFeed: (feedUri: string, label?: string) => void;
 }) {
   const [state, setState] = useState<{ status: "loading" | "ready" | "error"; feeds: FeedGeneratorView[] }>({
     status: "loading",
@@ -3175,6 +3233,10 @@ function ExploreDiscoverFeeds({
               isPinned={pinnedFeedIds.includes(feed.uri)}
               onOpenFeed={onOpenFeed}
               onTogglePinnedFeed={onTogglePinnedFeed}
+              canFollow={canFollowFeeds}
+              isFollowing={followedFeedUris.has(feed.uri)}
+              followBusy={followBusyUri === feed.uri}
+              onToggleFollow={onToggleFollowFeed}
             />
           ))}
         </div>
@@ -3188,11 +3250,19 @@ function DiscoverFeedCard({
   isPinned,
   onOpenFeed,
   onTogglePinnedFeed,
+  canFollow = false,
+  isFollowing = false,
+  followBusy = false,
+  onToggleFollow,
 }: {
   feed: FeedGeneratorView;
   isPinned: boolean;
   onOpenFeed: (source: FeedSource) => void;
   onTogglePinnedFeed: (source: FeedSource) => void;
+  canFollow?: boolean;
+  isFollowing?: boolean;
+  followBusy?: boolean;
+  onToggleFollow?: (feedUri: string, label?: string) => void;
 }) {
   const feedRkey = feed.uri.split("/").pop();
   const bskyUrl =
@@ -3226,6 +3296,18 @@ function DiscoverFeedCard({
         {typeof likes === "number" && <span className="discover-feed-likes">{likes.toLocaleString()} likes</span>}
       </button>
       <div className="discover-feed-actions">
+        {canFollow && onToggleFollow && (
+          <button
+            type="button"
+            className={isFollowing ? "discover-feed-follow following" : "discover-feed-follow"}
+            onClick={() => onToggleFollow(feed.uri, feed.displayName || "Feed")}
+            disabled={followBusy}
+            aria-label={isFollowing ? `Unfollow ${source.label}` : `Follow ${source.label}`}
+          >
+            {followBusy ? <Loader2 className="spin" size={14} /> : <Plus size={14} />}
+            {isFollowing ? "Following" : "Follow"}
+          </button>
+        )}
         <button
           type="button"
           className={isPinned ? "discover-feed-pin pinned" : "discover-feed-pin"}

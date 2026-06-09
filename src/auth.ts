@@ -292,6 +292,47 @@ export async function getSubscribedFeeds(): Promise<SubscribedFeed[]> {
     .filter((feed): feed is SubscribedFeed => feed !== null);
 }
 
+// Subscribe the signed-in user to a feed generator ("Follow") by adding it to
+// their AT Protocol saved feeds (pinned), via the official preference helper.
+// This is a real authenticated write routed through the user's session/PDS — no
+// BigBSky backend. Throws if signed out.
+export async function followFeed(feedUri: string): Promise<void> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to follow feeds.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  await agent.addSavedFeeds([{ type: "feed", value: feedUri, pinned: true }]);
+}
+
+// Remove a feed generator from the signed-in user's saved feeds. The remove API
+// takes the saved-feed item id, so read preferences to map the feed URI to its
+// id first. Throws if signed out.
+export async function unfollowFeed(feedUri: string): Promise<void> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to manage feeds.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const prefsResponse = await agent.app.bsky.actor.getPreferences();
+  const preferences = (prefsResponse.data?.preferences ?? []) as Array<Record<string, unknown>>;
+  const ids: string[] = [];
+  for (const pref of preferences) {
+    if (pref.$type === "app.bsky.actor.defs#savedFeedsPrefV2" && Array.isArray(pref.items)) {
+      for (const item of pref.items as Array<Record<string, unknown>>) {
+        if (item.type === "feed" && item.value === feedUri && typeof item.id === "string") {
+          ids.push(item.id);
+        }
+      }
+    }
+  }
+  if (ids.length > 0) {
+    await agent.removeSavedFeeds(ids);
+  }
+}
+
 export async function clearOAuthSessionStorage() {
   if (!("indexedDB" in window)) {
     return;
