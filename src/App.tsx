@@ -86,6 +86,7 @@ type FeedState = {
   cursor?: string;
   status: "idle" | "loading" | "ready" | "error" | "rate-limit";
   error?: string;
+  loadMoreError?: string;
 };
 
 type SearchState = {
@@ -93,6 +94,7 @@ type SearchState = {
   cursor?: string;
   status: "idle" | "loading" | "ready" | "error" | "rate-limit";
   error?: string;
+  loadMoreError?: string;
 };
 
 type ActorSearchState = {
@@ -100,6 +102,7 @@ type ActorSearchState = {
   cursor?: string;
   status: "idle" | "loading" | "ready" | "error" | "rate-limit";
   error?: string;
+  loadMoreError?: string;
 };
 
 type FeedSearchState = {
@@ -405,8 +408,20 @@ function isRateLimit(error: unknown) {
   return error instanceof ApiError && error.status === 429;
 }
 
+function isNetworkError(error: unknown) {
+  // fetch() rejects with a TypeError ("Failed to fetch") on network/CORS failures,
+  // which also covers rate-limited responses returned without CORS headers.
+  return error instanceof TypeError;
+}
+
 function rateLimitMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Bluesky rate limit reached.";
+  if (isRateLimit(error)) {
+    return "Bluesky rate limit reached. Pause a moment, then try again.";
+  }
+  if (isNetworkError(error)) {
+    return "Network request failed — Bluesky may be rate-limiting or briefly unreachable. Try again.";
+  }
+  return error instanceof Error ? error.message : "Something went wrong loading this.";
 }
 
 function countThreadRows(node?: ThreadNode): number {
@@ -808,6 +823,7 @@ export function App() {
       ...current,
       status: cursor ? current.status : "loading",
       error: undefined,
+      loadMoreError: undefined,
     }));
 
     try {
@@ -828,11 +844,11 @@ export function App() {
       }
     } catch (error) {
       if (!signal?.aborted) {
-        setFeedState((current) => ({
-          ...current,
-          status: isRateLimit(error) ? "rate-limit" : "error",
-          error: rateLimitMessage(error),
-        }));
+        setFeedState((current) =>
+          cursor
+            ? { ...current, status: "ready", loadMoreError: rateLimitMessage(error) }
+            : { ...current, status: isRateLimit(error) ? "rate-limit" : "error", error: rateLimitMessage(error) },
+        );
       }
     }
   }, []);
@@ -854,6 +870,7 @@ export function App() {
       ...current,
       status: cursor ? current.status : "loading",
       error: undefined,
+      loadMoreError: undefined,
     }));
 
     try {
@@ -879,11 +896,11 @@ export function App() {
       }
     } catch (error) {
       if (!signal?.aborted) {
-        setFeedState((current) => ({
-          ...current,
-          status: isRateLimit(error) ? "rate-limit" : "error",
-          error: rateLimitMessage(error),
-        }));
+        setFeedState((current) =>
+          cursor
+            ? { ...current, status: "ready", loadMoreError: rateLimitMessage(error) }
+            : { ...current, status: isRateLimit(error) ? "rate-limit" : "error", error: rateLimitMessage(error) },
+        );
       }
     }
   }, []);
@@ -903,6 +920,7 @@ export function App() {
       ...current,
       status: cursor ? current.status : "loading",
       error: undefined,
+      loadMoreError: undefined,
     }));
 
     try {
@@ -918,11 +936,11 @@ export function App() {
       });
     } catch (error) {
       if (!signal?.aborted) {
-        setSearchState((current) => ({
-          ...current,
-          status: isRateLimit(error) ? "rate-limit" : "error",
-          error: rateLimitMessage(error),
-        }));
+        setSearchState((current) =>
+          cursor
+            ? { ...current, status: "ready", loadMoreError: rateLimitMessage(error) }
+            : { ...current, status: isRateLimit(error) ? "rate-limit" : "error", error: rateLimitMessage(error) },
+        );
       }
     }
   }, []);
@@ -942,6 +960,7 @@ export function App() {
       ...current,
       status: cursor ? current.status : "loading",
       error: undefined,
+      loadMoreError: undefined,
     }));
 
     try {
@@ -957,11 +976,11 @@ export function App() {
       });
     } catch (error) {
       if (!signal?.aborted) {
-        setActorSearchState((current) => ({
-          ...current,
-          status: isRateLimit(error) ? "rate-limit" : "error",
-          error: rateLimitMessage(error),
-        }));
+        setActorSearchState((current) =>
+          cursor
+            ? { ...current, status: "ready", loadMoreError: rateLimitMessage(error) }
+            : { ...current, status: isRateLimit(error) ? "rate-limit" : "error", error: rateLimitMessage(error) },
+        );
       }
     }
   }, []);
@@ -2013,7 +2032,9 @@ export function App() {
                     onToggleListPost={togglePostInLocalList}
                     onRenderedRowsChange={setVirtualRenderedRows}
                   >
-                    {feedState.cursor && <AutoLoadMoreButton label="Load more profile posts" onLoadMore={loadMore} />}
+                    {feedState.cursor && (
+                      <AutoLoadMoreButton label="Load more profile posts" onLoadMore={loadMore} error={feedState.loadMoreError} />
+                    )}
                   </VirtualPostList>
                 )}
               </>
@@ -2047,7 +2068,9 @@ export function App() {
                 onToggleListPost={togglePostInLocalList}
                 onRenderedRowsChange={setVirtualRenderedRows}
               >
-                {feedState.cursor && <AutoLoadMoreButton label="Load more feed posts" onLoadMore={loadMore} />}
+                {feedState.cursor && (
+                  <AutoLoadMoreButton label="Load more feed posts" onLoadMore={loadMore} error={feedState.loadMoreError} />
+                )}
               </VirtualPostList>
             )}
           </div>
@@ -2293,13 +2316,15 @@ function VirtualPostList({
   );
 }
 
-function AutoLoadMoreButton({ label, onLoadMore }: { label: string; onLoadMore: () => void }) {
+function AutoLoadMoreButton({ label, onLoadMore, error }: { label: string; onLoadMore: () => void; error?: string }) {
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const cooldownRef = useRef(false);
 
   useEffect(() => {
     const button = buttonRef.current;
-    if (!button || !("IntersectionObserver" in window)) {
+    // When the previous page failed, stop auto-loading: requiring an explicit
+    // retry click avoids hammering a rate-limited or unreachable endpoint.
+    if (!button || error || !("IntersectionObserver" in window)) {
       return undefined;
     }
 
@@ -2320,7 +2345,18 @@ function AutoLoadMoreButton({ label, onLoadMore }: { label: string; onLoadMore: 
 
     observer.observe(button);
     return () => observer.disconnect();
-  }, [onLoadMore]);
+  }, [onLoadMore, error]);
+
+  if (error) {
+    return (
+      <div className="load-more-error" role="status">
+        <span>{error}</span>
+        <button className="load-more" ref={buttonRef} type="button" onClick={onLoadMore}>
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <button className="load-more" ref={buttonRef} type="button" onClick={onLoadMore}>
@@ -3993,7 +4029,9 @@ function SearchView({
                   </span>
                 </button>
               ))}
-              {actorSearchState.cursor && <AutoLoadMoreButton label="Load more people" onLoadMore={onLoadMore} />}
+              {actorSearchState.cursor && (
+                <AutoLoadMoreButton label="Load more people" onLoadMore={onLoadMore} error={actorSearchState.loadMoreError} />
+              )}
             </section>
           )}
         </>
@@ -4025,7 +4063,9 @@ function SearchView({
                   onToggleSaved={onToggleSaved}
                 />
               ))}
-              {searchState.cursor && <AutoLoadMoreButton label="Load more search posts" onLoadMore={onLoadMore} />}
+              {searchState.cursor && (
+                <AutoLoadMoreButton label="Load more search posts" onLoadMore={onLoadMore} error={searchState.loadMoreError} />
+              )}
             </>
           )}
         </>

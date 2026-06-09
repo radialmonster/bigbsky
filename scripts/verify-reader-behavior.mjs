@@ -32,6 +32,8 @@ requirePattern(/activeScrollKey\.startsWith\("surface:"\)[\s\S]*timelineRef\.cur
 requirePattern(/function threadUnavailableState\([\s\S]*Blocked reply[\s\S]*Reply not found[\s\S]*Deleted reply[\s\S]*Reply temporarily unavailable/s, "thread unavailable states should distinguish blocked, deleted, not-found, and rate-limited branches");
 requirePattern(/<div className=\{`thread-alert \$\{state\.tone\}`\}/, "thread unavailable branches should render typed alert tones");
 forbidPattern(/timelineRef\.current\?\.scrollTo\(\{ top: 0 \}\)/, "feed switching should not force the timeline back to the top");
+requirePattern(/cursor\s*\n?\s*\?\s*\{ \.\.\.current, status: "ready", loadMoreError: rateLimitMessage\(error\) \}/s, "a failed pagination request should keep already-loaded results instead of discarding them");
+requirePattern(/if \(!button \|\| error \|\| !\("IntersectionObserver" in window\)\)/, "the auto-loader should stop firing after a pagination error to avoid retry storms");
 requirePattern(/const pinnedFeedMetaStorageKey = "bigbsky:pinned-feed-meta"/, "discovered Feed pins should persist their metadata in a browser-local store");
 requirePattern(/function readPinnedFeedMeta\(\)[\s\S]*isPinnedFeedMeta/s, "discovered Feed pin metadata should be read and validated from local storage");
 requirePattern(/const knownIds = new Set\(\[\.\.\.feedSources\.map\(\(source\) => source\.id\), \.\.\.metaSources\.map\(\(source\) => source\.id\)\]\)/, "pinned Feed ids should resolve against both static and discovered Feed sources");
