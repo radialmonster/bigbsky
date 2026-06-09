@@ -200,6 +200,14 @@ export function getTrendingTopics(limit = 10, signal?: AbortSignal) {
   );
 }
 
+export function getActorFeeds(actor: string, limit = 30, signal?: AbortSignal) {
+  return getJson<PopularFeedsResponse>(
+    "app.bsky.feed.getActorFeeds",
+    { actor, limit: String(limit) },
+    signal,
+  );
+}
+
 export function getAuthorFeed(actor: string, cursor?: string, signal?: AbortSignal) {
   return getJson<FeedResponse>(
     "app.bsky.feed.getAuthorFeed",

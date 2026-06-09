@@ -39,6 +39,7 @@ import {
   type SearchPostsResponse,
   type ThreadNode,
   type TrendingTopic,
+  getActorFeeds,
   getAuthorFeed,
   getEmbedImages,
   getExternalEmbed,
@@ -149,7 +150,7 @@ type AuthState = {
 const densityModes = ["comfortable", "compact", "media"];
 const widthModes = ["balanced", "wide", "focus"] as const;
 const searchTabs = ["posts", "people", "feeds"] as const;
-const profileTabs = ["posts", "replies", "media", "videos"] as const;
+const profileTabs = ["posts", "replies", "media", "videos", "feeds"] as const;
 const searchLanguages = [
   { label: "Any language", value: "" },
   { label: "English", value: "en" },
@@ -1604,6 +1605,17 @@ export function App() {
     });
     navigate(routeState, path);
   };
+  const openFeedSource = (source: FeedSource) => {
+    setActiveSourceId(source.id);
+    remember({
+      label: source.label,
+      detail: source.description,
+      path: feedRoutePath(source),
+      route: { kind: "feed", uri: source.id },
+      sourceId: source.id,
+    });
+    navigate({ kind: "feed", uri: source.id }, feedRoutePath(source));
+  };
   const submitSearch = (query: string) => {
     const trimmed = query.trim();
     if (!trimmed) {
@@ -1752,17 +1764,7 @@ export function App() {
                   <button
                     className={source.id === activeSource.id ? "feed-source active" : "feed-source"}
                     type="button"
-                    onClick={() => {
-                      setActiveSourceId(source.id);
-                      remember({
-                        label: source.label,
-                        detail: source.description,
-                        path: feedRoutePath(source),
-                        route: { kind: "feed", uri: source.id },
-                        sourceId: source.id,
-                      });
-                      navigate({ kind: "feed", uri: source.id }, feedRoutePath(source));
-                    }}
+                    onClick={() => openFeedSource(source)}
                   >
                     <span>{source.label}</span>
                     <small>{source.description}</small>
@@ -1865,17 +1867,7 @@ export function App() {
             onCreateLocalList={createLocalList}
             onDeleteLocalList={deleteLocalList}
             onToggleListPost={togglePostInLocalList}
-            onOpenFeed={(source) => {
-              setActiveSourceId(source.id);
-              remember({
-                label: source.label,
-                detail: source.description,
-                path: feedRoutePath(source),
-                route: { kind: "feed", uri: source.id },
-                sourceId: source.id,
-              });
-              navigate({ kind: "feed", uri: source.id }, feedRoutePath(source));
-            }}
+            onOpenFeed={openFeedSource}
             onOpenProfile={openProfile}
             onOpenSearch={() => navigate({ kind: "search" }, "/search")}
             onOpenSearchQuery={submitSearch}
@@ -1919,17 +1911,7 @@ export function App() {
             onSortChange={setSearchSort}
             onTabChange={setSearchTab}
             onTogglePinnedSearch={togglePinnedSearch}
-            onOpenFeed={(source) => {
-              setActiveSourceId(source.id);
-              remember({
-                label: source.label,
-                detail: source.description,
-                path: feedRoutePath(source),
-                route: { kind: "feed", uri: source.id },
-                sourceId: source.id,
-              });
-              navigate({ kind: "feed", uri: source.id }, feedRoutePath(source));
-            }}
+            onOpenFeed={openFeedSource}
           />
         ) : route.kind === "profile" ? (
           <div className={`timeline ${density}`} ref={timelineRef}>
@@ -1941,30 +1923,41 @@ export function App() {
               onSelectTab={setProfileTab}
               onTogglePinned={togglePinnedProfile}
             />
-            {feedState.status === "loading" && <LoadingState label="Loading public profile posts" />}
-            {feedState.status === "error" && <ErrorState message={feedState.error || "Profile feed failed to load."} />}
-            {feedState.status === "rate-limit" && <RateLimitState message={feedState.error} />}
-            {feedState.status === "ready" && visibleProfileItems.length === 0 && (
-              <EmptyState title="No posts in this tab" message="This public profile has no loaded posts matching the selected view." />
-            )}
-            {feedState.status === "ready" && visibleProfileItems.length > 0 && (
-              <VirtualPostList
-                containerRef={timelineRef}
-                density={density}
-                items={visibleProfileItems}
-                onOpenImage={setImageViewer}
-                onOpenPost={openPost}
-                onOpenProfile={openProfile}
-                onOpenLinkPreview={openLinkPreview}
-                savedUris={savedUriSet}
-                currentDid={authState.session?.did}
-                onToggleSaved={toggleSavedPost}
-                localLists={localLists}
-                onToggleListPost={togglePostInLocalList}
-                onRenderedRowsChange={setVirtualRenderedRows}
-              >
-                {feedState.cursor && <AutoLoadMoreButton label="Load more profile posts" onLoadMore={loadMore} />}
-              </VirtualPostList>
+            {profileTab === "feeds" ? (
+              <ProfileFeedsTab
+                actor={route.actor}
+                pinnedFeedIds={pinnedFeedIds}
+                onOpenFeed={openFeedSource}
+                onTogglePinnedFeed={togglePinnedFeed}
+              />
+            ) : (
+              <>
+                {feedState.status === "loading" && <LoadingState label="Loading public profile posts" />}
+                {feedState.status === "error" && <ErrorState message={feedState.error || "Profile feed failed to load."} />}
+                {feedState.status === "rate-limit" && <RateLimitState message={feedState.error} />}
+                {feedState.status === "ready" && visibleProfileItems.length === 0 && (
+                  <EmptyState title="No posts in this tab" message="This public profile has no loaded posts matching the selected view." />
+                )}
+                {feedState.status === "ready" && visibleProfileItems.length > 0 && (
+                  <VirtualPostList
+                    containerRef={timelineRef}
+                    density={density}
+                    items={visibleProfileItems}
+                    onOpenImage={setImageViewer}
+                    onOpenPost={openPost}
+                    onOpenProfile={openProfile}
+                    onOpenLinkPreview={openLinkPreview}
+                    savedUris={savedUriSet}
+                    currentDid={authState.session?.did}
+                    onToggleSaved={toggleSavedPost}
+                    localLists={localLists}
+                    onToggleListPost={togglePostInLocalList}
+                    onRenderedRowsChange={setVirtualRenderedRows}
+                  >
+                    {feedState.cursor && <AutoLoadMoreButton label="Load more profile posts" onLoadMore={loadMore} />}
+                  </VirtualPostList>
+                )}
+              </>
             )}
           </div>
         ) : (
@@ -2805,59 +2798,133 @@ function ExploreDiscoverFeeds({
       )}
       {state.status === "ready" && state.feeds.length > 0 && (
         <div className="discover-feeds-grid">
-          {state.feeds.map((feed) => {
-            const feedRkey = feed.uri.split("/").pop();
-            const bskyUrl =
-              feed.creator?.handle && feedRkey
-                ? `https://bsky.app/profile/${feed.creator.handle}/feed/${feedRkey}`
-                : "https://bsky.app";
-            const likes = feed.likeCount ?? feed.likedByCount;
-            const source: FeedSource = {
-              id: feed.uri,
-              uri: feed.uri,
-              label: feed.displayName || "Public Feed",
-              group: "Project",
-              description: feed.description || "Public Bluesky feed opened from discovery.",
-            };
-            const isPinned = pinnedFeedIds.includes(source.id);
-            return (
-              <article className="discover-feed-card" key={feed.uri}>
-                <button
-                  type="button"
-                  className="discover-feed-open"
-                  onClick={() => onOpenFeed(source)}
-                >
-                  {feed.avatar ? (
-                    <img className="discover-feed-avatar" src={feed.avatar} alt="" loading="lazy" />
-                  ) : (
-                    <span className="discover-feed-glyph">
-                      <Hash size={20} />
-                    </span>
-                  )}
-                  <span className="discover-feed-body">
-                    <strong>{feed.displayName || "Public Feed"}</strong>
-                    <small>by @{feed.creator?.handle ?? "unknown"}</small>
-                    {feed.description && <span className="discover-feed-desc">{feed.description}</span>}
-                  </span>
-                  {typeof likes === "number" && <span className="discover-feed-likes">{likes.toLocaleString()} likes</span>}
-                </button>
-                <div className="discover-feed-actions">
-                  <button
-                    type="button"
-                    className={isPinned ? "discover-feed-pin pinned" : "discover-feed-pin"}
-                    onClick={() => onTogglePinnedFeed(source)}
-                    aria-label={isPinned ? `Unpin ${source.label}` : `Pin ${source.label}`}
-                  >
-                    <Bookmark size={14} />
-                    {isPinned ? "Pinned" : "Pin locally"}
-                  </button>
-                  <a className="discover-feed-external" href={bskyUrl} target="_blank" rel="noreferrer">
-                    Open on Bluesky
-                  </a>
-                </div>
-              </article>
-            );
-          })}
+          {state.feeds.map((feed) => (
+            <DiscoverFeedCard
+              key={feed.uri}
+              feed={feed}
+              isPinned={pinnedFeedIds.includes(feed.uri)}
+              onOpenFeed={onOpenFeed}
+              onTogglePinnedFeed={onTogglePinnedFeed}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DiscoverFeedCard({
+  feed,
+  isPinned,
+  onOpenFeed,
+  onTogglePinnedFeed,
+}: {
+  feed: FeedGeneratorView;
+  isPinned: boolean;
+  onOpenFeed: (source: FeedSource) => void;
+  onTogglePinnedFeed: (source: FeedSource) => void;
+}) {
+  const feedRkey = feed.uri.split("/").pop();
+  const bskyUrl =
+    feed.creator?.handle && feedRkey
+      ? `https://bsky.app/profile/${feed.creator.handle}/feed/${feedRkey}`
+      : "https://bsky.app";
+  const likes = feed.likeCount ?? feed.likedByCount;
+  const source: FeedSource = {
+    id: feed.uri,
+    uri: feed.uri,
+    label: feed.displayName || "Public Feed",
+    group: "Project",
+    description: feed.description || "Public Bluesky feed opened from discovery.",
+  };
+
+  return (
+    <article className="discover-feed-card">
+      <button type="button" className="discover-feed-open" onClick={() => onOpenFeed(source)}>
+        {feed.avatar ? (
+          <img className="discover-feed-avatar" src={feed.avatar} alt="" loading="lazy" />
+        ) : (
+          <span className="discover-feed-glyph">
+            <Hash size={20} />
+          </span>
+        )}
+        <span className="discover-feed-body">
+          <strong>{feed.displayName || "Public Feed"}</strong>
+          <small>by @{feed.creator?.handle ?? "unknown"}</small>
+          {feed.description && <span className="discover-feed-desc">{feed.description}</span>}
+        </span>
+        {typeof likes === "number" && <span className="discover-feed-likes">{likes.toLocaleString()} likes</span>}
+      </button>
+      <div className="discover-feed-actions">
+        <button
+          type="button"
+          className={isPinned ? "discover-feed-pin pinned" : "discover-feed-pin"}
+          onClick={() => onTogglePinnedFeed(source)}
+          aria-label={isPinned ? `Unpin ${source.label}` : `Pin ${source.label}`}
+        >
+          <Bookmark size={14} />
+          {isPinned ? "Pinned" : "Pin locally"}
+        </button>
+        <a className="discover-feed-external" href={bskyUrl} target="_blank" rel="noreferrer">
+          Open on Bluesky
+        </a>
+      </div>
+    </article>
+  );
+}
+
+function ProfileFeedsTab({
+  actor,
+  pinnedFeedIds,
+  onOpenFeed,
+  onTogglePinnedFeed,
+}: {
+  actor: string;
+  pinnedFeedIds: string[];
+  onOpenFeed: (source: FeedSource) => void;
+  onTogglePinnedFeed: (source: FeedSource) => void;
+}) {
+  const [state, setState] = useState<{ status: "loading" | "ready" | "error" | "rate-limit"; feeds: FeedGeneratorView[]; error?: string }>({
+    status: "loading",
+    feeds: [],
+  });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setState({ status: "loading", feeds: [] });
+    getActorFeeds(actor, 50, controller.signal)
+      .then((response) => setState({ status: "ready", feeds: response.feeds }))
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setState({
+            status: isRateLimit(error) ? "rate-limit" : "error",
+            feeds: [],
+            error: rateLimitMessage(error),
+          });
+        }
+      });
+    return () => controller.abort();
+  }, [actor]);
+
+  return (
+    <section className="discover-feeds" aria-label="Feeds created by this account">
+      {state.status === "loading" && <LoadingState label="Loading Feeds by this account" />}
+      {state.status === "error" && <ErrorState message={state.error || "Feeds could not be loaded right now."} />}
+      {state.status === "rate-limit" && <RateLimitState message={state.error} />}
+      {state.status === "ready" && state.feeds.length === 0 && (
+        <EmptyState title="No Feeds" message="This account has not published any Feeds." />
+      )}
+      {state.status === "ready" && state.feeds.length > 0 && (
+        <div className="discover-feeds-grid">
+          {state.feeds.map((feed) => (
+            <DiscoverFeedCard
+              key={feed.uri}
+              feed={feed}
+              isPinned={pinnedFeedIds.includes(feed.uri)}
+              onOpenFeed={onOpenFeed}
+              onTogglePinnedFeed={onTogglePinnedFeed}
+            />
+          ))}
         </div>
       )}
     </section>

@@ -42,6 +42,12 @@ requirePattern(/} else if \(searchTab === "feeds"\) \{[\s\S]*loadFeedSearch\(rou
 requirePattern(/const loadFeedSearch = useCallback\([\s\S]*getPopularFeedGenerators\(20, signal, query\)/s, "live Feed search should query the public popular-feed-generators endpoint");
 requirePattern(/className="discover-feeds-search"[\s\S]*setActiveQuery\(draftQuery\.trim\(\)\)/s, "Explore Discover New Feeds should only refetch on explicit search submit");
 requirePattern(/getPopularFeedGenerators\(18, controller\.signal, activeQuery\)[\s\S]*\}, \[activeQuery\]\)/s, "Explore Discover New Feeds should refetch when the committed query changes");
+requirePattern(/const profileTabs = \["posts", "replies", "media", "videos", "feeds"\]/, "public profiles should expose a Feeds tab");
+requirePattern(/function ProfileFeedsTab\([\s\S]*getActorFeeds\(actor, 50, controller\.signal\)/s, "the profile Feeds tab should load the actor's published Feeds from the public endpoint");
+requirePattern(/profileTab === "feeds" \? \(\s*<ProfileFeedsTab/s, "the profile Feeds tab should render published Feeds instead of the post list");
+if (!/export function getActorFeeds\(/.test(api)) {
+  failures.push("api should expose a public getActorFeeds reader");
+}
 if (!/export function getTrendingTopics\(/.test(api)) {
   failures.push("api should expose a public getTrendingTopics reader");
 }
