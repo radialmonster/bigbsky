@@ -2126,6 +2126,10 @@ button.surface-action {
 
 .image-grid.count-1 {
   grid-template-columns: minmax(0, 1fr);
+  /* On a very wide content column a single image otherwise hugs the left edge
+     and leaves a large lopsided void to its right. Centering balances the
+     negative space so the card reads as intentional. Text stays full-width. */
+  justify-items: center;
 }
 
 .image-grid img {
@@ -2196,7 +2200,9 @@ button.surface-action {
   max-width: 100%;
   min-width: min(100%, 360px);
   min-height: 180px;
-  margin: 12px 0;
+  /* Centered (margin auto) so a single video balances in the wide card,
+     matching the single-image treatment instead of hugging the left edge. */
+  margin: 12px auto;
   overflow: hidden;
   border: 1px solid var(--app-border);
   border-radius: 8px;
