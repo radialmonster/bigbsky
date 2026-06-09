@@ -27,7 +27,7 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   type ActorSearchResponse,
@@ -37,6 +37,7 @@ import {
   type ListView,
   type Profile,
   type RecordEmbedView,
+  type RichTextFacet,
   type SearchPostsResponse,
   type ThreadNode,
   type TrendingTopic,
@@ -3952,6 +3953,82 @@ function SearchView({
   );
 }
 
+function renderRichText(text: string, facets: RichTextFacet[] | undefined, onOpenProfile?: (profile: Profile) => void): ReactNode {
+  if (!text) {
+    return text;
+  }
+  const usable = (facets ?? []).filter(
+    (facet) =>
+      typeof facet.index?.byteStart === "number" &&
+      typeof facet.index?.byteEnd === "number" &&
+      Array.isArray(facet.features) &&
+      facet.features.length > 0,
+  );
+  if (usable.length === 0) {
+    return text;
+  }
+
+  const bytes = new TextEncoder().encode(text);
+  const decoder = new TextDecoder();
+  const sorted = [...usable].sort((a, b) => (a.index!.byteStart ?? 0) - (b.index!.byteStart ?? 0));
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+
+  sorted.forEach((facet, index) => {
+    const start = facet.index!.byteStart ?? 0;
+    const end = facet.index!.byteEnd ?? 0;
+    if (start < cursor || start >= end || end > bytes.length) {
+      return;
+    }
+    if (start > cursor) {
+      nodes.push(decoder.decode(bytes.slice(cursor, start)));
+    }
+    const segment = decoder.decode(bytes.slice(start, end));
+    const feature = facet.features?.find((item) => typeof item.$type === "string");
+    const type = feature?.$type;
+
+    if (type === "app.bsky.richtext.facet#link" && feature?.uri) {
+      nodes.push(
+        <a
+          key={index}
+          className="post-link"
+          href={feature.uri}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => event.stopPropagation()}
+        >
+          {segment}
+        </a>,
+      );
+    } else if (type === "app.bsky.richtext.facet#mention" && feature?.did && onOpenProfile) {
+      const did = feature.did;
+      const handle = segment.replace(/^@/, "");
+      nodes.push(
+        <button
+          key={index}
+          type="button"
+          className="post-mention"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenProfile({ did, handle });
+          }}
+        >
+          {segment}
+        </button>,
+      );
+    } else {
+      nodes.push(segment);
+    }
+    cursor = end;
+  });
+
+  if (cursor < bytes.length) {
+    nodes.push(decoder.decode(bytes.slice(cursor)));
+  }
+
+  return nodes;
+}
+
 function PostCard({
   currentDid,
   isSaved = false,
@@ -4052,7 +4129,9 @@ function PostCard({
         </div>
       )}
       {text ? (
-        <p className={preservesLineBreaks ? "post-text has-line-breaks" : "post-text"}>{text}</p>
+        <p className={preservesLineBreaks ? "post-text has-line-breaks" : "post-text"}>
+          {renderRichText(post.record.facets?.length ? post.record.text || "" : text, post.record.facets, onOpenProfile)}
+        </p>
       ) : (
         !hasRichContent && <p className="post-text muted">Post has no plain text.</p>
       )}

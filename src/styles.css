@@ -1878,6 +1878,29 @@ button.surface-action {
   white-space: pre-wrap;
 }
 
+.post-link,
+.post-mention {
+  color: var(--bsky-blue-soft);
+  font: inherit;
+  background: transparent;
+  padding: 0;
+}
+
+.post-link {
+  text-decoration: none;
+  word-break: break-word;
+}
+
+.post-link:hover,
+.post-mention:hover {
+  text-decoration: underline;
+}
+
+.post-mention {
+  display: inline;
+  cursor: pointer;
+}
+
 .compact .post-text {
   font-size: 15px;
   line-height: 1.38;

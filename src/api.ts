@@ -34,6 +34,11 @@ export type FeedGeneratorView = {
   indexedAt?: string;
 };
 
+export type RichTextFacet = {
+  index?: { byteStart?: number; byteEnd?: number };
+  features?: Array<{ $type?: string; uri?: string; did?: string; tag?: string }>;
+};
+
 export type FeedPost = {
   uri: string;
   cid: string;
@@ -46,6 +51,7 @@ export type FeedPost = {
       root?: { uri?: string; cid?: string };
       parent?: { uri?: string; cid?: string };
     };
+    facets?: RichTextFacet[];
     langs?: string[];
     labels?: unknown;
   };
