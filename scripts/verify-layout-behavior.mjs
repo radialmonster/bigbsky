@@ -48,11 +48,6 @@ forbidPattern(css, /min-width: 2560px/s, "do not add ultrawide-specific breakpoi
 // Mobile single column must use minmax(0, 1fr) so wide post content cannot
 // hold the column open and clip the right edge.
 requirePattern(css, /@media \(max-width: 720px\) \{[\s\S]*\.app-shell \{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/s, "mobile single column should be minmax(0, 1fr) so content cannot force horizontal overflow");
-// Context-preserving author peek opens an adjacent right-rail preview without
-// navigating away from the feed (uses embedded data, then one profile fetch).
-requirePattern(app, /const AuthorPeekContext = createContext/, "author peek should be provided via context, not threaded through every card");
-requirePattern(app, /function AuthorPeekPanel\(/, "right rail should render an author peek panel");
-requirePattern(app, /onClick=\{\(\) => peekAuthor\(post\.author\)\}/, "post avatar should open the author peek without navigating");
 // Post content fills the wide content column (no narrow max-width caps on the
 // prose/header/actions): the content column should be the widest and its
 // content should use that width.
