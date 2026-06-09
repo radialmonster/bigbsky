@@ -1849,6 +1849,60 @@ button.surface-action {
   font-weight: 700;
 }
 
+.sensitive-media-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 140px;
+  margin: 10px 0;
+  padding: 24px;
+  border: 1px dashed var(--app-border-strong);
+  border-radius: 12px;
+  background: var(--app-surface-2);
+  color: var(--app-text-muted);
+  text-align: center;
+}
+
+.sensitive-media-gate strong {
+  color: var(--app-text);
+  font-size: 14px;
+}
+
+.sensitive-media-gate small {
+  font-size: 12px;
+}
+
+.sensitive-media-show {
+  margin-top: 8px;
+  padding: 5px 16px;
+  border-radius: 999px;
+  background: var(--bsky-blue);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sensitive-media-hide {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--app-text-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sensitive-media-hide:hover {
+  color: var(--app-text);
+}
+
 .avatar {
   width: 44px;
   height: 44px;

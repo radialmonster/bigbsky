@@ -2,6 +2,7 @@ import {
   Bell,
   Bookmark,
   Compass,
+  EyeOff,
   Feather,
   Film,
   Hash,
@@ -4198,6 +4199,7 @@ function PostCard({
   const post = item.post;
   const onOpenTag = useContext(TagSearchContext);
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
+  const [mediaRevealed, setMediaRevealed] = useState(false);
   const images = getEmbedImages(post.embed);
   const external = getExternalEmbed(post.embed);
   const recordEmbed = getRecordEmbed(post.embed);
@@ -4209,6 +4211,10 @@ function PostCard({
   const isOwnPost = !!currentDid && post.author.did === currentDid;
   const labels = post.labels ?? [];
   const sensitiveLabels = labels.filter(isSensitiveLabel);
+  // Gate adult/graphic media behind a click-to-reveal warning (spam labels are
+  // not about media, so they don't hide images/video).
+  const mediaWarningLabels = sensitiveLabels.filter((label) => !(label.val?.toLowerCase() || "").includes("spam"));
+  const gateMedia = mediaWarningLabels.length > 0 && (images.length > 0 || !!video) && !mediaRevealed;
   const moderationNotes = [
     ...(post.viewer?.threadMuted ? ["Thread muted"] : []),
     ...(post.viewer?.replyDisabled ? ["Replies limited"] : []),
@@ -4279,44 +4285,60 @@ function PostCard({
       ) : (
         !hasRichContent && <p className="post-text muted">Post has no plain text.</p>
       )}
-      {images.length > 0 && (
-        <div className={`image-grid count-${Math.min(images.length, 4)}`}>
-          {images.slice(0, 4).map((image, imageIndex) => (
-            <button
-              className="image-button"
-              key={image.thumb || image.fullsize}
-              type="button"
-              onClick={() => {
-                const viewerImages = images
-                  .slice(0, 4)
-                  .map((viewerImage) => ({
-                    src: viewerImage.fullsize || viewerImage.thumb || "",
-                    alt: viewerImage.alt || "",
-                  }))
-                  .filter((viewerImage) => viewerImage.src);
-                const selectedIndex = Math.max(0, viewerImages.findIndex((viewerImage) => viewerImage.src === (image.fullsize || image.thumb)));
-                onOpenImage?.({ images: viewerImages, index: selectedIndex });
-              }}
-              aria-label={image.alt ? "Open image" : "Open full size image"}
-            >
-              <img
-                alt={image.alt || ""}
-                src={image.thumb || image.fullsize}
-                loading="lazy"
-                decoding="async"
-                style={
-                  image.aspectRatio?.width && image.aspectRatio?.height
-                    ? { aspectRatio: `${image.aspectRatio.width} / ${image.aspectRatio.height}` }
-                    : undefined
-                }
-              />
-              {image.alt && <span className="alt-badge">ALT</span>}
-              {images.length > 4 && imageIndex === 3 && <span className="more-media-badge">+{images.length - 4}</span>}
+      {gateMedia ? (
+        <button type="button" className="sensitive-media-gate" onClick={() => setMediaRevealed(true)}>
+          <EyeOff size={18} />
+          <strong>Sensitive content</strong>
+          <small>{mediaWarningLabels.map(moderationLabelText).join(", ")}</small>
+          <span className="sensitive-media-show">Show</span>
+        </button>
+      ) : (
+        <>
+          {images.length > 0 && (
+            <div className={`image-grid count-${Math.min(images.length, 4)}`}>
+              {images.slice(0, 4).map((image, imageIndex) => (
+                <button
+                  className="image-button"
+                  key={image.thumb || image.fullsize}
+                  type="button"
+                  onClick={() => {
+                    const viewerImages = images
+                      .slice(0, 4)
+                      .map((viewerImage) => ({
+                        src: viewerImage.fullsize || viewerImage.thumb || "",
+                        alt: viewerImage.alt || "",
+                      }))
+                      .filter((viewerImage) => viewerImage.src);
+                    const selectedIndex = Math.max(0, viewerImages.findIndex((viewerImage) => viewerImage.src === (image.fullsize || image.thumb)));
+                    onOpenImage?.({ images: viewerImages, index: selectedIndex });
+                  }}
+                  aria-label={image.alt ? "Open image" : "Open full size image"}
+                >
+                  <img
+                    alt={image.alt || ""}
+                    src={image.thumb || image.fullsize}
+                    loading="lazy"
+                    decoding="async"
+                    style={
+                      image.aspectRatio?.width && image.aspectRatio?.height
+                        ? { aspectRatio: `${image.aspectRatio.width} / ${image.aspectRatio.height}` }
+                        : undefined
+                    }
+                  />
+                  {image.alt && <span className="alt-badge">ALT</span>}
+                  {images.length > 4 && imageIndex === 3 && <span className="more-media-badge">+{images.length - 4}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+          {video && <VideoEmbedCard video={video} />}
+          {mediaRevealed && mediaWarningLabels.length > 0 && (
+            <button type="button" className="sensitive-media-hide" onClick={() => setMediaRevealed(false)}>
+              <EyeOff size={13} /> Hide sensitive media
             </button>
-          ))}
-        </div>
+          )}
+        </>
       )}
-      {video && <VideoEmbedCard video={video} />}
       {external && (
         <div className="link-card">
           <a href={external.uri} target="_blank" rel="noreferrer">
