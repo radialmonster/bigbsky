@@ -2068,32 +2068,6 @@ export function App() {
             <p>{workspaceLabel}</p>
             <h1>{workspaceTitle}</h1>
           </div>
-          <div className="header-controls">
-            <div className="segmented" aria-label="Density">
-              {densityModes.map((mode) => (
-                <button
-                  className={density === mode ? "selected" : ""}
-                  key={mode}
-                  type="button"
-                  onClick={() => updateDensity(mode)}
-                >
-                  {mode}
-                </button>
-              ))}
-            </div>
-            <div className="segmented compact-segmented" aria-label="Feed width">
-              {widthModes.map((mode) => (
-                <button
-                  className={workspaceWidth === mode ? "selected" : ""}
-                  key={mode}
-                  type="button"
-                  onClick={() => updateWorkspaceWidth(mode)}
-                >
-                  {mode}
-                </button>
-              ))}
-            </div>
-          </div>
         </header>
 
         {route.kind === "post" ? (
@@ -2143,6 +2117,7 @@ export function App() {
             workspaceWidth={workspaceWidth}
             onClearLocalData={clearLocalReaderData}
             onCreateLocalList={createLocalList}
+            onDensityChange={updateDensity}
             onDeleteLocalList={deleteLocalList}
             onToggleListPost={togglePostInLocalList}
             onOpenFeed={openFeedSource}
@@ -2608,6 +2583,7 @@ function SurfaceView({
   workspaceWidth,
   onClearLocalData,
   onCreateLocalList,
+  onDensityChange,
   onDeleteLocalList,
   onToggleListPost,
   onOpenFeed,
@@ -2645,6 +2621,7 @@ function SurfaceView({
   workspaceWidth: (typeof widthModes)[number];
   onClearLocalData: () => void | Promise<void>;
   onCreateLocalList: (name: string, description: string) => void;
+  onDensityChange: (density: string) => void;
   onDeleteLocalList: (id: string) => void;
   onToggleListPost: (listId: string, post: FeedPost) => void;
   onOpenFeed: (source: FeedSource) => void;
@@ -2768,7 +2745,20 @@ function SurfaceView({
                 <dd>{savedPreferenceCount.toLocaleString()}</dd>
               </div>
             </dl>
-            <p>Density is stored locally per Feed or surface and applied before timeline rows paint.</p>
+            <p>Density is stored locally and applied before timeline rows paint.</p>
+            <div className="settings-control-group" aria-label="Reading density setting">
+              {densityModes.map((mode) => (
+                <button
+                  className={density === mode ? "selected-setting" : ""}
+                  key={mode}
+                  type="button"
+                  onClick={() => onDensityChange(mode)}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+            <p>Feed width is stored locally and changes how much desktop space the reader claims from side context.</p>
             <div className="settings-control-group" aria-label="Feed width setting">
               {widthModes.map((mode) => (
                 <button
@@ -2781,7 +2771,6 @@ function SurfaceView({
                 </button>
               ))}
             </div>
-            <p>Feed width is stored locally and changes how much desktop space the reader claims from side context.</p>
           </article>
           <article className="settings-panel">
             <span>{showNsfw ? "Showing" : "Hidden"}</span>

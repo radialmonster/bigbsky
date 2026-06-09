@@ -470,13 +470,6 @@ button {
   line-height: 1.1;
 }
 
-.header-controls {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
 .segmented {
   display: flex;
   padding: 3px;
@@ -497,10 +490,6 @@ button {
 .segmented .selected {
   background: var(--bsky-blue);
   color: #fff;
-}
-
-.compact-segmented button {
-  min-width: 72px;
 }
 
 .width-wide {
