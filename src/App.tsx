@@ -71,6 +71,7 @@ import {
   type AuthSnapshot,
   type SubscribedFeed,
   clearOAuthSessionStorage,
+  getFollowingTimeline,
   getSubscribedFeeds,
   initAuthSession,
   looksLikeOAuthCallback,
@@ -181,6 +182,16 @@ type AuthState = {
 };
 
 const densityModes = ["comfortable", "compact", "media"];
+
+// Authenticated reverse-chronological home timeline. Only shown/loaded when
+// signed in; its sentinel uri "following" routes the loader to getTimeline.
+const followingSource: FeedSource = {
+  id: "following",
+  uri: "following",
+  label: "Following",
+  group: "Core",
+  description: "Your timeline of accounts you follow, newest first.",
+};
 const widthModes = ["balanced", "wide", "focus"] as const;
 const searchTabs = ["posts", "people", "feeds"] as const;
 const profileTabs = ["posts", "replies", "media", "videos", "feeds", "lists"] as const;
@@ -746,6 +757,9 @@ export function App() {
 
   const activeSource = useMemo<FeedSource>(() => {
     if (route.kind === "feed" && route.uri) {
+      if (route.uri === "following") {
+        return followingSource;
+      }
       const known =
         feedSources.find((source) => source.id === route.uri || source.uri === route.uri) ??
         subscribedFeeds.find((source) => source.id === route.uri || source.uri === route.uri);
@@ -770,8 +784,10 @@ export function App() {
   const allSources = useMemo(() => {
     const staticUris = new Set(feedSources.map((source) => source.uri));
     const extras = subscribedFeeds.filter((source) => !staticUris.has(source.uri));
-    return [...feedSources, ...extras];
-  }, [subscribedFeeds]);
+    // The Following home timeline is only available when signed in.
+    const base = signedInDid ? [followingSource, ...feedSources] : feedSources;
+    return [...base, ...extras];
+  }, [subscribedFeeds, signedInDid]);
   const feedRoutePath = (source: FeedSource) => `/feed/${encodeURIComponent(source.id)}`;
   const densityKey = route.kind === "feed" ? `feed:${activeSource.id}` : route.kind;
   const density = densityByContext[densityKey] || densityByContext.default || "comfortable";
@@ -914,9 +930,12 @@ export function App() {
     }));
 
     try {
-      const response = isListUri(source.uri)
-        ? await getListFeed(source.uri, cursor, signal)
-        : await getFeed(source.uri, cursor, signal);
+      const response =
+        source.uri === "following"
+          ? await getFollowingTimeline(cursor, signal)
+          : isListUri(source.uri)
+            ? await getListFeed(source.uri, cursor, signal)
+            : await getFeed(source.uri, cursor, signal);
       setFeedState((current) => {
         const next = {
           items: cursor ? [...current.items, ...response.feed] : response.feed,

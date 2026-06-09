@@ -1,5 +1,5 @@
 import type { BrowserOAuthClient, OAuthSession } from "@atproto/oauth-client-browser";
-import type { Profile } from "./api";
+import type { FeedResponse, Profile } from "./api";
 
 const productionClientId = "https://bigbsky.com/oauth-client-metadata.json";
 const handleResolver = "https://bsky.social";
@@ -151,6 +151,26 @@ export async function signOut(did?: string) {
   localStorage.removeItem(activeHandleKey);
   await clearOAuthSessionStorage();
   return revokeWarning;
+}
+
+// Authenticated reverse-chronological "Following" home timeline. Returns an
+// empty feed when signed out. Same shape as the public getFeed response so the
+// app's feed loader can treat it like any other source.
+export async function getFollowingTimeline(cursor?: string, signal?: AbortSignal): Promise<FeedResponse> {
+  const session = await ensureSession();
+  if (!session) {
+    return { feed: [] };
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const response = await agent.app.bsky.feed.getTimeline(
+    { limit: 30, ...(cursor ? { cursor } : {}) },
+    signal ? { signal } : undefined,
+  );
+  return {
+    feed: (response.data.feed ?? []) as unknown as FeedResponse["feed"],
+    cursor: response.data.cursor,
+  };
 }
 
 async function ensureSession(): Promise<OAuthSession | null> {
