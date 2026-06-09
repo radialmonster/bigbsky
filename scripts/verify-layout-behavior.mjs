@@ -37,10 +37,14 @@ requirePattern(css, /\.media \.post-card\.has-media \.image-grid\.count-1 img,[\
 
 requirePattern(css, /\.width-wide \{[\s\S]*grid-template-columns: 76px 260px minmax\(780px, 1\.35fr\) 280px;/s, "wide mode should allocate more width to the reader before rails");
 requirePattern(css, /\.width-focus \{[\s\S]*grid-template-columns: 76px 228px minmax\(860px, 1\.5fr\) 0;/s, "focus mode should allocate reader width and collapse the right rail");
-requirePattern(css, /@media \(min-width: 1900px\) \{[\s\S]*\.app-shell \{[\s\S]*grid-template-columns: 76px 300px minmax\(980px, 1fr\) 340px;/s, "very wide screens should increase the active reader track");
+// The reader is widened fluidly by a single `1fr` content column, not by
+// per-screen-size grid overrides. The content column must always be the
+// one that absorbs remaining width (the widest), with fixed narrow rails.
+requirePattern(css, /\.app-shell \{[\s\S]*grid-template-columns: 76px 288px minmax\(640px, 1fr\) 320px;/s, "content column should fluidly absorb remaining width via 1fr as the widest column");
+forbidPattern(css, /minmax\(980px, 1fr\)/s, "do not re-add the per-screen-size content-column override; widen it fluidly with 1fr");
+forbidPattern(css, /\.app-shell\.width-(wide|focus)/s, "do not re-add per-screen-size width-mode grid overrides; the base width-mode grids already scale via 1fr");
+forbidPattern(css, /min-width: 2560px/s, "do not add ultrawide-specific breakpoints; the 1fr content column already scales");
 requirePattern(css, /@media \(min-width: 1900px\) \{[\s\S]*\.timeline\.compact \.post-card\.has-link,[\s\S]*display: grid;[\s\S]*grid-template-columns: minmax\(280px, 0\.92fr\) minmax\(360px, 1\.08fr\);/s, "very wide compact rich cards should become two-zone cards");
-requirePattern(css, /@media \(min-width: 1900px\) \{[\s\S]*\.app-shell\.width-wide \{[\s\S]*minmax\(1100px,[\s\S]*\.app-shell\.width-focus \{[\s\S]*minmax\(1280px,[\s\S]*0;/s, "very wide screens should keep widening Wide/Focus reader modes (and Focus must not leave an empty right-rail gutter)");
-requirePattern(css, /@media \(min-width: 2560px\) \{[\s\S]*\.app-shell \{[\s\S]*minmax\(1200px, 1fr\)/s, "ultrawide screens should spend extra width on the reader column");
 requirePattern(css, /@media \(max-width: 720px\) \{[\s\S]*\.compact \.post-card\.text-only \{[\s\S]*display: block;/s, "wide-only compact layout should collapse on mobile");
 
 forbidPattern(css, /\.timeline\s*\{[^}]*max-width:\s*6\d\dpx/s, "timeline should not be capped to a narrow mobile column");
