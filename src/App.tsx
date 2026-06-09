@@ -2745,10 +2745,13 @@ function ExploreDiscoverFeeds({
     status: "loading",
     feeds: [],
   });
+  const [draftQuery, setDraftQuery] = useState("");
+  const [activeQuery, setActiveQuery] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
-    getPopularFeedGenerators(12, controller.signal)
+    setState((current) => ({ ...current, status: "loading" }));
+    getPopularFeedGenerators(18, controller.signal, activeQuery)
       .then((response) => setState({ status: "ready", feeds: response.feeds }))
       .catch(() => {
         if (!controller.signal.aborted) {
@@ -2756,7 +2759,7 @@ function ExploreDiscoverFeeds({
         }
       });
     return () => controller.abort();
-  }, []);
+  }, [activeQuery]);
 
   return (
     <section className="discover-feeds" aria-label="Discover new Feeds">
@@ -2764,10 +2767,41 @@ function ExploreDiscoverFeeds({
         <h3>Discover New Feeds</h3>
         <p>Popular public Bluesky Feeds, loaded live. Open one to read it in BigBSky without signing in.</p>
       </header>
+      <form
+        className="discover-feeds-search"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setActiveQuery(draftQuery.trim());
+        }}
+      >
+        <Search size={16} />
+        <input
+          aria-label="Search public Feeds"
+          placeholder="Search public Feeds by topic"
+          value={draftQuery}
+          onInput={(event) => setDraftQuery(event.currentTarget.value)}
+        />
+        {activeQuery && (
+          <button
+            type="button"
+            className="discover-feeds-clear"
+            onClick={() => {
+              setDraftQuery("");
+              setActiveQuery("");
+            }}
+            aria-label="Clear Feed search"
+          >
+            <X size={15} />
+          </button>
+        )}
+      </form>
       {state.status === "loading" && <LoadingState label="Loading popular Feeds" />}
       {state.status === "error" && <ErrorState message="Popular Feeds could not be loaded right now." />}
       {state.status === "ready" && state.feeds.length === 0 && (
-        <EmptyState title="No Feeds found" message="Bluesky returned no popular Feeds for this request." />
+        <EmptyState
+          title="No Feeds found"
+          message={activeQuery ? `No public Feeds matched "${activeQuery}". Try a broader term.` : "Bluesky returned no popular Feeds for this request."}
+        />
       )}
       {state.status === "ready" && state.feeds.length > 0 && (
         <div className="discover-feeds-grid">

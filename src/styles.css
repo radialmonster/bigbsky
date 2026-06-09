@@ -1419,6 +1419,41 @@ button.surface-action {
   color: var(--bsky-blue-soft);
 }
 
+.discover-feeds-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: var(--app-surface);
+  color: var(--app-text-soft);
+}
+
+.discover-feeds-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--app-text);
+  font-size: 13px;
+  outline: none;
+}
+
+.discover-feeds-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  background: transparent;
+  color: var(--app-text-soft);
+}
+
+.discover-feeds-clear:hover {
+  color: var(--app-text);
+}
+
 .discover-feed-card {
   display: flex;
   flex-direction: column;

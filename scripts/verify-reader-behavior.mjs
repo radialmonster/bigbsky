@@ -40,6 +40,8 @@ requirePattern(/setPinnedFeedMeta\(\(current\) => \{[\s\S]*localStorage\.setItem
 requirePattern(/function ExploreTrendingTopics\([\s\S]*getTrendingTopics\([\s\S]*onOpenSearchQuery\(topic\.topic\)/s, "Explore trending topics should load live topics and open them as in-app searches");
 requirePattern(/} else if \(searchTab === "feeds"\) \{[\s\S]*loadFeedSearch\(route\.query, controller\.signal\)/s, "the Feeds search tab should run a live public Feed search only after explicit search navigation");
 requirePattern(/const loadFeedSearch = useCallback\([\s\S]*getPopularFeedGenerators\(20, signal, query\)/s, "live Feed search should query the public popular-feed-generators endpoint");
+requirePattern(/className="discover-feeds-search"[\s\S]*setActiveQuery\(draftQuery\.trim\(\)\)/s, "Explore Discover New Feeds should only refetch on explicit search submit");
+requirePattern(/getPopularFeedGenerators\(18, controller\.signal, activeQuery\)[\s\S]*\}, \[activeQuery\]\)/s, "Explore Discover New Feeds should refetch when the committed query changes");
 if (!/export function getTrendingTopics\(/.test(api)) {
   failures.push("api should expose a public getTrendingTopics reader");
 }
