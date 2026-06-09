@@ -39,6 +39,8 @@ requirePattern(css, /\.width-wide \{[\s\S]*grid-template-columns: 76px 260px min
 requirePattern(css, /\.width-focus \{[\s\S]*grid-template-columns: 76px 228px minmax\(860px, 1\.5fr\) 0;/s, "focus mode should allocate reader width and collapse the right rail");
 requirePattern(css, /@media \(min-width: 1900px\) \{[\s\S]*\.app-shell \{[\s\S]*grid-template-columns: 76px 300px minmax\(980px, 1fr\) 340px;/s, "very wide screens should increase the active reader track");
 requirePattern(css, /@media \(min-width: 1900px\) \{[\s\S]*\.timeline\.compact \.post-card\.has-link,[\s\S]*display: grid;[\s\S]*grid-template-columns: minmax\(280px, 0\.92fr\) minmax\(360px, 1\.08fr\);/s, "very wide compact rich cards should become two-zone cards");
+requirePattern(css, /@media \(min-width: 1900px\) \{[\s\S]*\.app-shell\.width-wide \{[\s\S]*minmax\(1100px,[\s\S]*\.app-shell\.width-focus \{[\s\S]*minmax\(1280px,[\s\S]*0;/s, "very wide screens should keep widening Wide/Focus reader modes (and Focus must not leave an empty right-rail gutter)");
+requirePattern(css, /@media \(min-width: 2560px\) \{[\s\S]*\.app-shell \{[\s\S]*minmax\(1200px, 1fr\)/s, "ultrawide screens should spend extra width on the reader column");
 requirePattern(css, /@media \(max-width: 720px\) \{[\s\S]*\.compact \.post-card\.text-only \{[\s\S]*display: block;/s, "wide-only compact layout should collapse on mobile");
 
 forbidPattern(css, /\.timeline\s*\{[^}]*max-width:\s*6\d\dpx/s, "timeline should not be capped to a narrow mobile column");

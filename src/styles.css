@@ -3267,9 +3267,29 @@ button.surface-action {
     grid-template-columns: 76px 300px minmax(980px, 1fr) 340px;
   }
 
+  /* Width modes must keep widening the reader on large screens. Without
+     these the base .app-shell rule above (equal specificity, later in the
+     source) would override .width-wide/.width-focus, so picking Wide or Focus
+     on a widescreen had no effect and Focus left an empty right-rail gutter. */
+  .app-shell.width-wide {
+    grid-template-columns: 76px 280px minmax(1100px, 1.6fr) 320px;
+  }
+
+  .app-shell.width-focus {
+    grid-template-columns: 76px 248px minmax(1280px, 1.8fr) 0;
+  }
+
   .timeline,
   .thread-view {
     padding-inline: 34px;
+  }
+
+  /* Keep prose readable even though the reader column is very wide: cap the
+     text measure so long text-only posts do not stretch into hard-to-scan
+     lines. Media/link/quote embeds keep the full card width. */
+  .post-text,
+  .quote-text {
+    max-width: 68ch;
   }
 
   .timeline.compact .post-card.has-link,
@@ -3313,6 +3333,33 @@ button.surface-action {
   .timeline.compact .post-card.has-media .video-card img,
   .timeline.compact .post-card.has-media .video-placeholder {
     min-height: var(--post-embed-min);
+  }
+}
+
+/* Ultrawide monitors: spend the extra width on the reader column and richer
+   media, not on wider gutters. Rails grow only modestly. */
+@media (min-width: 2560px) {
+  .app-shell {
+    grid-template-columns: 76px 320px minmax(1200px, 1fr) 380px;
+  }
+
+  .app-shell.width-wide {
+    grid-template-columns: 76px 300px minmax(1500px, 1.8fr) 360px;
+  }
+
+  .app-shell.width-focus {
+    grid-template-columns: 76px 280px minmax(1700px, 2fr) 0;
+  }
+
+  .timeline,
+  .thread-view {
+    padding-inline: 48px;
+  }
+
+  .post-card.has-media,
+  .post-card.has-link,
+  .post-card.has-quote {
+    --post-embed-min: 280px;
   }
 }
 
