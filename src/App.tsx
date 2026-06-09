@@ -2189,6 +2189,7 @@ export function App() {
             )}
           </div>
         )}
+        <BackToTopButton containerRef={timelineRef} watchKey={`${route.kind}:${activeSource.id}`} />
       </main>
 
       <aside className="right-rail" aria-label="Context">
@@ -5671,6 +5672,40 @@ function ProfileContextPanel({ actor, profile }: { actor: string; profile: Profi
 
 function Avatar({ profile }: { profile?: Profile }) {
   return profile?.avatar ? <img className="avatar" src={profile.avatar} alt="" loading="lazy" /> : <span className="avatar fallback" />;
+}
+
+// "Back to top" affordance for the wide endless-scroll reader. Appears after the
+// active timeline is scrolled past a threshold and returns to the top without a
+// route change. watchKey re-attaches the scroll listener when the mounted
+// timeline element changes (feed <-> profile, or active source).
+function BackToTopButton({ containerRef, watchKey }: { containerRef: RefObject<HTMLDivElement | null>; watchKey: string }) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) {
+      setVisible(false);
+      return;
+    }
+    const onScroll = () => setVisible(el.scrollTop > 600);
+    onScroll();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [containerRef, watchKey]);
+  if (!visible) {
+    return null;
+  }
+  return (
+    <button
+      type="button"
+      className="back-to-top"
+      onClick={() => containerRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
+      aria-label="Scroll to top of feed"
+      title="Back to top"
+    >
+      <ChevronUp size={18} />
+      <span>Top</span>
+    </button>
+  );
 }
 
 // Context-preserving author preview in the right rail: renders the embedded

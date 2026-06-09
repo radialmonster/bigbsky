@@ -415,10 +415,35 @@ button {
 }
 
 .workspace {
+  position: relative;
   display: flex;
   min-width: 0;
   min-height: 0;
   flex-direction: column;
+}
+
+/* Floating "back to top" pinned to the bottom-right of the reader column
+   (the workspace), so it never overlaps the right rail and tracks the very
+   wide content area rather than the viewport edge. */
+.back-to-top {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px 9px 11px;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: var(--bsky-blue);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.38);
+}
+
+.back-to-top:hover {
+  background: var(--bsky-blue-soft);
 }
 
 .workspace-header {
@@ -1986,33 +2011,10 @@ button.surface-action {
 
 .post-text {
   width: 100%;
-  /* Keep the reader column very wide, but hold prose to a readable line
-     length so wide cards stay pleasing. This is a single constant measure,
-     not a per-screen-size rule: on narrow columns the container is smaller
-     than the cap so it has no effect; media/link/quote embeds are separate
-     elements and still use the full card width. */
-  max-width: 70ch;
   margin: 12px 0;
   color: var(--app-text);
   font-size: 17px;
   line-height: 1.48;
-}
-
-.quote-text {
-  max-width: 70ch;
-}
-
-/* Align the post's text-flow elements (repost reason, author header, label
-   badges, action row) to the same readable left column as the prose, so a
-   very wide card reads as one coherent unit instead of stretching the header
-   and pushing the More button to the far card edge. Media, link, and quote
-   embeds are intentionally excluded so they still break out to full width.
-   Single constant measure, not a per-screen-size rule. */
-.post-card .reason,
-.post-card .post-header,
-.post-card .post-badges,
-.post-card .post-actions {
-  max-width: 720px;
 }
 
 .post-text.muted,
