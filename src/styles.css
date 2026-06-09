@@ -385,6 +385,35 @@ button {
   color: var(--bsky-blue-soft);
 }
 
+.feed-reorder {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.feed-move {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 18px;
+  border-radius: 5px;
+  background: var(--app-surface-2);
+  color: var(--app-text-muted);
+}
+
+.feed-move:hover:not(:disabled) {
+  color: var(--bsky-blue-soft);
+}
+
+.feed-move:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .workspace {
   display: flex;
   min-width: 0;

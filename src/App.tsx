@@ -17,6 +17,8 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   MessageCircle,
   MoreHorizontal,
   Repeat2,
@@ -1467,6 +1469,26 @@ export function App() {
     }
   }
 
+  // Local-only manual reordering of pinned feeds. The Pinned group renders in
+  // pinnedFeedIds order, so swapping ids here reorders the selector and the
+  // change persists in browser storage (no account-backed ordering yet).
+  function movePinnedFeed(id: string, direction: -1 | 1) {
+    setPinnedFeedIds((current) => {
+      const index = current.indexOf(id);
+      if (index < 0) {
+        return current;
+      }
+      const target = index + direction;
+      if (target < 0 || target >= current.length) {
+        return current;
+      }
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      localStorage.setItem(pinnedFeedsStorageKey, JSON.stringify(next));
+      return next;
+    });
+  }
+
   function togglePinnedSearch(query: string) {
     const trimmed = query.trim();
     if (!trimmed) {
@@ -1859,8 +1881,34 @@ export function App() {
               <span>{sources.length}</span>
             </h2>
             {!collapsedFeedGroups[group] &&
-              sources?.map((source) => (
+              sources?.map((source, index) => {
+                const reorderable = group === "Pinned" && feedSearch.trim() === "" && sources.length > 1;
+                return (
                 <div className="feed-source-row" key={`${group}:${source.id}`}>
+                  {reorderable && (
+                    <div className="feed-reorder">
+                      <button
+                        className="feed-move"
+                        type="button"
+                        disabled={index === 0}
+                        onClick={() => movePinnedFeed(source.id, -1)}
+                        aria-label={`Move ${source.label} up`}
+                        title="Move up"
+                      >
+                        <ChevronUp size={14} />
+                      </button>
+                      <button
+                        className="feed-move"
+                        type="button"
+                        disabled={index === sources.length - 1}
+                        onClick={() => movePinnedFeed(source.id, 1)}
+                        aria-label={`Move ${source.label} down`}
+                        title="Move down"
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                    </div>
+                  )}
                   <button
                     className={source.id === activeSource.id ? "feed-source active" : "feed-source"}
                     type="button"
@@ -1879,7 +1927,8 @@ export function App() {
                     <Bookmark size={15} />
                   </button>
                 </div>
-              ))}
+                );
+              })}
           </section>
         ))}
       </aside>
