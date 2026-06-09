@@ -523,31 +523,21 @@ button {
   display: none;
 }
 
-/* The primary nav icon rail is hidden by default and revealed with the
-   hamburger in the feed-title header. When hidden, drop its grid track so
-   the remaining columns realign (a display:none grid child would otherwise
-   leave the last column empty).
-
-   Scoped to >=721px: on mobile the shell is a single column, and these
-   class selectors (specificity 0,2,0) would otherwise beat the mobile
-   media query's `.app-shell` single-column rule (0,1,0, media queries add
-   no specificity), forcing the 3-column desktop grid onto the phone. */
+/* Desktop (>=721px): the left icon rail is always visible — the base grid
+   keeps its 76px track and the hamburger toggle is hidden, so desktop behaves
+   like the original persistent sidebar regardless of nav-hidden/open.
+   Mobile (<=720px): the rail is hidden by default (top icon bar) and the
+   hamburger in the feed-title header reveals it. */
 @media (min-width: 721px) {
-  .app-shell.nav-hidden {
-    grid-template-columns: 288px minmax(640px, 1fr) 320px;
-  }
-
-  .app-shell.nav-hidden.width-wide {
-    grid-template-columns: 260px minmax(780px, 1.35fr) 280px;
-  }
-
-  .app-shell.nav-hidden.width-focus {
-    grid-template-columns: 228px minmax(860px, 1.5fr) 0;
+  .nav-toggle {
+    display: none;
   }
 }
 
-.app-shell.nav-hidden .left-rail {
-  display: none;
+@media (max-width: 720px) {
+  .app-shell.nav-hidden .left-rail {
+    display: none;
+  }
 }
 
 .timeline,
