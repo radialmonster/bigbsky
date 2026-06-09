@@ -217,6 +217,36 @@ export type ActorListsResponse = {
   lists: ListView[];
 };
 
+export type LikesResponse = {
+  uri: string;
+  cursor?: string;
+  likes: Array<{ actor: Profile; createdAt?: string; indexedAt?: string }>;
+};
+
+export type RepostedByResponse = {
+  uri: string;
+  cursor?: string;
+  repostedBy: Profile[];
+};
+
+export type QuotesResponse = {
+  uri: string;
+  cursor?: string;
+  posts: FeedPost[];
+};
+
+export function getLikes(uri: string, limit = 30, signal?: AbortSignal) {
+  return getJson<LikesResponse>("app.bsky.feed.getLikes", { uri, limit: String(limit) }, signal);
+}
+
+export function getRepostedBy(uri: string, limit = 30, signal?: AbortSignal) {
+  return getJson<RepostedByResponse>("app.bsky.feed.getRepostedBy", { uri, limit: String(limit) }, signal);
+}
+
+export function getQuotes(uri: string, limit = 30, signal?: AbortSignal) {
+  return getJson<QuotesResponse>("app.bsky.feed.getQuotes", { uri, limit: String(limit) }, signal);
+}
+
 export function getActorLists(actor: string, limit = 30, signal?: AbortSignal) {
   return getJson<ActorListsResponse>(
     "app.bsky.graph.getLists",

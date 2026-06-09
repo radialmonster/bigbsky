@@ -2371,6 +2371,66 @@ button.surface-action {
   font-size: 13px;
 }
 
+.thread-stat-button {
+  padding: 0;
+  background: transparent;
+  color: var(--app-text);
+  font: inherit;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.thread-stat-button:not(:disabled):hover {
+  color: var(--bsky-blue-soft);
+  text-decoration: underline;
+}
+
+.thread-stat-button:disabled {
+  cursor: default;
+  color: var(--app-text);
+}
+
+.thread-stat-button.active {
+  color: var(--bsky-blue-soft);
+}
+
+.thread-engagement {
+  grid-column: 1 / -1;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--app-border);
+}
+
+.thread-engagement-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.thread-engagement-header h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.thread-engagement-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  background: transparent;
+  color: var(--app-text-soft);
+}
+
+.thread-engagement-close:hover {
+  color: var(--app-text);
+}
+
+.thread-engagement .search-results-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
 .reply-composer textarea {
   width: 100%;
   min-height: 72px;

@@ -54,6 +54,11 @@ requirePattern(/profileTab === "lists" \? \(\s*<ProfileListsTab/s, "the profile 
 if (!/export function getActorLists\(/.test(api)) {
   failures.push("api should expose a public getActorLists reader");
 }
+requirePattern(/function ThreadEngagementPanel\([\s\S]*kind === "likes"[\s\S]*getLikes\(uri[\s\S]*getRepostedBy\(uri[\s\S]*getQuotes\(uri/s, "the thread engagement panel should load likes, reposts, and quotes on demand");
+requirePattern(/setEngagement\(\(current\) => \(current === stat\.key \? null : stat\.key\)\)/, "thread reposts/quotes/likes counts should toggle an on-demand engagement panel");
+if (!/export function getLikes\(/.test(api) || !/export function getRepostedBy\(/.test(api) || !/export function getQuotes\(/.test(api)) {
+  failures.push("api should expose public getLikes/getRepostedBy/getQuotes readers");
+}
 if (!/export function getTrendingTopics\(/.test(api)) {
   failures.push("api should expose a public getTrendingTopics reader");
 }

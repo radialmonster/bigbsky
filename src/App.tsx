@@ -43,6 +43,9 @@ import {
   getActorFeeds,
   getActorLists,
   getAuthorFeed,
+  getLikes,
+  getQuotes,
+  getRepostedBy,
   getEmbedImages,
   getExternalEmbed,
   getFeed,
@@ -4289,6 +4292,104 @@ function replyPermissionLabel(post: FeedPost) {
   return "Everybody can reply";
 }
 
+function ThreadEngagementPanel({
+  uri,
+  kind,
+  onOpenProfile,
+  onOpenPost,
+  onClose,
+}: {
+  uri: string;
+  kind: "reposts" | "quotes" | "likes";
+  onOpenProfile: (profile: Profile) => void;
+  onOpenPost: (post: FeedPost) => void;
+  onClose: () => void;
+}) {
+  const [state, setState] = useState<{
+    status: "loading" | "ready" | "error" | "rate-limit";
+    actors: Profile[];
+    posts: FeedPost[];
+    error?: string;
+  }>({ status: "loading", actors: [], posts: [] });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setState({ status: "loading", actors: [], posts: [] });
+
+    const request =
+      kind === "likes"
+        ? getLikes(uri, 50, controller.signal).then((response) => ({ actors: response.likes.map((like) => like.actor), posts: [] }))
+        : kind === "reposts"
+          ? getRepostedBy(uri, 50, controller.signal).then((response) => ({ actors: response.repostedBy, posts: [] }))
+          : getQuotes(uri, 30, controller.signal).then((response) => ({ actors: [], posts: response.posts }));
+
+    request
+      .then(({ actors, posts }) => setState({ status: "ready", actors, posts }))
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setState({
+            status: isRateLimit(error) ? "rate-limit" : "error",
+            actors: [],
+            posts: [],
+            error: rateLimitMessage(error),
+          });
+        }
+      });
+
+    return () => controller.abort();
+  }, [uri, kind]);
+
+  const heading = kind === "likes" ? "Liked by" : kind === "reposts" ? "Reposted by" : "Quotes";
+
+  return (
+    <section className="thread-engagement" aria-label={heading}>
+      <header className="thread-engagement-header">
+        <h3>{heading}</h3>
+        <button type="button" className="thread-engagement-close" onClick={onClose} aria-label="Close">
+          <X size={15} />
+        </button>
+      </header>
+      {state.status === "loading" && <LoadingState label={`Loading ${heading.toLowerCase()}`} />}
+      {state.status === "error" && <ErrorState message={state.error || "Could not load this list right now."} />}
+      {state.status === "rate-limit" && <RateLimitState message={state.error} />}
+      {state.status === "ready" && kind !== "quotes" && state.actors.length === 0 && (
+        <EmptyState title="Nobody yet" message="No accounts to show for this post." />
+      )}
+      {state.status === "ready" && kind === "quotes" && state.posts.length === 0 && (
+        <EmptyState title="No quotes" message="No quote posts to show for this post." />
+      )}
+      {state.status === "ready" && kind !== "quotes" && state.actors.length > 0 && (
+        <div className="search-results-list">
+          {state.actors.map((actor) => (
+            <button className="profile-result-card" key={actor.did} type="button" onClick={() => onOpenProfile(actor)}>
+              <Avatar profile={actor} />
+              <span>
+                <strong>{displayName(actor)}</strong>
+                <small>@{actor.handle}</small>
+                {actor.description && <em>{actor.description}</em>}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      {state.status === "ready" && kind === "quotes" && state.posts.length > 0 && (
+        <div className="search-results-list">
+          {state.posts.map((post) => (
+            <button className="profile-result-card" key={post.uri} type="button" onClick={() => onOpenPost(post)}>
+              <Avatar profile={post.author} />
+              <span>
+                <strong>{displayName(post.author)}</strong>
+                <small>@{post.author.handle}</small>
+                {post.record.text && <em>{post.record.text}</em>}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function ThreadView({
   currentDid,
   localLists,
@@ -4317,6 +4418,7 @@ function ThreadView({
   savedUris: Set<string>;
 }) {
   const [expandedBranches, setExpandedBranches] = useState<Record<string, boolean>>({});
+  const [engagement, setEngagement] = useState<null | "reposts" | "quotes" | "likes">(null);
   const rootPost = findFirstThreadPost(thread.node);
   const parentNodes = collectThreadParents(thread.node);
   const replyDraftKey = rootPost ? `${replyDraftPrefix}${rootPost.uri}` : "";
@@ -4367,23 +4469,40 @@ function ThreadView({
               <dt>Replies</dt>
               <dd>{(rootPost.replyCount ?? 0).toLocaleString()}</dd>
             </div>
-            <div>
-              <dt>Reposts</dt>
-              <dd>{(rootPost.repostCount ?? 0).toLocaleString()}</dd>
-            </div>
-            <div>
-              <dt>Quotes</dt>
-              <dd>{(rootPost.quoteCount ?? 0).toLocaleString()}</dd>
-            </div>
-            <div>
-              <dt>Likes</dt>
-              <dd>{(rootPost.likeCount ?? 0).toLocaleString()}</dd>
-            </div>
+            {([
+              { key: "reposts", label: "Reposts", count: rootPost.repostCount },
+              { key: "quotes", label: "Quotes", count: rootPost.quoteCount },
+              { key: "likes", label: "Likes", count: rootPost.likeCount },
+            ] as const).map((stat) => (
+              <div key={stat.key}>
+                <dt>{stat.label}</dt>
+                <dd>
+                  <button
+                    type="button"
+                    className={engagement === stat.key ? "thread-stat-button active" : "thread-stat-button"}
+                    onClick={() => setEngagement((current) => (current === stat.key ? null : stat.key))}
+                    disabled={!stat.count}
+                    aria-pressed={engagement === stat.key}
+                  >
+                    {(stat.count ?? 0).toLocaleString()}
+                  </button>
+                </dd>
+              </div>
+            ))}
           </dl>
           <div className="thread-permissions">
             <Users size={15} />
             <span>{replyPermissionLabel(rootPost)}</span>
           </div>
+          {engagement && (
+            <ThreadEngagementPanel
+              uri={rootPost.uri}
+              kind={engagement}
+              onOpenProfile={onOpenProfile}
+              onOpenPost={onOpenPost}
+              onClose={() => setEngagement(null)}
+            />
+          )}
         </section>
       )}
       <section className="reply-composer" aria-label="Reply composer">
