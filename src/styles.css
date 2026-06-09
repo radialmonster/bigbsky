@@ -2809,6 +2809,34 @@ button.surface-action {
   white-space: pre-wrap;
 }
 
+/* Clickable avatar that opens the right-rail author peek. Keeps the avatar's
+   own size; just adds affordance without disturbing the header grid. */
+.avatar-peek-button {
+  display: block;
+  padding: 0;
+  border-radius: 999px;
+  background: transparent;
+  line-height: 0;
+}
+
+.avatar-peek-button:hover img,
+.avatar-peek-button:focus-visible img {
+  box-shadow: 0 0 0 2px var(--bsky-blue-soft);
+}
+
+.author-peek-panel {
+  border: 1px solid rgba(117, 175, 255, 0.42);
+}
+
+.author-peek-panel dl {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.peek-note {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
 .profile-panel dl {
   display: grid;
   grid-template-columns: 1fr 1fr;

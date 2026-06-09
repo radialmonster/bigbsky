@@ -84,6 +84,11 @@ const navIcons = [Home, Compass, Bell, MessageCircle, Hash, List, Bookmark, User
 // a callback through every PostCard/VirtualPostList call site.
 const TagSearchContext = createContext<((tag: string) => void) | null>(null);
 
+// Lets a post card open a profile "peek" in the right rail (context-preserving
+// preview) without navigating away from the active feed, again without
+// threading a callback through every PostCard call site.
+const AuthorPeekContext = createContext<((author: Profile) => void) | null>(null);
+
 // Browser-local NSFW preference; false (hide/warn) by default for everyone.
 // Read by post cards to decide whether adult/graphic media is gated.
 const ShowNsfwContext = createContext<boolean>(false);
@@ -649,6 +654,7 @@ export function App() {
   const [localLists, setLocalLists] = useState<LocalList[]>(() => readLocalLists());
   const [imageViewer, setImageViewer] = useState<ImageViewerState>(null);
   const [linkPreview, setLinkPreview] = useState<LinkPreviewState>(null);
+  const [authorPeek, setAuthorPeek] = useState<Profile | null>(null);
   const [densityByContext, setDensityByContext] = useState<Record<string, string>>(() => readDensityPreferences());
   const [widthByContext, setWidthByContext] = useState<Record<string, string>>(() => readWidthPreferences());
   const [showNsfw, setShowNsfw] = useState<boolean>(() => readShowNsfw());
@@ -1810,6 +1816,7 @@ export function App() {
 
   return (
     <TagSearchContext.Provider value={openTag}>
+      <AuthorPeekContext.Provider value={setAuthorPeek}>
       <ShowNsfwContext.Provider value={showNsfw}>
       <div className={`app-shell width-${workspaceWidth}`}>
       <aside className="left-rail" aria-label="Primary">
@@ -2187,6 +2194,17 @@ export function App() {
       <aside className="right-rail" aria-label="Context">
         <SearchBox value={globalSearchText} onChange={setGlobalSearchText} onSearch={submitSearch} />
         <AccountPanel auth={authState} onSignIn={handleSignIn} onSignOut={handleSignOut} />
+        {authorPeek && (
+          <AuthorPeekPanel
+            author={authorPeek}
+            cached={entityCache.profiles[authorPeek.handle] ?? entityCache.profiles[authorPeek.did]}
+            onClose={() => setAuthorPeek(null)}
+            onOpenProfile={(author) => {
+              setAuthorPeek(null);
+              openProfile(author);
+            }}
+          />
+        )}
         {route.kind === "profile" ? (
           <ProfileContextPanel actor={route.actor} profile={profile ?? entityCache.profiles[route.actor] ?? null} />
         ) : (
@@ -2240,6 +2258,7 @@ export function App() {
       {imageViewer && <ImageViewer image={imageViewer} onChange={setImageViewer} onClose={() => setImageViewer(null)} />}
       </div>
       </ShowNsfwContext.Provider>
+      </AuthorPeekContext.Provider>
     </TagSearchContext.Provider>
   );
 }
@@ -4325,6 +4344,7 @@ function PostCard({
 }) {
   const post = item.post;
   const onOpenTag = useContext(TagSearchContext);
+  const peekAuthor = useContext(AuthorPeekContext);
   const showNsfw = useContext(ShowNsfwContext);
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
   const [mediaRevealed, setMediaRevealed] = useState(false);
@@ -4381,7 +4401,19 @@ function PostCard({
   return (
     <article className={`post-card ${postVariant}`}>
       <header className="post-header">
-        <Avatar profile={post.author} />
+        {peekAuthor ? (
+          <button
+            className="avatar-peek-button"
+            type="button"
+            onClick={() => peekAuthor(post.author)}
+            aria-label={`Preview ${displayName(post.author)} in the context rail`}
+            title="Preview author"
+          >
+            <Avatar profile={post.author} />
+          </button>
+        ) : (
+          <Avatar profile={post.author} />
+        )}
         <button className="author-button" type="button" onClick={() => onOpenProfile?.(post.author)}>
           <strong>{displayName(post.author)}</strong>
           <span>@{post.author.handle}</span>
@@ -5639,6 +5671,87 @@ function ProfileContextPanel({ actor, profile }: { actor: string; profile: Profi
 
 function Avatar({ profile }: { profile?: Profile }) {
   return profile?.avatar ? <img className="avatar" src={profile.avatar} alt="" loading="lazy" /> : <span className="avatar fallback" />;
+}
+
+// Context-preserving author preview in the right rail: renders the embedded
+// author immediately, then makes at most one full-profile request to fill in
+// bio/counts. Opening this never navigates, so the feed scroll position is
+// preserved (the plan's "context-preserving profile peek").
+function AuthorPeekPanel({
+  author,
+  cached,
+  onClose,
+  onOpenProfile,
+}: {
+  author: Profile;
+  cached?: Profile;
+  onClose: () => void;
+  onOpenProfile: (author: Profile) => void;
+}) {
+  const [full, setFull] = useState<Profile | null>(cached ?? null);
+  const [status, setStatus] = useState<"idle" | "loading" | "error">(
+    cached?.description || cached?.followersCount != null ? "idle" : "loading",
+  );
+
+  useEffect(() => {
+    const hasRichCache = !!(cached && (cached.description || cached.followersCount != null));
+    setFull(cached ?? null);
+    if (hasRichCache) {
+      setStatus("idle");
+      return;
+    }
+    setStatus("loading");
+    const controller = new AbortController();
+    getProfile(author.handle || author.did, controller.signal)
+      .then((profile) => {
+        setFull(profile);
+        setStatus("idle");
+      })
+      .catch((error) => {
+        if (controller.signal.aborted || (error as Error)?.name === "AbortError") {
+          return;
+        }
+        setStatus("error");
+      });
+    return () => controller.abort();
+  }, [author.did, author.handle, cached]);
+
+  const view = full ?? author;
+
+  return (
+    <section className="profile-panel author-peek-panel">
+      <div className="context-panel-header">
+        <h2>Author</h2>
+        <button type="button" className="peek-close" onClick={onClose} aria-label="Close author preview" title="Close">
+          <X size={16} />
+        </button>
+      </div>
+      <Avatar profile={view} />
+      <h2>{displayName(view)}</h2>
+      <p>@{view.handle}</p>
+      {view.description && <p className="profile-description">{view.description}</p>}
+      <dl>
+        <div>
+          <dt>Followers</dt>
+          <dd>{view.followersCount?.toLocaleString() ?? (status === "loading" ? "…" : "-")}</dd>
+        </div>
+        <div>
+          <dt>Following</dt>
+          <dd>{view.followsCount?.toLocaleString() ?? (status === "loading" ? "…" : "-")}</dd>
+        </div>
+        <div>
+          <dt>Posts</dt>
+          <dd>{view.postsCount?.toLocaleString() ?? (status === "loading" ? "…" : "-")}</dd>
+        </div>
+      </dl>
+      {status === "error" && <p className="peek-note">Couldn't load full profile. Showing what's already loaded.</p>}
+      <div className="context-actions">
+        <button type="button" onClick={() => onOpenProfile(view)}>
+          Open full profile
+        </button>
+      </div>
+    </section>
+  );
 }
 
 function LoadingState({ label }: { label: string }) {
