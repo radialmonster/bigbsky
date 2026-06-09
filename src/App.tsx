@@ -2045,10 +2045,12 @@ export function App() {
             className={`timeline ${density}`}
             ref={timelineRef}
           >
-            <Composer
-              draft={composerDraft}
-              onDraftChange={setComposerDraft}
-            />
+            {authState.session && (
+              <Composer
+                draft={composerDraft}
+                onDraftChange={setComposerDraft}
+              />
+            )}
             {feedState.status === "loading" && <LoadingState label="Loading public Bluesky posts" />}
             {feedState.status === "error" && <ErrorState message={feedState.error || "Feed failed to load."} />}
             {feedState.status === "rate-limit" && <RateLimitState message={feedState.error} />}
