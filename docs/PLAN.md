@@ -13,6 +13,13 @@ Build a desktop-first Bluesky reader that uses the AT Protocol and Bluesky APIs 
 - User OAuth state, access tokens, DPoP keys, UI preferences, and lightweight cache can live locally in the browser using IndexedDB/localStorage as appropriate.
 - Cloudflare Pages is a good fit if we keep the app as a static SPA with public metadata files. Pages Functions or Workers should be optional, not required for v1.
 
+## Operator Directives
+
+Standing instructions from the operator. These override autonomous judgment (including the `/loop` cron task):
+
+- **Do not add new features to the sidebars (left rail or right rail) unless explicitly asked.** The current sidebars are fine as-is. The right sidebar is for search/feed-suggestions/trending/discovery/secondary context; the left rail is for app/account navigation. Do not put author/profile or thread previews in a sidebar. The operator checks the sidebars occasionally and will request changes when wanted.
+- When unsure whether a change touches a sidebar, ask first.
+
 ## Product Direction
 
 The app is a desktop reader first, not a mobile clone.
