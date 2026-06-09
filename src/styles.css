@@ -2112,20 +2112,8 @@ button.surface-action {
   cursor: pointer;
 }
 
-.compact .post-text {
-  font-size: 14px;
-  line-height: 1.38;
-}
-
-/* Keep the Compact card's left-column text readable at 14px: author name,
-   @handle, repost reason, and the stats/action row (the media stays in the
-   right column via the two-zone layout). */
-.compact .post-header strong,
-.compact .post-header span,
-.compact .reason,
-.compact .post-actions {
-  font-size: 14px;
-}
+/* Compact uses the same text sizes as Comfortable; it differs only in card
+   padding and the two-zone (text left, media right) layout, not font size. */
 
 .image-grid {
   display: grid;
