@@ -969,7 +969,7 @@ Request budget mindset:
   - `/profile/:handleOrDid/post/:rkey` Status: implemented.
   - `/feed/:uri` Status: implemented for known Feed source IDs, matching Feed URIs, and now any public `at://` Feed generator URI through a synthetic Feed source so discovered Feeds open in-app and load their metadata in the right rail.
   - `/search` Status: implemented with `q` query parameter for post search.
-  - `/explore` Status: improved; the static SPA Explore surface now loads a live "Discover New Feeds" section from the public `app.bsky.unspecced.getPopularFeedGenerators` endpoint, rendering Feed cards (avatar, name, creator, description, like count) that open in-app without signing in and link out to Bluesky, alongside the public search doorway.
+  - `/explore` Status: improved; the static SPA Explore surface now loads a live "Discover New Feeds" section from the public `app.bsky.unspecced.getPopularFeedGenerators` endpoint, rendering Feed cards (avatar, name, creator, description, like count) that open in-app without signing in, expose a local Pin/Unpin action that persists discovered-Feed metadata so the pin survives reloads and appears in the selector's Pinned group, and link out to Bluesky, alongside the public search doorway.
   - `/feeds` Status: implemented as a static SPA surface with a local known-Feed directory that opens Feed destinations without a document reload.
 - Add loading, empty, error, and rate-limit states. Status: implemented for current public feed/search surfaces and standalone thread branches; unavailable thread nodes now distinguish blocked, deleted, not-found, generic unavailable, and rate-limited states with local copy and alert styling. Additional authenticated moderation edge cases remain pending.
 - Add local layout preferences. Status: implemented for density and feed-width mode.
@@ -1000,7 +1000,7 @@ Request budget mindset:
 - Home timeline.
 - Discover timeline.
 - Following feed.
-- Pinned/custom feeds in a scalable feed selector. Status: partial; known public Feeds can now be pinned/unpinned locally in the browser, appear in a Pinned group at the top of the selector, and are counted/clearable through Settings. Signed-in pinned/custom Feed sync remains pending.
+- Pinned/custom feeds in a scalable feed selector. Status: partial; known public Feeds and discovered public Feeds (arbitrary `at://` Feed generator URIs surfaced from Explore) can now be pinned/unpinned locally in the browser, appear in a Pinned group at the top of the selector, persist their metadata across reloads under `bigbsky:pinned-feed-meta` so non-static pins resolve again, and are counted/clearable through Settings. Signed-in pinned/custom Feed sync remains pending.
 - No horizontal feed-tab scrolling for normal feed selection.
 - Feed organization that supports topic/community-style browsing while retaining Bluesky terminology.
 - Notifications. Status: partial; local inbox UI now renders account/session state, saved-post count, pinned Feed/search count, local list count, and a mention-search entry point. Authenticated notification reads remain pending.
@@ -1045,7 +1045,7 @@ Request budget mindset:
 
 - Configurable feed width and density. Status: first pass implemented with browser-local Balanced, Wide, and Focus width modes plus existing density modes.
 - Optional multiple timelines side by side for users who want it, not as the default requirement. Status: deferred; the right-rail secondary reader was removed after UX review because it duplicated the primary Feed browser and made the context rail less focused.
-- Pinned feeds/profiles/searches/notifications. Status: partial; known Feeds, public profiles, searches, and local notification cards can be pinned locally in the browser, with pinned profile/search shortcuts shown in the right rail and pin counts shown in Settings/Notifications. Account-backed notification pins remain pending.
+- Pinned feeds/profiles/searches/notifications. Status: partial; known Feeds, discovered public Feeds (arbitrary `at://` URIs from Explore), public profiles, searches, and local notification cards can be pinned locally in the browser, with pinned profile/search shortcuts shown in the right rail and pin counts shown in Settings/Notifications. Account-backed notification pins remain pending.
 - Feed grouping, filtering, ordering, and quick switching. Status: partial; the selector supports grouped browsing, local filtering, group collapse/expand state, local Pinned shortcuts, and one-click switching without a horizontal tab strip. Manual account-backed ordering remains pending.
 - Wide post-card layout variants. Status: first pass implemented; post cards are classified as text-only, media, link, or quote variants. Comfortable now keeps rich posts in a readable full-width flow, while Compact splits media/link/quote embeds beside author/text/action context on wide desktop viewports.
 - Media-heavy and compact reading modes. Status: first pass implemented; density modes persist per Feed/surface, compact cards use denser text styling, compact text-only posts use a two-zone desktop layout, compact rich posts use a two-column desktop layout, and media mode gives image/video posts larger stable media space.

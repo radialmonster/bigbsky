@@ -156,6 +156,7 @@ const composerDraftStorageKey = "bigbsky:composer-draft";
 const localListsStorageKey = "bigbsky:local-lists";
 const workspaceWidthStorageKey = "bigbsky:workspace-width";
 const pinnedFeedsStorageKey = "bigbsky:pinned-feeds";
+const pinnedFeedMetaStorageKey = "bigbsky:pinned-feed-meta";
 const pinnedSearchesStorageKey = "bigbsky:pinned-searches";
 const pinnedProfilesStorageKey = "bigbsky:pinned-profiles";
 const pinnedNotificationsStorageKey = "bigbsky:pinned-notifications";
@@ -254,11 +255,35 @@ function readWorkspaceWidthPreference() {
   }
 }
 
-function readPinnedFeedIds() {
+function isPinnedFeedMeta(value: unknown): value is FeedSource {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const source = value as Partial<FeedSource>;
+  return (
+    typeof source.id === "string" &&
+    source.id.startsWith("at://") &&
+    typeof source.uri === "string" &&
+    typeof source.label === "string" &&
+    typeof source.description === "string" &&
+    (source.group === "Core" || source.group === "Official" || source.group === "Project")
+  );
+}
+
+function readPinnedFeedMeta(): FeedSource[] {
+  try {
+    const stored = JSON.parse(localStorage.getItem(pinnedFeedMetaStorageKey) || "[]") as unknown;
+    return Array.isArray(stored) ? stored.filter(isPinnedFeedMeta).slice(0, 12) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readPinnedFeedIds(metaSources: FeedSource[] = readPinnedFeedMeta()) {
   try {
     const stored = JSON.parse(localStorage.getItem(pinnedFeedsStorageKey) || "[]") as string[];
-    const knownIds = new Set(feedSources.map((source) => source.id));
-    return Array.isArray(stored) ? stored.filter((id) => knownIds.has(id)) : [];
+    const knownIds = new Set([...feedSources.map((source) => source.id), ...metaSources.map((source) => source.id)]);
+    return Array.isArray(stored) ? stored.filter((id) => knownIds.has(id)).slice(0, 12) : [];
   } catch {
     return [];
   }
@@ -549,7 +574,8 @@ export function App() {
   const [linkPreview, setLinkPreview] = useState<LinkPreviewState>(null);
   const [densityByContext, setDensityByContext] = useState<Record<string, string>>(() => readDensityPreferences());
   const [workspaceWidth, setWorkspaceWidth] = useState<(typeof widthModes)[number]>(() => readWorkspaceWidthPreference());
-  const [pinnedFeedIds, setPinnedFeedIds] = useState<string[]>(() => readPinnedFeedIds());
+  const [pinnedFeedMeta, setPinnedFeedMeta] = useState<FeedSource[]>(() => readPinnedFeedMeta());
+  const [pinnedFeedIds, setPinnedFeedIds] = useState<string[]>(() => readPinnedFeedIds(pinnedFeedMeta));
   const [pinnedSearches, setPinnedSearches] = useState<string[]>(() => readPinnedSearches());
   const [pinnedProfiles, setPinnedProfiles] = useState<Profile[]>(() => readPinnedProfiles());
   const [pinnedNotificationIds, setPinnedNotificationIds] = useState<string[]>(() => readPinnedNotifications());
@@ -629,21 +655,36 @@ export function App() {
       `${source.label} ${source.description} ${source.group}`.toLowerCase().includes(query),
     );
   }, [feedSearch]);
-  const pinnedSources = useMemo(
-    () =>
-      pinnedFeedIds
-        .map((id) => feedSources.find((source) => source.id === id))
-        .filter((source): source is FeedSource => !!source),
-    [pinnedFeedIds],
-  );
+  const pinnedSources = useMemo(() => {
+    const lookup = new Map<string, FeedSource>();
+    for (const source of feedSources) {
+      lookup.set(source.id, source);
+    }
+    for (const source of pinnedFeedMeta) {
+      if (!lookup.has(source.id)) {
+        lookup.set(source.id, source);
+      }
+    }
+    return pinnedFeedIds
+      .map((id) => lookup.get(id))
+      .filter((source): source is FeedSource => !!source);
+  }, [pinnedFeedIds, pinnedFeedMeta]);
   const groupedSources = useMemo(() => {
     const groups = visibleSources.reduce<Record<string, FeedSource[]>>((nextGroups, source) => {
       nextGroups[source.group] = [...(nextGroups[source.group] ?? []), source];
       return nextGroups;
     }, {});
 
-    if (pinnedSources.length > 0 && (!feedSearch.trim() || pinnedSources.some((source) => visibleSources.includes(source)))) {
-      groups.Pinned = pinnedSources.filter((source) => !feedSearch.trim() || visibleSources.includes(source));
+    if (pinnedSources.length > 0) {
+      const query = feedSearch.trim().toLowerCase();
+      const pinnedMatches = query
+        ? pinnedSources.filter((source) =>
+            `${source.label} ${source.description} ${source.group}`.toLowerCase().includes(query),
+          )
+        : pinnedSources;
+      if (pinnedMatches.length > 0) {
+        groups.Pinned = pinnedMatches;
+      }
     }
 
     return Object.fromEntries(
@@ -1267,11 +1308,24 @@ export function App() {
   }
 
   function togglePinnedFeed(source: FeedSource) {
+    const willPin = !pinnedFeedIds.includes(source.id);
     setPinnedFeedIds((current) => {
-      const next = current.includes(source.id) ? current.filter((id) => id !== source.id) : [source.id, ...current].slice(0, 12);
+      const next = willPin
+        ? [source.id, ...current.filter((id) => id !== source.id)].slice(0, 12)
+        : current.filter((id) => id !== source.id);
       localStorage.setItem(pinnedFeedsStorageKey, JSON.stringify(next));
       return next;
     });
+    // Discovered Feeds aren't in the static feedSources list, so persist their
+    // metadata separately; otherwise the pinned id can't be resolved on reload.
+    if (!feedSources.some((item) => item.id === source.id)) {
+      setPinnedFeedMeta((current) => {
+        const withoutSource = current.filter((item) => item.id !== source.id);
+        const next = willPin ? [{ ...source }, ...withoutSource].slice(0, 12) : withoutSource;
+        localStorage.setItem(pinnedFeedMetaStorageKey, JSON.stringify(next));
+        return next;
+      });
+    }
   }
 
   function togglePinnedSearch(query: string) {
@@ -2532,7 +2586,13 @@ function SurfaceView({
           </a>
         )}
       </section>
-      {name === "explore" && <ExploreDiscoverFeeds onOpenFeed={onOpenFeed} />}
+      {name === "explore" && (
+        <ExploreDiscoverFeeds
+          onOpenFeed={onOpenFeed}
+          pinnedFeedIds={pinnedFeedIds}
+          onTogglePinnedFeed={onTogglePinnedFeed}
+        />
+      )}
       {name === "feeds" && (
         <section className="feed-directory-grid" aria-label="Known Feed destinations">
           {feedSources.map((source) => (
@@ -2566,7 +2626,15 @@ function SurfaceView({
   );
 }
 
-function ExploreDiscoverFeeds({ onOpenFeed }: { onOpenFeed: (source: FeedSource) => void }) {
+function ExploreDiscoverFeeds({
+  onOpenFeed,
+  pinnedFeedIds,
+  onTogglePinnedFeed,
+}: {
+  onOpenFeed: (source: FeedSource) => void;
+  pinnedFeedIds: string[];
+  onTogglePinnedFeed: (source: FeedSource) => void;
+}) {
   const [state, setState] = useState<{ status: "loading" | "ready" | "error"; feeds: FeedGeneratorView[] }>({
     status: "loading",
     feeds: [],
@@ -2604,20 +2672,20 @@ function ExploreDiscoverFeeds({ onOpenFeed }: { onOpenFeed: (source: FeedSource)
                 ? `https://bsky.app/profile/${feed.creator.handle}/feed/${feedRkey}`
                 : "https://bsky.app";
             const likes = feed.likeCount ?? feed.likedByCount;
+            const source: FeedSource = {
+              id: feed.uri,
+              uri: feed.uri,
+              label: feed.displayName || "Public Feed",
+              group: "Project",
+              description: feed.description || "Public Bluesky feed opened from discovery.",
+            };
+            const isPinned = pinnedFeedIds.includes(source.id);
             return (
               <article className="discover-feed-card" key={feed.uri}>
                 <button
                   type="button"
                   className="discover-feed-open"
-                  onClick={() =>
-                    onOpenFeed({
-                      id: feed.uri,
-                      uri: feed.uri,
-                      label: feed.displayName || "Public Feed",
-                      group: "Project",
-                      description: feed.description || "Public Bluesky feed opened from discovery.",
-                    })
-                  }
+                  onClick={() => onOpenFeed(source)}
                 >
                   {feed.avatar ? (
                     <img className="discover-feed-avatar" src={feed.avatar} alt="" loading="lazy" />
@@ -2633,9 +2701,20 @@ function ExploreDiscoverFeeds({ onOpenFeed }: { onOpenFeed: (source: FeedSource)
                   </span>
                   {typeof likes === "number" && <span className="discover-feed-likes">{likes.toLocaleString()} likes</span>}
                 </button>
-                <a className="discover-feed-external" href={bskyUrl} target="_blank" rel="noreferrer">
-                  Open on Bluesky
-                </a>
+                <div className="discover-feed-actions">
+                  <button
+                    type="button"
+                    className={isPinned ? "discover-feed-pin pinned" : "discover-feed-pin"}
+                    onClick={() => onTogglePinnedFeed(source)}
+                    aria-label={isPinned ? `Unpin ${source.label}` : `Pin ${source.label}`}
+                  >
+                    <Bookmark size={14} />
+                    {isPinned ? "Pinned" : "Pin locally"}
+                  </button>
+                  <a className="discover-feed-external" href={bskyUrl} target="_blank" rel="noreferrer">
+                    Open on Bluesky
+                  </a>
+                </div>
               </article>
             );
           })}

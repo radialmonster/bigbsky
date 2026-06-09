@@ -1449,8 +1449,39 @@ button.surface-action {
   font-weight: 700;
 }
 
-.discover-feed-external {
+.discover-feed-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   margin-top: 12px;
+}
+
+.discover-feed-pin {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: var(--app-surface-2);
+  color: var(--app-text-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.discover-feed-pin:hover {
+  border-color: rgba(117, 175, 255, 0.42);
+  color: var(--app-text);
+}
+
+.discover-feed-pin.pinned {
+  border-color: rgba(5, 96, 255, 0.5);
+  background: rgba(5, 96, 255, 0.18);
+  color: var(--bsky-blue-soft);
+}
+
+.discover-feed-external {
   font-size: 12px;
   font-weight: 700;
 }
