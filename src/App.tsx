@@ -3789,6 +3789,9 @@ function Composer({
   const mediaSlots = draft.mediaSlots;
   const overLimit = drafts.some((postDraft) => postDraft.length > 300);
   const hasContent = drafts.some((postDraft) => postDraft.trim().length > 0) || Object.values(mediaSlots).some((count) => count > 0);
+  // Collapsed by default to keep the top of the feed clean; expand on click.
+  // Start expanded if a local draft is already in progress so it isn't hidden.
+  const [expanded, setExpanded] = useState(hasContent);
 
   useEffect(() => {
     if (hasContent) {
@@ -3835,8 +3838,32 @@ function Composer({
     onDraftChange(emptyDraft);
   }
 
+  if (!expanded) {
+    return (
+      <section className="composer composer-collapsed" aria-label="Composer">
+        <button type="button" className="composer-banner" onClick={() => setExpanded(true)} aria-expanded={false}>
+          <Plus size={18} />
+          <span>Add New Post</span>
+          {hasContent && <span className="composer-banner-badge">Draft saved</span>}
+        </button>
+      </section>
+    );
+  }
+
   return (
     <section className="composer" aria-label="Composer">
+      <div className="composer-header">
+        <strong>New post</strong>
+        <button
+          type="button"
+          className="composer-collapse"
+          onClick={() => setExpanded(false)}
+          aria-label="Collapse composer"
+          title="Collapse"
+        >
+          <ChevronUp size={18} />
+        </button>
+      </div>
       <div className="composer-thread">
         {drafts.map((draft, index) => {
           const remainingChars = 300 - draft.length;

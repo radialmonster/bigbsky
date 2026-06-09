@@ -544,6 +544,59 @@ button {
   padding: 14px;
 }
 
+.composer-collapsed {
+  padding: 10px 14px;
+}
+
+/* Collapsed composer banner: a single full-width "Add New Post" affordance
+   that expands the full composer when clicked. */
+.composer-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 2px;
+  background: transparent;
+  color: var(--bsky-blue-soft);
+  font-weight: 600;
+}
+
+.composer-banner:hover {
+  color: var(--app-text);
+}
+
+.composer-banner-badge {
+  margin-left: auto;
+  color: var(--app-text-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.composer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.composer-header strong {
+  color: var(--app-text);
+}
+
+.composer-collapse {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: var(--app-surface-2);
+  color: var(--app-text-muted);
+}
+
+.composer-collapse:hover {
+  color: var(--bsky-blue-soft);
+}
+
 .search-workspace {
   display: grid;
   grid-template-columns: 22px minmax(180px, 1fr) 34px 34px auto auto;
