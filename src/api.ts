@@ -83,6 +83,7 @@ export type RecordEmbedView = {
     text?: string;
     createdAt?: string;
     embed?: unknown;
+    facets?: RichTextFacet[];
   };
   embeds?: unknown[];
   labels?: unknown[];

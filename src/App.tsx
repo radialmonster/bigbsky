@@ -4399,6 +4399,7 @@ function QuotedPostCard({
   onOpenPost?: (post: FeedPost) => void;
   onOpenProfile?: (profile: Profile) => void;
 }) {
+  const onOpenTag = useContext(TagSearchContext);
   const embeddedExternal = getExternalEmbed(record.embeds?.[0] ?? record.value?.embed);
   const embeddedImages = getEmbedImages(record.embeds?.[0] ?? record.value?.embed);
   const embeddedVideo = getVideoEmbed(record.embeds?.[0] ?? record.value?.embed);
@@ -4434,7 +4435,14 @@ function QuotedPostCard({
         </header>
       )}
       {text ? (
-        <p className={text.includes("\n") ? "quote-text has-line-breaks" : "quote-text"}>{text}</p>
+        <p className={text.includes("\n") ? "quote-text has-line-breaks" : "quote-text"}>
+          {renderRichText(
+            record.value?.facets?.length ? record.value.text || "" : text,
+            record.value?.facets,
+            onOpenProfile,
+            onOpenTag,
+          )}
+        </p>
       ) : (
         <p className="quote-text muted">Quoted post has no plain text.</p>
       )}
