@@ -1535,7 +1535,6 @@ button.surface-action {
 }
 
 .discover-feeds {
-  max-width: 980px;
   margin-top: 18px;
 }
 
@@ -1553,7 +1552,11 @@ button.surface-action {
 
 .discover-feeds-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* Fill the wide content column with as many feed cards per row as fit
+     (~3-4 on a widescreen monitor) instead of a fixed 2-up grid capped at
+     980px, which left ~half the column empty. min(100%, 400px) keeps a
+     single column on narrow/mobile widths without horizontal overflow. */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr));
   gap: 12px;
   margin-top: 14px;
 }
