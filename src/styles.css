@@ -2434,6 +2434,13 @@ button.surface-action {
   margin: 10px 0;
 }
 
+/* A single image inside a quoted post is nested content, not top-level feed
+   media, so it should align left with the quoted text rather than centering
+   in the wide card (which left it floating with large gaps on both sides). */
+.image-grid.quote-images.count-1 {
+  justify-items: start;
+}
+
 .quote-images img {
   min-height: 84px;
   max-height: 320px;
