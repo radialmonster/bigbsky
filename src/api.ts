@@ -261,6 +261,30 @@ export function getActorLists(actor: string, limit = 30, signal?: AbortSignal) {
   );
 }
 
+export function isListUri(uri: string) {
+  return uri.includes("/app.bsky.graph.list/");
+}
+
+export function getListFeed(list: string, cursor?: string, signal?: AbortSignal) {
+  return getJson<FeedResponse>(
+    "app.bsky.feed.getListFeed",
+    {
+      list,
+      limit: "30",
+      ...(cursor ? { cursor } : {}),
+    },
+    signal,
+  );
+}
+
+export function getList(list: string, signal?: AbortSignal) {
+  return getJson<{ list: ListView; cursor?: string }>(
+    "app.bsky.graph.getList",
+    { list, limit: "1" },
+    signal,
+  );
+}
+
 export function getActorFeeds(actor: string, limit = 30, signal?: AbortSignal) {
   return getJson<PopularFeedsResponse>(
     "app.bsky.feed.getActorFeeds",

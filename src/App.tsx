@@ -45,8 +45,11 @@ import {
   getActorLists,
   getAuthorFeed,
   getLikes,
+  getList,
+  getListFeed,
   getQuotes,
   getRepostedBy,
+  isListUri,
   getEmbedImages,
   getExternalEmbed,
   getFeed,
@@ -588,6 +591,7 @@ export function App() {
   const [feedSearchState, setFeedSearchState] = useState<FeedSearchState>(emptyFeedSearchState);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [feedMetadata, setFeedMetadata] = useState<FeedGeneratorView | null>(null);
+  const [listMetadata, setListMetadata] = useState<ListView | null>(null);
   const [composerDraft, setComposerDraft] = useState(() => readComposerDraft());
   const [savedPosts, setSavedPosts] = useState<FeedPost[]>(() => readSavedPosts());
   const [localLists, setLocalLists] = useState<LocalList[]>(() => readLocalLists());
@@ -613,6 +617,7 @@ export function App() {
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const feedCacheRef = useRef<Record<string, FeedState>>({});
   const feedMetadataCacheRef = useRef<Record<string, FeedGeneratorView>>({});
+  const listMetadataCacheRef = useRef<Record<string, ListView>>({});
   const profileCacheRef = useRef<Record<string, { feed: FeedState; profile: Profile | null }>>({});
   const searchCacheRef = useRef<Record<string, SearchState>>({});
   const actorSearchCacheRef = useRef<Record<string, ActorSearchState>>({});
@@ -653,12 +658,13 @@ export function App() {
         return known;
       }
       if (route.uri.startsWith("at://")) {
+        const list = isListUri(route.uri);
         return {
           id: route.uri,
           uri: route.uri,
-          label: "Public Feed",
+          label: list ? "List" : "Public Feed",
           group: "Project",
-          description: "Public Bluesky feed opened from discovery.",
+          description: list ? "Public Bluesky list timeline." : "Public Bluesky feed opened from discovery.",
         };
       }
     }
@@ -805,7 +811,9 @@ export function App() {
     }));
 
     try {
-      const response = await getFeed(source.uri, cursor, signal);
+      const response = isListUri(source.uri)
+        ? await getListFeed(source.uri, cursor, signal)
+        : await getFeed(source.uri, cursor, signal);
       setFeedState((current) => {
         const next = {
           items: cursor ? [...current.items, ...response.feed] : response.feed,
@@ -1041,9 +1049,35 @@ export function App() {
   useEffect(() => {
     if (route.kind === "post" || route.kind === "search" || route.kind === "surface" || route.kind === "profile") {
       setFeedMetadata(null);
+      setListMetadata(null);
       return undefined;
     }
 
+    const controller = new AbortController();
+
+    if (isListUri(activeSource.uri)) {
+      setFeedMetadata(null);
+      const cachedList = listMetadataCacheRef.current[activeSource.uri];
+      if (cachedList) {
+        setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
+        setListMetadata(cachedList);
+        return undefined;
+      }
+      setListMetadata(null);
+      getList(activeSource.uri, controller.signal)
+        .then((response) => {
+          listMetadataCacheRef.current[activeSource.uri] = response.list;
+          setListMetadata(response.list);
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setListMetadata(null);
+          }
+        });
+      return () => controller.abort();
+    }
+
+    setListMetadata(null);
     const cached = feedMetadataCacheRef.current[activeSource.uri];
     if (cached) {
       setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
@@ -1051,7 +1085,6 @@ export function App() {
       return undefined;
     }
 
-    const controller = new AbortController();
     setFeedMetadata(null);
     getFeedGenerator(activeSource.uri, controller.signal)
       .then((response) => {
@@ -1248,6 +1281,7 @@ export function App() {
     setCollapsedFeedGroups({});
     feedCacheRef.current = {};
     feedMetadataCacheRef.current = {};
+    listMetadataCacheRef.current = {};
     profileCacheRef.current = {};
     searchCacheRef.current = {};
     actorSearchCacheRef.current = {};
@@ -1954,7 +1988,7 @@ export function App() {
                 onTogglePinnedFeed={togglePinnedFeed}
               />
             ) : profileTab === "lists" ? (
-              <ProfileListsTab actor={route.actor} />
+              <ProfileListsTab actor={route.actor} onOpenFeed={openFeedSource} />
             ) : (
               <>
                 {feedState.status === "loading" && <LoadingState label="Loading public profile posts" />}
@@ -2029,6 +2063,7 @@ export function App() {
           <FeedContextPanel
             source={activeSource}
             metadata={feedMetadata}
+            listMetadata={listMetadata}
             entityCache={entityCache}
             isPinned={pinnedFeedIds.includes(activeSource.id)}
             onTogglePinned={togglePinnedFeed}
@@ -2968,7 +3003,7 @@ function listPurposeLabel(purpose?: string) {
   return "List";
 }
 
-function ProfileListsTab({ actor }: { actor: string }) {
+function ProfileListsTab({ actor, onOpenFeed }: { actor: string; onOpenFeed: (source: FeedSource) => void }) {
   const [state, setState] = useState<{ status: "loading" | "ready" | "error" | "rate-limit"; lists: ListView[]; error?: string }>({
     status: "loading",
     lists: [],
@@ -3007,26 +3042,48 @@ function ProfileListsTab({ actor }: { actor: string }) {
               list.creator?.handle && listRkey
                 ? `https://bsky.app/profile/${list.creator.handle}/lists/${listRkey}`
                 : "https://bsky.app";
+            const isCurateList = list.purpose?.includes("curatelist") ?? false;
+            const source: FeedSource = {
+              id: list.uri,
+              uri: list.uri,
+              label: list.name || "List",
+              group: "Project",
+              description: list.description || "Public Bluesky list timeline.",
+            };
+            const body = (
+              <>
+                {list.avatar ? (
+                  <img className="discover-feed-avatar" src={list.avatar} alt="" loading="lazy" />
+                ) : (
+                  <span className="discover-feed-glyph">
+                    <List size={20} />
+                  </span>
+                )}
+                <span className="discover-feed-body">
+                  <strong>{list.name || "List"}</strong>
+                  <small>
+                    {listPurposeLabel(list.purpose)}
+                    {typeof list.listItemCount === "number" ? ` · ${list.listItemCount.toLocaleString()} members` : ""}
+                  </small>
+                  {list.description && <span className="discover-feed-desc">{list.description}</span>}
+                </span>
+              </>
+            );
             return (
               <article className="discover-feed-card" key={list.uri}>
-                <div className="discover-feed-open">
-                  {list.avatar ? (
-                    <img className="discover-feed-avatar" src={list.avatar} alt="" loading="lazy" />
-                  ) : (
-                    <span className="discover-feed-glyph">
-                      <List size={20} />
-                    </span>
-                  )}
-                  <span className="discover-feed-body">
-                    <strong>{list.name || "List"}</strong>
-                    <small>
-                      {listPurposeLabel(list.purpose)}
-                      {typeof list.listItemCount === "number" ? ` · ${list.listItemCount.toLocaleString()} members` : ""}
-                    </small>
-                    {list.description && <span className="discover-feed-desc">{list.description}</span>}
-                  </span>
-                </div>
+                {isCurateList ? (
+                  <button type="button" className="discover-feed-open" onClick={() => onOpenFeed(source)}>
+                    {body}
+                  </button>
+                ) : (
+                  <div className="discover-feed-open">{body}</div>
+                )}
                 <div className="discover-feed-actions">
+                  {isCurateList && (
+                    <button type="button" className="discover-feed-pin" onClick={() => onOpenFeed(source)}>
+                      Open list
+                    </button>
+                  )}
                   <a className="discover-feed-external" href={bskyUrl} target="_blank" rel="noreferrer">
                     Open on Bluesky
                   </a>
@@ -5087,53 +5144,65 @@ function DevInspector({
 function FeedContextPanel({
   source,
   metadata,
+  listMetadata,
   entityCache,
   isPinned,
   onTogglePinned,
 }: {
   source: FeedSource;
   metadata: FeedGeneratorView | null;
+  listMetadata: ListView | null;
   entityCache: EntityCache;
   isPinned: boolean;
   onTogglePinned: (source: FeedSource) => void;
 }) {
   const [copied, setCopied] = useState(false);
-  const creatorHandle = metadata?.creator?.handle;
-  const feedRkey = source.uri.split("/").pop();
-  const bskyUrl = creatorHandle && feedRkey ? `https://bsky.app/profile/${creatorHandle}/feed/${feedRkey}` : "https://bsky.app";
+  const isList = isListUri(source.uri);
+  const avatar = isList ? listMetadata?.avatar : metadata?.avatar;
+  const title = (isList ? listMetadata?.name : metadata?.displayName) || source.label;
+  const description = (isList ? listMetadata?.description : metadata?.description) || source.description;
+  const creatorHandle = isList ? listMetadata?.creator?.handle : metadata?.creator?.handle;
+  const rkey = source.uri.split("/").pop();
+  const bskyUrl = creatorHandle && rkey
+    ? `https://bsky.app/profile/${creatorHandle}/${isList ? "lists" : "feed"}/${rkey}`
+    : "https://bsky.app";
 
   return (
     <section className="profile-panel">
-      {metadata?.avatar ? (
-        <img className="avatar" src={metadata.avatar} alt="" loading="lazy" />
+      {avatar ? (
+        <img className="avatar" src={avatar} alt="" loading="lazy" />
       ) : (
         <span className="feed-glyph">
-          <Hash size={22} />
+          {isList ? <List size={22} /> : <Hash size={22} />}
         </span>
       )}
-      <h2>{metadata?.displayName || source.label}</h2>
-      <p>{metadata?.description || source.description}</p>
+      <h2>{title}</h2>
+      <p>{description}</p>
       <dl>
         <div>
           <dt>Type</dt>
-          <dd>Feed</dd>
+          <dd>{isList ? "List" : "Feed"}</dd>
         </div>
         <div>
           <dt>Creator</dt>
-          <dd>{metadata?.creator ? `@${metadata.creator.handle}` : "Public"}</dd>
+          <dd>{creatorHandle ? `@${creatorHandle}` : "Public"}</dd>
         </div>
         <div>
-          <dt>Likes</dt>
-          <dd>{(metadata?.likeCount ?? metadata?.likedByCount)?.toLocaleString() ?? "-"}</dd>
+          <dt>{isList ? "Members" : "Likes"}</dt>
+          <dd>
+            {isList
+              ? listMetadata?.listItemCount?.toLocaleString() ?? "-"
+              : (metadata?.likeCount ?? metadata?.likedByCount)?.toLocaleString() ?? "-"}
+          </dd>
         </div>
         <div>
           <dt>Cached posts</dt>
           <dd>{Object.keys(entityCache.posts).length.toLocaleString()}</dd>
         </div>
       </dl>
-      <div className="context-actions" aria-label="Feed options">
+      <div className="context-actions" aria-label={isList ? "List options" : "Feed options"}>
         <button type="button" onClick={() => onTogglePinned(source)}>
-          {isPinned ? "Unpin feed" : "Pin feed"}
+          {isPinned ? (isList ? "Unpin list" : "Unpin feed") : isList ? "Pin list" : "Pin feed"}
         </button>
         <button
           type="button"

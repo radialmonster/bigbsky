@@ -54,6 +54,11 @@ requirePattern(/profileTab === "lists" \? \(\s*<ProfileListsTab/s, "the profile 
 if (!/export function getActorLists\(/.test(api)) {
   failures.push("api should expose a public getActorLists reader");
 }
+requirePattern(/isListUri\(source\.uri\)\s*\?\s*await getListFeed\(source\.uri, cursor, signal\)/s, "feed loading should read list timelines via getListFeed for list URIs");
+requirePattern(/isCurateList\s*\?\s*\(\s*<button type="button" className="discover-feed-open" onClick=\{\(\) => onOpenFeed\(source\)\}/s, "curated lists should open their timeline in-app from the profile Lists tab");
+if (!/export function getListFeed\(/.test(api) || !/export function getList\(/.test(api) || !/export function isListUri\(/.test(api)) {
+  failures.push("api should expose public getListFeed/getList/isListUri helpers");
+}
 requirePattern(/function ThreadEngagementPanel\([\s\S]*kind === "likes"[\s\S]*getLikes\(uri[\s\S]*getRepostedBy\(uri[\s\S]*getQuotes\(uri/s, "the thread engagement panel should load likes, reposts, and quotes on demand");
 requirePattern(/setEngagement\(\(current\) => \(current === stat\.key \? null : stat\.key\)\)/, "thread reposts/quotes/likes counts should toggle an on-demand engagement panel");
 if (!/export function getLikes\(/.test(api) || !/export function getRepostedBy\(/.test(api) || !/export function getQuotes\(/.test(api)) {
