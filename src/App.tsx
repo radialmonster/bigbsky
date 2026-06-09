@@ -467,9 +467,27 @@ function isNetworkError(error: unknown) {
   return error instanceof TypeError;
 }
 
+// A feed generator (or other upstream service) being down, as opposed to our
+// app or the viewer's network. The AppView returns 502/503/504 UpstreamFailure
+// with "feed unavailable"; the authed agent surfaces the same message text.
+function isUpstreamFailure(error: unknown) {
+  const status = error instanceof ApiError ? error.status : (error as { status?: number } | null)?.status;
+  const message = (error instanceof Error ? error.message : "").toLowerCase();
+  return (
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    message.includes("feed unavailable") ||
+    message.includes("upstreamfailure")
+  );
+}
+
 function rateLimitMessage(error: unknown) {
   if (isRateLimit(error)) {
     return "Bluesky rate limit reached. Pause a moment, then try again.";
+  }
+  if (isUpstreamFailure(error)) {
+    return "This feed's provider isn't responding right now — the feed may be down or removed. Try again later, or pick another feed.";
   }
   if (isNetworkError(error)) {
     return "Network request failed — Bluesky may be rate-limiting or briefly unreachable. Try again.";

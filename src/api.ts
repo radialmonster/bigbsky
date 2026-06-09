@@ -151,7 +151,16 @@ async function getJson<T>(path: string, params: Record<string, string>, signal?:
 
   const response = await fetch(url, { signal });
   if (!response.ok) {
-    throw new ApiError(response.status, response.statusText);
+    // Surface the AppView's error body (e.g. {"error":"UpstreamFailure",
+    // "message":"feed unavailable"}) instead of a bare status text.
+    let detail = response.statusText;
+    try {
+      const body = (await response.json()) as { error?: string; message?: string };
+      detail = body.message || body.error || detail;
+    } catch {
+      // non-JSON error body; keep the status text
+    }
+    throw new ApiError(response.status, detail);
   }
 
   return response.json() as Promise<T>;
