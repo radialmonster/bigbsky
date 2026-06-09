@@ -34,12 +34,14 @@ import {
   type FeedItem,
   type FeedGeneratorView,
   type FeedPost,
+  type ListView,
   type Profile,
   type RecordEmbedView,
   type SearchPostsResponse,
   type ThreadNode,
   type TrendingTopic,
   getActorFeeds,
+  getActorLists,
   getAuthorFeed,
   getEmbedImages,
   getExternalEmbed,
@@ -150,7 +152,7 @@ type AuthState = {
 const densityModes = ["comfortable", "compact", "media"];
 const widthModes = ["balanced", "wide", "focus"] as const;
 const searchTabs = ["posts", "people", "feeds"] as const;
-const profileTabs = ["posts", "replies", "media", "videos", "feeds"] as const;
+const profileTabs = ["posts", "replies", "media", "videos", "feeds", "lists"] as const;
 const searchLanguages = [
   { label: "Any language", value: "" },
   { label: "English", value: "en" },
@@ -1930,6 +1932,8 @@ export function App() {
                 onOpenFeed={openFeedSource}
                 onTogglePinnedFeed={togglePinnedFeed}
               />
+            ) : profileTab === "lists" ? (
+              <ProfileListsTab actor={route.actor} />
             ) : (
               <>
                 {feedState.status === "loading" && <LoadingState label="Loading public profile posts" />}
@@ -2925,6 +2929,88 @@ function ProfileFeedsTab({
               onTogglePinnedFeed={onTogglePinnedFeed}
             />
           ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function listPurposeLabel(purpose?: string) {
+  if (purpose?.includes("modlist")) {
+    return "Moderation list";
+  }
+  if (purpose?.includes("curatelist")) {
+    return "User list";
+  }
+  return "List";
+}
+
+function ProfileListsTab({ actor }: { actor: string }) {
+  const [state, setState] = useState<{ status: "loading" | "ready" | "error" | "rate-limit"; lists: ListView[]; error?: string }>({
+    status: "loading",
+    lists: [],
+  });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setState({ status: "loading", lists: [] });
+    getActorLists(actor, 50, controller.signal)
+      .then((response) => setState({ status: "ready", lists: response.lists }))
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setState({
+            status: isRateLimit(error) ? "rate-limit" : "error",
+            lists: [],
+            error: rateLimitMessage(error),
+          });
+        }
+      });
+    return () => controller.abort();
+  }, [actor]);
+
+  return (
+    <section className="discover-feeds" aria-label="Lists created by this account">
+      {state.status === "loading" && <LoadingState label="Loading Lists by this account" />}
+      {state.status === "error" && <ErrorState message={state.error || "Lists could not be loaded right now."} />}
+      {state.status === "rate-limit" && <RateLimitState message={state.error} />}
+      {state.status === "ready" && state.lists.length === 0 && (
+        <EmptyState title="No Lists" message="This account has not published any public Lists." />
+      )}
+      {state.status === "ready" && state.lists.length > 0 && (
+        <div className="discover-feeds-grid">
+          {state.lists.map((list) => {
+            const listRkey = list.uri.split("/").pop();
+            const bskyUrl =
+              list.creator?.handle && listRkey
+                ? `https://bsky.app/profile/${list.creator.handle}/lists/${listRkey}`
+                : "https://bsky.app";
+            return (
+              <article className="discover-feed-card" key={list.uri}>
+                <div className="discover-feed-open">
+                  {list.avatar ? (
+                    <img className="discover-feed-avatar" src={list.avatar} alt="" loading="lazy" />
+                  ) : (
+                    <span className="discover-feed-glyph">
+                      <List size={20} />
+                    </span>
+                  )}
+                  <span className="discover-feed-body">
+                    <strong>{list.name || "List"}</strong>
+                    <small>
+                      {listPurposeLabel(list.purpose)}
+                      {typeof list.listItemCount === "number" ? ` · ${list.listItemCount.toLocaleString()} members` : ""}
+                    </small>
+                    {list.description && <span className="discover-feed-desc">{list.description}</span>}
+                  </span>
+                </div>
+                <div className="discover-feed-actions">
+                  <a className="discover-feed-external" href={bskyUrl} target="_blank" rel="noreferrer">
+                    Open on Bluesky
+                  </a>
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
     </section>

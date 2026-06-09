@@ -200,6 +200,31 @@ export function getTrendingTopics(limit = 10, signal?: AbortSignal) {
   );
 }
 
+export type ListView = {
+  uri: string;
+  cid?: string;
+  name: string;
+  purpose?: string;
+  description?: string;
+  avatar?: string;
+  listItemCount?: number;
+  creator?: Profile;
+  indexedAt?: string;
+};
+
+export type ActorListsResponse = {
+  cursor?: string;
+  lists: ListView[];
+};
+
+export function getActorLists(actor: string, limit = 30, signal?: AbortSignal) {
+  return getJson<ActorListsResponse>(
+    "app.bsky.graph.getLists",
+    { actor, limit: String(limit) },
+    signal,
+  );
+}
+
 export function getActorFeeds(actor: string, limit = 30, signal?: AbortSignal) {
   return getJson<PopularFeedsResponse>(
     "app.bsky.feed.getActorFeeds",
