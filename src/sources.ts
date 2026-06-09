@@ -4,7 +4,7 @@ export type FeedSource = {
   id: string;
   label: string;
   uri: string;
-  group: "Core" | "Official" | "Project";
+  group: "Core" | "Official" | "Project" | "My Feeds";
   description: string;
 };
 

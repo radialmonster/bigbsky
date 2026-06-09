@@ -8,6 +8,18 @@ const activeHandleKey = "bigbsky:auth:active-handle";
 const oauthDatabaseName = "@atproto-oauth-client";
 
 let clientPromise: Promise<BrowserOAuthClient> | null = null;
+// Retained so authenticated reads (e.g. the signed-in user's saved feeds) can
+// reuse the active OAuth session instead of re-restoring it.
+let activeSession: OAuthSession | null = null;
+
+export type SubscribedFeed = {
+  uri: string;
+  displayName: string;
+  description?: string;
+  creatorHandle?: string;
+  avatar?: string;
+  pinned: boolean;
+};
 
 export type AuthSnapshot = {
   did: string;
@@ -60,6 +72,7 @@ async function getClient() {
 }
 
 async function snapshotSession(session: OAuthSession, restoredFromCallback = false): Promise<AuthSnapshot> {
+  activeSession = session;
   const { Agent } = await import("@atproto/api");
   const agent = new Agent(session);
   const profile = await agent.getProfile({ actor: agent.accountDid });
@@ -133,10 +146,108 @@ export async function signOut(did?: string) {
     revokeWarning = error instanceof Error ? error.message : String(error);
   }
 
+  activeSession = null;
   localStorage.removeItem(activeDidKey);
   localStorage.removeItem(activeHandleKey);
   await clearOAuthSessionStorage();
   return revokeWarning;
+}
+
+async function ensureSession(): Promise<OAuthSession | null> {
+  if (activeSession) {
+    return activeSession;
+  }
+  const activeDid = localStorage.getItem(activeDidKey);
+  if (!activeDid) {
+    return null;
+  }
+  const client = await getClient();
+  activeSession = await client.restore(activeDid);
+  return activeSession;
+}
+
+// Fetch the signed-in user's saved/pinned feeds from their AT Protocol
+// preferences and resolve display metadata. Returns [] when signed out. This is
+// an authenticated read routed through the user's session; no BigBSky backend.
+export async function getSubscribedFeeds(): Promise<SubscribedFeed[]> {
+  const session = await ensureSession();
+  if (!session) {
+    return [];
+  }
+
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const prefsResponse = await agent.app.bsky.actor.getPreferences();
+  const preferences = (prefsResponse.data?.preferences ?? []) as Array<Record<string, unknown>>;
+
+  // Preserve saved-feed order and pinned state. Support both the current
+  // savedFeedsPrefV2 (typed items) and the legacy savedFeedsPref (uri arrays).
+  const orderedUris: string[] = [];
+  const pinnedByUri = new Map<string, boolean>();
+  const isGeneratorUri = (value: unknown): value is string =>
+    typeof value === "string" && value.includes("app.bsky.feed.generator");
+
+  for (const pref of preferences) {
+    const type = pref.$type;
+    if (type === "app.bsky.actor.defs#savedFeedsPrefV2" && Array.isArray(pref.items)) {
+      for (const item of pref.items as Array<Record<string, unknown>>) {
+        if (item.type === "feed" && isGeneratorUri(item.value)) {
+          if (!pinnedByUri.has(item.value)) {
+            orderedUris.push(item.value);
+          }
+          pinnedByUri.set(item.value, pinnedByUri.get(item.value) || !!item.pinned);
+        }
+      }
+    } else if (type === "app.bsky.actor.defs#savedFeedsPref") {
+      const pinnedSet = new Set((Array.isArray(pref.pinned) ? pref.pinned : []) as string[]);
+      for (const uri of (Array.isArray(pref.saved) ? pref.saved : []) as string[]) {
+        if (isGeneratorUri(uri)) {
+          if (!pinnedByUri.has(uri)) {
+            orderedUris.push(uri);
+          }
+          pinnedByUri.set(uri, pinnedByUri.get(uri) || pinnedSet.has(uri));
+        }
+      }
+    }
+  }
+
+  if (orderedUris.length === 0) {
+    return [];
+  }
+
+  // Resolve feed-generator metadata in batches (getFeedGenerators caps inputs).
+  type GeneratorMeta = {
+    uri: string;
+    displayName?: string;
+    description?: string;
+    avatar?: string;
+    creator?: { handle?: string };
+  };
+  const metaByUri = new Map<string, GeneratorMeta>();
+  for (let index = 0; index < orderedUris.length; index += 50) {
+    const chunk = orderedUris.slice(index, index + 50);
+    const generators = await agent.app.bsky.feed.getFeedGenerators({ feeds: chunk });
+    for (const view of generators.data?.feeds ?? []) {
+      metaByUri.set(view.uri, view as GeneratorMeta);
+    }
+  }
+
+  return orderedUris
+    .map((uri): SubscribedFeed | null => {
+      const view = metaByUri.get(uri);
+      if (!view) {
+        return null;
+      }
+      return {
+        uri,
+        displayName: view.displayName || "Feed",
+        description: view.description,
+        creatorHandle: view.creator?.handle,
+        avatar: view.avatar,
+        pinned: pinnedByUri.get(uri) ?? false,
+      };
+    })
+    .filter((feed): feed is SubscribedFeed => feed !== null);
 }
 
 export async function clearOAuthSessionStorage() {

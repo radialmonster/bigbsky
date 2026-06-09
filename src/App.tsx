@@ -69,7 +69,9 @@ import {
 } from "./api";
 import {
   type AuthSnapshot,
+  type SubscribedFeed,
   clearOAuthSessionStorage,
+  getSubscribedFeeds,
   initAuthSession,
   looksLikeOAuthCallback,
   signOut,
@@ -661,6 +663,7 @@ export function App() {
   const [recentItems, setRecentItems] = useState<RecentItem[]>(() => readRecentItems());
   const [devMetrics, setDevMetrics] = useState<DevMetrics>(initialDevMetrics);
   const [authState, setAuthState] = useState<AuthState>(initialAuthState);
+  const [subscribedFeeds, setSubscribedFeeds] = useState<FeedSource[]>([]);
   const [isAccountSwitcherOpen, setIsAccountSwitcherOpen] = useState(false);
   const [virtualRenderedRows, setVirtualRenderedRows] = useState(0);
   const [thread, setThread] = useState<{ status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string }>({
@@ -704,9 +707,48 @@ export function App() {
     };
   }, []);
 
+  // When signed in, load the user's subscribed/pinned feeds from their AT
+  // Protocol preferences and surface them in the feed selector. Cleared on
+  // sign-out. Failures are non-fatal: the selector keeps its public feeds.
+  const signedInDid = authState.status === "signed-in" ? authState.session?.did : undefined;
+  useEffect(() => {
+    if (!signedInDid) {
+      setSubscribedFeeds([]);
+      return;
+    }
+    let cancelled = false;
+    getSubscribedFeeds()
+      .then((feeds) => {
+        if (cancelled) {
+          return;
+        }
+        setSubscribedFeeds(
+          feeds.map((feed: SubscribedFeed) => ({
+            id: feed.uri,
+            uri: feed.uri,
+            label: feed.displayName,
+            group: "My Feeds" as const,
+            description: feed.creatorHandle
+              ? `By @${feed.creatorHandle}${feed.pinned ? " · Pinned" : ""}`
+              : feed.description || "Your subscribed feed.",
+          })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSubscribedFeeds([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [signedInDid]);
+
   const activeSource = useMemo<FeedSource>(() => {
     if (route.kind === "feed" && route.uri) {
-      const known = feedSources.find((source) => source.id === route.uri || source.uri === route.uri);
+      const known =
+        feedSources.find((source) => source.id === route.uri || source.uri === route.uri) ??
+        subscribedFeeds.find((source) => source.id === route.uri || source.uri === route.uri);
       if (known) {
         return known;
       }
@@ -722,7 +764,14 @@ export function App() {
       }
     }
     return feedSources.find((source) => source.id === activeSourceId) ?? feedSources[0];
-  }, [route, activeSourceId]);
+  }, [route, activeSourceId, subscribedFeeds]);
+  // Static public feeds plus the signed-in user's subscribed feeds (deduped by
+  // URI so a saved copy of a built-in feed does not appear twice).
+  const allSources = useMemo(() => {
+    const staticUris = new Set(feedSources.map((source) => source.uri));
+    const extras = subscribedFeeds.filter((source) => !staticUris.has(source.uri));
+    return [...feedSources, ...extras];
+  }, [subscribedFeeds]);
   const feedRoutePath = (source: FeedSource) => `/feed/${encodeURIComponent(source.id)}`;
   const densityKey = route.kind === "feed" ? `feed:${activeSource.id}` : route.kind;
   const density = densityByContext[densityKey] || densityByContext.default || "comfortable";
@@ -733,13 +782,13 @@ export function App() {
   const visibleSources = useMemo(() => {
     const query = feedSearch.trim().toLowerCase();
     if (!query) {
-      return feedSources;
+      return allSources;
     }
 
-    return feedSources.filter((source) =>
+    return allSources.filter((source) =>
       `${source.label} ${source.description} ${source.group}`.toLowerCase().includes(query),
     );
-  }, [feedSearch]);
+  }, [feedSearch, allSources]);
   const pinnedSources = useMemo(() => {
     const lookup = new Map<string, FeedSource>();
     for (const source of feedSources) {
@@ -772,15 +821,11 @@ export function App() {
       }
     }
 
+    const groupRank = (group: string) => (group === "Pinned" ? 0 : group === "My Feeds" ? 1 : 2);
     return Object.fromEntries(
       Object.entries(groups).sort(([groupA], [groupB]) => {
-        if (groupA === "Pinned") {
-          return -1;
-        }
-        if (groupB === "Pinned") {
-          return 1;
-        }
-        return groupA.localeCompare(groupB);
+        const rankDelta = groupRank(groupA) - groupRank(groupB);
+        return rankDelta !== 0 ? rankDelta : groupA.localeCompare(groupB);
       }),
     ) as Record<string, FeedSource[]>;
   }, [feedSearch, pinnedSources, visibleSources]);
