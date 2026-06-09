@@ -40,6 +40,7 @@ requirePattern(/const knownIds = new Set\(\[\.\.\.feedSources\.map\(\(source\) =
 requirePattern(/setPinnedFeedMeta\(\(current\) => \{[\s\S]*localStorage\.setItem\(pinnedFeedMetaStorageKey/s, "toggling a discovered Feed pin should sync its local metadata store");
 
 requirePattern(/function ExploreTrendingTopics\([\s\S]*getTrendingTopics\([\s\S]*onOpenSearchQuery\(topic\.topic\)/s, "Explore trending topics should load live topics and open them as in-app searches");
+requirePattern(/function TrendingPanel\([\s\S]*getTrendingTopics\(10, controller\.signal\)[\s\S]*fallback\.length > 0/s, "the right-rail Trending panel should load live trending topics with a loaded-post fallback");
 requirePattern(/} else if \(searchTab === "feeds"\) \{[\s\S]*loadFeedSearch\(route\.query, controller\.signal\)/s, "the Feeds search tab should run a live public Feed search only after explicit search navigation");
 requirePattern(/const loadFeedSearch = useCallback\([\s\S]*getPopularFeedGenerators\(20, signal, query\)/s, "live Feed search should query the public popular-feed-generators endpoint");
 requirePattern(/className="discover-feeds-search"[\s\S]*setActiveQuery\(draftQuery\.trim\(\)\)/s, "Explore Discover New Feeds should only refetch on explicit search submit");
