@@ -1150,6 +1150,7 @@ Request budget mindset:
 ## Reference Sources
 
 - AT Protocol source / lexicons (canonical XRPC methods, types, lexicons): https://github.com/bluesky-social/atproto
+- Bluesky HTTP API reference (all XRPC endpoints, params, responses): https://docs.bsky.app/docs/category/http-reference
 - Bluesky API docs: https://docs.bsky.app/
 - Bluesky API hosts and auth guide: https://docs.bsky.app/docs/advanced-guides/api-directory
 - Bluesky OAuth client implementation guide: https://docs.bsky.app/docs/advanced-guides/oauth-client
