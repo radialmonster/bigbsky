@@ -70,7 +70,8 @@ requirePattern(/function renderRichText\([\s\S]*app\.bsky\.richtext\.facet#link[
 requirePattern(/const TagSearchContext = createContext[\s\S]*onClick=\{\(event\) => \{[\s\S]*onOpenTag\(tag\)/s, "hashtag facets should open an in-app search via the tag-search context");
 requirePattern(/renderRichText\(post\.record\.facets\?\.length \? post\.record\.text \|\| "" : text, post\.record\.facets, onOpenProfile/, "post cards should render rich-text facets for post body text");
 requirePattern(/renderRichText\(\s*record\.value\?\.facets\?\.length \? record\.value\.text \|\| "" : text,\s*record\.value\?\.facets,\s*onOpenProfile,\s*onOpenTag,/s, "quoted posts should render rich-text facets for their body text");
-requirePattern(/const gateMedia = !showNsfw && mediaWarningLabels\.length > 0 && \(images\.length > 0 \|\| !!video\) && !mediaRevealed/, "adult/graphic media should be gated behind a reveal warning unless the NSFW preference is on");
+requirePattern(/const gateMedia = !showNsfw && mediaWarningValues\.length > 0 && \(images\.length > 0 \|\| !!video\) && !mediaRevealed/, "adult/graphic media should be gated behind a reveal warning unless the NSFW preference is on");
+requirePattern(/\[\.\.\.labels, \.\.\.\(post\.author\.labels \?\? \[\]\)\]\.filter\(isSensitiveLabel\)/, "media gating should consider account-level (author) labels, not just post labels");
 requirePattern(/const ShowNsfwContext = createContext<boolean>\(false\)/, "the NSFW preference should default to hidden for everyone");
 requirePattern(/localStorage\.setItem\(showNsfwStorageKey, next \? "true" : "false"\)/, "the NSFW preference should persist in browser-local storage");
 requirePattern(/gateMedia \? \(\s*<button type="button" className="sensitive-media-gate" onClick=\{\(\) => setMediaRevealed\(true\)\}/s, "sensitive media should require an explicit Show click before rendering");

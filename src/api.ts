@@ -19,6 +19,7 @@ export type Profile = {
   followersCount?: number;
   followsCount?: number;
   postsCount?: number;
+  labels?: Array<{ val?: string; src?: string; uri?: string }>;
 };
 
 export type FeedGeneratorView = {

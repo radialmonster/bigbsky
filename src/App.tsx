@@ -4259,11 +4259,19 @@ function PostCard({
   const postVariant = images.length > 0 || !!video ? "has-media" : external ? "has-link" : recordEmbed ? "has-quote" : "text-only";
   const isOwnPost = !!currentDid && post.author.did === currentDid;
   const labels = post.labels ?? [];
-  const sensitiveLabels = labels.filter(isSensitiveLabel);
+  // Adult content is often labeled at the account level, not the post, so check
+  // the author's labels too when deciding whether to hide media.
+  const sensitiveLabels = [...labels, ...(post.author.labels ?? [])].filter(isSensitiveLabel);
   // Gate adult/graphic media behind a click-to-reveal warning (spam labels are
   // not about media, so they don't hide images/video).
-  const mediaWarningLabels = sensitiveLabels.filter((label) => !(label.val?.toLowerCase() || "").includes("spam"));
-  const gateMedia = !showNsfw && mediaWarningLabels.length > 0 && (images.length > 0 || !!video) && !mediaRevealed;
+  const mediaWarningValues = Array.from(
+    new Set(
+      sensitiveLabels
+        .map((label) => label.val?.toLowerCase() || "")
+        .filter((value) => value && !value.includes("spam")),
+    ),
+  );
+  const gateMedia = !showNsfw && mediaWarningValues.length > 0 && (images.length > 0 || !!video) && !mediaRevealed;
   const moderationNotes = [
     ...(post.viewer?.threadMuted ? ["Thread muted"] : []),
     ...(post.viewer?.replyDisabled ? ["Replies limited"] : []),
@@ -4338,7 +4346,7 @@ function PostCard({
         <button type="button" className="sensitive-media-gate" onClick={() => setMediaRevealed(true)}>
           <EyeOff size={18} />
           <strong>Sensitive content</strong>
-          <small>{mediaWarningLabels.map(moderationLabelText).join(", ")}</small>
+          <small>{mediaWarningValues.map((value) => moderationLabelText({ val: value })).join(", ")}</small>
           <span className="sensitive-media-show">Show</span>
         </button>
       ) : (
@@ -4381,7 +4389,7 @@ function PostCard({
             </div>
           )}
           {video && <VideoEmbedCard video={video} />}
-          {mediaRevealed && mediaWarningLabels.length > 0 && (
+          {mediaRevealed && mediaWarningValues.length > 0 && (
             <button type="button" className="sensitive-media-hide" onClick={() => setMediaRevealed(false)}>
               <EyeOff size={13} /> Hide sensitive media
             </button>
