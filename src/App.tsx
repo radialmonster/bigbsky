@@ -82,6 +82,18 @@ const navIcons = [Home, Compass, Bell, MessageCircle, Hash, List, Bookmark, User
 // a callback through every PostCard/VirtualPostList call site.
 const TagSearchContext = createContext<((tag: string) => void) | null>(null);
 
+// Browser-local NSFW preference; false (hide/warn) by default for everyone.
+// Read by post cards to decide whether adult/graphic media is gated.
+const ShowNsfwContext = createContext<boolean>(false);
+
+function readShowNsfw() {
+  try {
+    return localStorage.getItem(showNsfwStorageKey) === "true";
+  } catch {
+    return false;
+  }
+}
+
 type FeedState = {
   items: FeedItem[];
   cursor?: string;
@@ -181,6 +193,7 @@ const savedPostsStorageKey = "bigbsky:saved-posts";
 const composerDraftStorageKey = "bigbsky:composer-draft";
 const localListsStorageKey = "bigbsky:local-lists";
 const workspaceWidthStorageKey = "bigbsky:workspace-width";
+const showNsfwStorageKey = "bigbsky:show-nsfw";
 const pinnedFeedsStorageKey = "bigbsky:pinned-feeds";
 const pinnedFeedMetaStorageKey = "bigbsky:pinned-feed-meta";
 const pinnedSearchesStorageKey = "bigbsky:pinned-searches";
@@ -615,6 +628,7 @@ export function App() {
   const [linkPreview, setLinkPreview] = useState<LinkPreviewState>(null);
   const [densityByContext, setDensityByContext] = useState<Record<string, string>>(() => readDensityPreferences());
   const [workspaceWidth, setWorkspaceWidth] = useState<(typeof widthModes)[number]>(() => readWorkspaceWidthPreference());
+  const [showNsfw, setShowNsfw] = useState<boolean>(() => readShowNsfw());
   const [pinnedFeedMeta, setPinnedFeedMeta] = useState<FeedSource[]>(() => readPinnedFeedMeta());
   const [pinnedFeedIds, setPinnedFeedIds] = useState<string[]>(() => readPinnedFeedIds(pinnedFeedMeta));
   const [pinnedSearches, setPinnedSearches] = useState<string[]>(() => readPinnedSearches());
@@ -1280,6 +1294,14 @@ export function App() {
     localStorage.setItem(workspaceWidthStorageKey, nextWidth);
   }
 
+  function toggleShowNsfw() {
+    setShowNsfw((current) => {
+      const next = !current;
+      localStorage.setItem(showNsfwStorageKey, next ? "true" : "false");
+      return next;
+    });
+  }
+
   async function clearLocalReaderData() {
     Object.keys(localStorage)
       .filter((key) => key.startsWith("bigbsky:"))
@@ -1736,6 +1758,7 @@ export function App() {
 
   return (
     <TagSearchContext.Provider value={openTag}>
+      <ShowNsfwContext.Provider value={showNsfw}>
       <div className={`app-shell width-${workspaceWidth}`}>
       <aside className="left-rail" aria-label="Primary">
         <button className="brand-button" type="button" onClick={() => navigate({ kind: "feed" })} title="BigBSky">
@@ -1952,6 +1975,8 @@ export function App() {
             onSignOut={handleSignOut}
             onTogglePinnedFeed={togglePinnedFeed}
             onWorkspaceWidthChange={updateWorkspaceWidth}
+            showNsfw={showNsfw}
+            onToggleNsfw={toggleShowNsfw}
             currentDid={authState.session?.did}
             savedUris={savedUriSet}
             onOpenImage={setImageViewer}
@@ -2157,6 +2182,7 @@ export function App() {
 
       {imageViewer && <ImageViewer image={imageViewer} onChange={setImageViewer} onClose={() => setImageViewer(null)} />}
       </div>
+      </ShowNsfwContext.Provider>
     </TagSearchContext.Provider>
   );
 }
@@ -2433,6 +2459,8 @@ function SurfaceView({
   onTogglePinnedFeed,
   onTogglePinnedNotification,
   onWorkspaceWidthChange,
+  showNsfw,
+  onToggleNsfw,
   currentDid,
   savedUris,
 }: {
@@ -2468,6 +2496,8 @@ function SurfaceView({
   onTogglePinnedFeed: (source: FeedSource) => void;
   onTogglePinnedNotification: (id: string) => void;
   onWorkspaceWidthChange: (width: (typeof widthModes)[number]) => void;
+  showNsfw: boolean;
+  onToggleNsfw: () => void;
   currentDid?: string;
   savedUris: Set<string>;
 }) {
@@ -2588,6 +2618,24 @@ function SurfaceView({
               ))}
             </div>
             <p>Feed width is stored locally and changes how much desktop space the reader claims from side context.</p>
+          </article>
+          <article className="settings-panel">
+            <span>{showNsfw ? "Showing" : "Hidden"}</span>
+            <h3>Content &amp; Media</h3>
+            <p>Adult and graphic media is hidden behind a warning by default. Turn this on to show labeled media without the per-post Show step.</p>
+            <button
+              type="button"
+              className={showNsfw ? "settings-toggle on" : "settings-toggle"}
+              role="switch"
+              aria-checked={showNsfw}
+              onClick={onToggleNsfw}
+            >
+              <span className="settings-toggle-track" aria-hidden="true">
+                <span className="settings-toggle-thumb" />
+              </span>
+              <span>{showNsfw ? "Showing adult / graphic media" : "Hiding adult / graphic media"}</span>
+            </button>
+            <p>This preference is stored locally in this browser only.</p>
           </article>
           <article className="settings-panel">
             <span>Local</span>
@@ -4198,6 +4246,7 @@ function PostCard({
 }) {
   const post = item.post;
   const onOpenTag = useContext(TagSearchContext);
+  const showNsfw = useContext(ShowNsfwContext);
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
   const [mediaRevealed, setMediaRevealed] = useState(false);
   const images = getEmbedImages(post.embed);
@@ -4214,7 +4263,7 @@ function PostCard({
   // Gate adult/graphic media behind a click-to-reveal warning (spam labels are
   // not about media, so they don't hide images/video).
   const mediaWarningLabels = sensitiveLabels.filter((label) => !(label.val?.toLowerCase() || "").includes("spam"));
-  const gateMedia = mediaWarningLabels.length > 0 && (images.length > 0 || !!video) && !mediaRevealed;
+  const gateMedia = !showNsfw && mediaWarningLabels.length > 0 && (images.length > 0 || !!video) && !mediaRevealed;
   const moderationNotes = [
     ...(post.viewer?.threadMuted ? ["Thread muted"] : []),
     ...(post.viewer?.replyDisabled ? ["Replies limited"] : []),

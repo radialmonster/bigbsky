@@ -883,6 +883,46 @@ button {
   color: var(--app-danger) !important;
 }
 
+.settings-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 0;
+  background: transparent;
+  color: var(--app-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.settings-toggle-track {
+  display: inline-flex;
+  align-items: center;
+  width: 40px;
+  min-width: 40px;
+  height: 22px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--app-border-strong);
+  transition: background 0.15s ease;
+}
+
+.settings-toggle.on .settings-toggle-track {
+  background: var(--bsky-blue);
+}
+
+.settings-toggle-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s ease;
+}
+
+.settings-toggle.on .settings-toggle-thumb {
+  transform: translateX(18px);
+}
+
 .self-profile-card {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) auto;
