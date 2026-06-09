@@ -170,10 +170,13 @@ export type PopularFeedsResponse = {
   feeds: FeedGeneratorView[];
 };
 
-export function getPopularFeedGenerators(limit = 12, signal?: AbortSignal) {
+export function getPopularFeedGenerators(limit = 12, signal?: AbortSignal, query?: string) {
   return getJson<PopularFeedsResponse>(
     "app.bsky.unspecced.getPopularFeedGenerators",
-    { limit: String(limit) },
+    {
+      limit: String(limit),
+      ...(query?.trim() ? { query: query.trim() } : {}),
+    },
     signal,
   );
 }

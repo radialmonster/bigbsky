@@ -88,6 +88,12 @@ type ActorSearchState = {
   error?: string;
 };
 
+type FeedSearchState = {
+  feeds: FeedGeneratorView[];
+  status: "idle" | "loading" | "ready" | "error" | "rate-limit";
+  error?: string;
+};
+
 type ImageViewerState = {
   images: Array<{
     src: string;
@@ -168,6 +174,7 @@ const replyDraftPrefix = "bigbsky:reply-draft:";
 const emptyFeedState: FeedState = { items: [], status: "idle" };
 const emptySearchState: SearchState = { posts: [], status: "idle" };
 const emptyActorSearchState: ActorSearchState = { actors: [], status: "idle" };
+const emptyFeedSearchState: FeedSearchState = { feeds: [], status: "idle" };
 const initialDevMetrics: DevMetrics = {
   apiRequests: 0,
   cacheHits: 0,
@@ -567,6 +574,7 @@ export function App() {
   const [feedState, setFeedState] = useState<FeedState>(emptyFeedState);
   const [searchState, setSearchState] = useState<SearchState>(emptySearchState);
   const [actorSearchState, setActorSearchState] = useState<ActorSearchState>(emptyActorSearchState);
+  const [feedSearchState, setFeedSearchState] = useState<FeedSearchState>(emptyFeedSearchState);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [feedMetadata, setFeedMetadata] = useState<FeedGeneratorView | null>(null);
   const [composerDraft, setComposerDraft] = useState(() => readComposerDraft());
@@ -597,6 +605,7 @@ export function App() {
   const profileCacheRef = useRef<Record<string, { feed: FeedState; profile: Profile | null }>>({});
   const searchCacheRef = useRef<Record<string, SearchState>>({});
   const actorSearchCacheRef = useRef<Record<string, ActorSearchState>>({});
+  const feedSearchCacheRef = useRef<Record<string, FeedSearchState>>({});
   const threadCacheRef = useRef<Record<string, ThreadNode>>({});
   const threadBranchCacheRef = useRef<Record<string, ThreadNode>>({});
   const scrollCacheRef = useRef<Record<string, number>>(readTimelineScrollCache());
@@ -938,6 +947,33 @@ export function App() {
     }
   }, []);
 
+  const loadFeedSearch = useCallback(async (query: string, signal?: AbortSignal) => {
+    const cacheKey = `feeds:${query.trim().toLowerCase()}`;
+    const cached = feedSearchCacheRef.current[cacheKey];
+    if (cached?.status === "ready") {
+      setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
+      setFeedSearchState(cached);
+      return;
+    }
+
+    setFeedSearchState({ feeds: [], status: "loading" });
+
+    try {
+      const response = await getPopularFeedGenerators(20, signal, query);
+      const next: FeedSearchState = { feeds: response.feeds, status: "ready" };
+      feedSearchCacheRef.current[cacheKey] = next;
+      setFeedSearchState(next);
+    } catch (error) {
+      if (!signal?.aborted) {
+        setFeedSearchState({
+          feeds: [],
+          status: isRateLimit(error) ? "rate-limit" : "error",
+          error: rateLimitMessage(error),
+        });
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (route.kind === "post" || route.kind === "search" || route.kind === "surface") {
       return undefined;
@@ -966,22 +1002,30 @@ export function App() {
     if (!route.query) {
       setSearchState(emptySearchState);
       setActorSearchState(emptyActorSearchState);
+      setFeedSearchState(emptyFeedSearchState);
       return undefined;
     }
 
     const controller = new AbortController();
     if (searchTab === "posts") {
       setActorSearchState(emptyActorSearchState);
+      setFeedSearchState(emptyFeedSearchState);
       void loadSearch(route.query, searchSort, searchLanguage, undefined, controller.signal);
     } else if (searchTab === "people") {
       setSearchState(emptySearchState);
+      setFeedSearchState(emptyFeedSearchState);
       void loadActorSearch(route.query, undefined, controller.signal);
+    } else if (searchTab === "feeds") {
+      setSearchState(emptySearchState);
+      setActorSearchState(emptyActorSearchState);
+      void loadFeedSearch(route.query, controller.signal);
     } else {
       setSearchState(emptySearchState);
       setActorSearchState(emptyActorSearchState);
+      setFeedSearchState(emptyFeedSearchState);
     }
     return () => controller.abort();
-  }, [loadActorSearch, loadSearch, route, searchLanguage, searchSort, searchTab]);
+  }, [loadActorSearch, loadFeedSearch, loadSearch, route, searchLanguage, searchSort, searchTab]);
 
   useEffect(() => {
     if (route.kind === "post" || route.kind === "search" || route.kind === "surface" || route.kind === "profile") {
@@ -1196,6 +1240,7 @@ export function App() {
     profileCacheRef.current = {};
     searchCacheRef.current = {};
     actorSearchCacheRef.current = {};
+    feedSearchCacheRef.current = {};
     threadCacheRef.current = {};
     threadBranchCacheRef.current = {};
     scrollCacheRef.current = {};
@@ -1593,6 +1638,7 @@ export function App() {
     setGlobalSearchText("");
     setSearchState(emptySearchState);
     setActorSearchState(emptyActorSearchState);
+    setFeedSearchState(emptyFeedSearchState);
     navigate({ kind: "search" }, "/search");
   };
 
@@ -1848,6 +1894,7 @@ export function App() {
         ) : route.kind === "search" ? (
           <SearchView
             actorSearchState={actorSearchState}
+            feedSearchState={feedSearchState}
             currentDid={authState.session?.did}
             feedSources={feedSources}
             language={searchLanguage}
@@ -3470,6 +3517,7 @@ function SavedPostsView({
 
 function SearchView({
   actorSearchState,
+  feedSearchState,
   currentDid,
   feedSources,
   language,
@@ -3497,6 +3545,7 @@ function SearchView({
   onToggleListPost,
 }: {
   actorSearchState: ActorSearchState;
+  feedSearchState: FeedSearchState;
   currentDid?: string;
   feedSources: FeedSource[];
   language: string;
@@ -3601,19 +3650,54 @@ function SearchView({
       </form>
 
       {tab === "feeds" && (
-        <section className="search-results-list" aria-label="Feed search results">
-          {feedResults.length === 0 ? (
-            <EmptyState title="No Feeds found" message="Try another term or clear the search to see all local Feed destinations." />
-          ) : (
-            feedResults.map((source) => (
-              <button className="feed-result-card" key={source.id} type="button" onClick={() => onOpenFeed(source)}>
-                <span>{source.group}</span>
-                <strong>{source.label}</strong>
-                <small>{source.description}</small>
-              </button>
-            ))
+        <>
+          {feedResults.length > 0 && (
+            <section className="search-results-list" aria-label="Local Feed destinations">
+              <h3 className="search-section-heading">Local Feed destinations</h3>
+              {feedResults.map((source) => (
+                <button className="feed-result-card" key={source.id} type="button" onClick={() => onOpenFeed(source)}>
+                  <span>{source.group}</span>
+                  <strong>{source.label}</strong>
+                  <small>{source.description}</small>
+                </button>
+              ))}
+            </section>
           )}
-        </section>
+
+          <section className="search-results-list" aria-label="Public Feed results">
+            <h3 className="search-section-heading">Public Feeds on Bluesky</h3>
+            {feedSearchState.status === "idle" && (
+              <EmptyState title="Search public Feeds" message="Enter a term to find public Feeds across Bluesky." />
+            )}
+            {feedSearchState.status === "loading" && <LoadingState label="Searching public Feeds" />}
+            {feedSearchState.status === "error" && <ErrorState message={feedSearchState.error || "Public Feed search failed to load."} />}
+            {feedSearchState.status === "rate-limit" && <RateLimitState message={feedSearchState.error} />}
+            {feedSearchState.status === "ready" && feedSearchState.feeds.length === 0 && (
+              <EmptyState title="No public Feeds found" message="Try a broader term." />
+            )}
+            {feedSearchState.status === "ready" &&
+              feedSearchState.feeds.map((feed) => (
+                <button
+                  className="feed-result-card"
+                  key={feed.uri}
+                  type="button"
+                  onClick={() =>
+                    onOpenFeed({
+                      id: feed.uri,
+                      uri: feed.uri,
+                      label: feed.displayName || "Public Feed",
+                      group: "Project",
+                      description: feed.description || "Public Bluesky feed opened from search.",
+                    })
+                  }
+                >
+                  <span>by @{feed.creator?.handle ?? "unknown"}</span>
+                  <strong>{feed.displayName || "Public Feed"}</strong>
+                  {feed.description && <small>{feed.description}</small>}
+                </button>
+              ))}
+          </section>
+        </>
       )}
 
       {tab === "people" && (

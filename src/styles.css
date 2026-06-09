@@ -1676,6 +1676,16 @@ button.surface-action {
   gap: 4px;
 }
 
+.search-section-heading {
+  margin: 0 0 4px;
+  padding: 0 2px;
+  color: var(--app-text-soft);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .feed-result-card span {
   color: var(--app-text-soft);
   font-size: 11px;
