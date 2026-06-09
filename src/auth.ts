@@ -47,12 +47,19 @@ async function getClientId() {
     return productionClientId;
   }
 
-  const { buildLoopbackClientId } = await import("@atproto/oauth-client-browser");
-  return buildLoopbackClientId({
+  const [{ buildLoopbackClientId }, { OAUTH_SCOPE }] = await Promise.all([
+    import("@atproto/oauth-client-browser"),
+    import("./scopes"),
+  ]);
+  // The loopback client id carries its metadata in the query string. Append our
+  // scope so localhost auth requests the same permissions as production (the
+  // hosted oauth-client-metadata.json), instead of the bare `atproto` default.
+  const loopbackClientId = buildLoopbackClientId({
     hostname: window.location.hostname,
     port: window.location.port,
     pathname: "/",
   });
+  return `${loopbackClientId}&scope=${encodeURIComponent(OAUTH_SCOPE)}`;
 }
 
 export function looksLikeOAuthCallback() {

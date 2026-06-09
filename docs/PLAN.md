@@ -1104,6 +1104,25 @@ Request budget mindset:
 - Framework adapters may silently create serverless routes, middleware, or SSR bundles. The build audit must catch this before deployment.
 - Dynamic per-post/profile metadata would likely require server rendering or prerender generation. Defer it unless a fully static approach is sufficient.
 - OAuth metadata URL stability matters. Production OAuth testing should use the configured `bigbsky.com` domain.
+
+### How to test OAuth / sign-in (MANDATORY PROCESS — do not relearn this the hard way)
+
+Context: an assistant burned a long session trying to drive OAuth sign-in through the local preview and the Claude-in-Chrome dev-tools browser. It does not work, for concrete, repeatable reasons. Follow this instead.
+
+Hard constraints (verified 2026-06-09):
+- The Claude **preview** server (`Claude_Preview`) is **localhost-only**. It cannot complete OAuth.
+- atproto loopback OAuth **requires the `127.0.0.1` origin**: `@atproto/oauth-client-browser`'s `fixLocation()` force-redirects `localhost` → `127.0.0.1`, and the loopback `redirect_uri` is the IP form. So any sign-in started on `localhost` bounces to `127.0.0.1` first.
+- The **Claude-in-Chrome MCP browser is a SEPARATE Chrome instance** from the user's visible Chrome and from the host shell. It can reach the **public internet** (e.g. `example.com`, `https://bigbsky.com`) but **cannot reach the host's `localhost:5173` dev server** (host `curl` gets 200; the MCP browser gets a Chrome error page). It only controls its own tab group; it cannot see the user's other tabs. The user generally **cannot see** its window, and you cannot reliably foreground it.
+- **computer-use grants browsers "read" tier only** — you can screenshot the user's Chrome but cannot click or type into it. So you cannot drive the user's visible browser.
+- Net effect: **local OAuth sign-in cannot be tested by the assistant** via preview, MCP browser, or computer-use. Stop trying.
+
+Correct procedure:
+1. **Code/typecheck locally** (`npx tsc --noEmit`) — that is the limit of what the assistant can self-verify for auth.
+2. **Read-only inspection** of the deployed site is fine and useful: the Claude-in-Chrome MCP browser CAN load `https://bigbsky.com` / `https://bigbsky.pages.dev` and `read_page` it.
+3. **Actual sign-in is operator-driven on the DEPLOYED origin.** The assistant must not type the user's password (prohibited) and cannot reach local OAuth anyway. Deploy first, then the operator signs in on `bigbsky.com`/`pages.dev` and reports what Bluesky's consent screen shows.
+4. When a scope/auth change needs verification, the deliverable is: commit → deploy → operator confirms the consent screen + a signed-in read/write. Do not promise local verification.
+
+Behavioral rule: when the operator states an environment constraint ("preview only supports localhost", "I can't see it"), **believe it immediately** and change approach — do not keep retrying the same blocked path.
 - Rate limits and public API behavior may affect anonymous browsing.
 - Some Bluesky features may require authenticated requests even for read-like behavior.
 - CORS behavior must be verified against the exact endpoints and SDK path we choose.
