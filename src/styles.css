@@ -2286,9 +2286,12 @@ button.surface-action {
 .link-card,
 .link-card a {
   display: grid;
-  grid-template-columns: 148px 1fr;
-  gap: 12px;
-  min-height: 112px;
+  /* In the very wide content column a 148px thumbnail left a thin, empty
+     stretched strip. A larger proportional thumbnail (bounded) makes the
+     card a substantial banner that fills the width pleasingly. */
+  grid-template-columns: clamp(220px, 24%, 440px) 1fr;
+  gap: 16px;
+  min-height: 168px;
   margin: 12px 0;
   overflow: hidden;
   border: 1px solid var(--app-border);
@@ -3480,7 +3483,8 @@ button.surface-action {
     padding: 14px;
   }
 
-  .link-card {
+  .link-card,
+  .link-card a {
     grid-template-columns: 1fr;
   }
 
