@@ -1836,7 +1836,7 @@ button.surface-action {
 
 .post-header {
   display: grid;
-  grid-template-columns: 46px 1fr 36px;
+  grid-template-columns: 46px minmax(0, 1fr) 36px;
   align-items: center;
   gap: 10px;
 }
@@ -3377,7 +3377,10 @@ button.surface-action {
 
 @media (max-width: 720px) {
   .app-shell {
-    grid-template-columns: 1fr;
+    /* minmax(0, 1fr), not bare 1fr: a 1fr track keeps a min-content floor, so
+       wide post content (long handles, action rows) stopped the single column
+       from shrinking to the viewport and clipped the right edge on mobile. */
+    grid-template-columns: minmax(0, 1fr);
     min-height: 100vh;
   }
 

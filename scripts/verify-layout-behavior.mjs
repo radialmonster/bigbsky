@@ -45,6 +45,9 @@ requirePattern(css, /\.app-shell \{[\s\S]*grid-template-columns: 76px 288px minm
 forbidPattern(css, /minmax\(980px, 1fr\)/s, "do not re-add the per-screen-size content-column override; widen it fluidly with 1fr");
 forbidPattern(css, /\.app-shell\.width-(wide|focus)/s, "do not re-add per-screen-size width-mode grid overrides; the base width-mode grids already scale via 1fr");
 forbidPattern(css, /min-width: 2560px/s, "do not add ultrawide-specific breakpoints; the 1fr content column already scales");
+// Mobile single column must use minmax(0, 1fr) so wide post content cannot
+// hold the column open and clip the right edge.
+requirePattern(css, /@media \(max-width: 720px\) \{[\s\S]*\.app-shell \{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/s, "mobile single column should be minmax(0, 1fr) so content cannot force horizontal overflow");
 // Prose holds a readable measure so the very wide reader stays pleasing,
 // as a single constant (no per-screen-size rule). Media keeps full width.
 requirePattern(css, /\.post-text \{[\s\S]*max-width: 70ch;/s, "post prose should keep a readable line-length measure in the wide column");
