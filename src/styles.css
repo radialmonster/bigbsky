@@ -1685,21 +1685,21 @@ button.surface-action {
 }
 
 .discover-feed-body strong {
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .discover-feed-body small {
   color: var(--app-text-soft);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .discover-feed-desc {
-  margin-top: 4px;
+  margin-top: 6px;
   color: var(--app-text-muted);
-  font-size: 12px;
-  line-height: 1.4;
+  font-size: 14px;
+  line-height: 1.45;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -1708,7 +1708,7 @@ button.surface-action {
   grid-column: 2;
   margin-top: 6px;
   color: var(--app-text-soft);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -1724,12 +1724,12 @@ button.surface-action {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 10px;
+  padding: 6px 12px;
   border: 1px solid var(--app-border);
   border-radius: 999px;
   background: var(--app-surface-2);
   color: var(--app-text-soft);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -1745,7 +1745,7 @@ button.surface-action {
 }
 
 .discover-feed-external {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -2086,6 +2086,49 @@ button.surface-action {
 
 .sensitive-media-hide:hover {
   color: var(--app-text);
+}
+
+/* Compact placeholder shown in place of images/video when "Show Media" is off.
+   Unlike the sensitive gate this is a slim inline bar, not a tall panel. */
+.media-hidden-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 8px 12px;
+  border: 1px dashed var(--app-border-strong);
+  border-radius: 10px;
+  background: var(--app-surface-2);
+  color: var(--app-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.media-hidden-button:hover {
+  color: var(--app-text);
+  border-color: var(--app-text-muted);
+}
+
+.media-hidden-show {
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: var(--bsky-blue);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Inside a link card the reveal control sits next to the Preview button. */
+.link-media-hidden {
+  margin: 0 10px;
+  align-self: center;
+}
+
+/* When the link thumbnail is hidden the card has no media column, so collapse
+   it to a single text column instead of leaving an empty gap. */
+.link-card.no-media,
+.link-card.no-media a {
+  grid-template-columns: 1fr;
 }
 
 .avatar {

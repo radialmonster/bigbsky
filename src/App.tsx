@@ -93,11 +93,24 @@ const TagSearchContext = createContext<((tag: string) => void) | null>(null);
 // Read by post cards to decide whether adult/graphic media is gated.
 const ShowNsfwContext = createContext<boolean>(false);
 
+// Read by post cards to decide whether to render images/video at all. When
+// off, media is replaced by a click-to-reveal affordance (text still shows).
+const ShowMediaContext = createContext<boolean>(true);
+
 function readShowNsfw() {
   try {
     return localStorage.getItem(showNsfwStorageKey) === "true";
   } catch {
     return false;
+  }
+}
+
+function readShowMedia() {
+  try {
+    // On by default: only an explicit "false" disables media.
+    return localStorage.getItem(showMediaStorageKey) !== "false";
+  } catch {
+    return true;
   }
 }
 
@@ -214,6 +227,7 @@ const localListsStorageKey = "bigbsky:local-lists";
 const workspaceWidthStorageKey = "bigbsky:workspace-width";
 const widthByContextStorageKey = "bigbsky:width-by-context";
 const showNsfwStorageKey = "bigbsky:show-nsfw";
+const showMediaStorageKey = "bigbsky:show-media";
 const pinnedFeedsStorageKey = "bigbsky:pinned-feeds";
 const pinnedFeedMetaStorageKey = "bigbsky:pinned-feed-meta";
 const pinnedSearchesStorageKey = "bigbsky:pinned-searches";
@@ -702,6 +716,7 @@ export function App() {
   const [densityByContext, setDensityByContext] = useState<Record<string, string>>(() => readDensityPreferences());
   const [widthByContext, setWidthByContext] = useState<Record<string, string>>(() => readWidthPreferences());
   const [showNsfw, setShowNsfw] = useState<boolean>(() => readShowNsfw());
+  const [showMedia, setShowMedia] = useState<boolean>(() => readShowMedia());
   const [pinnedFeedMeta, setPinnedFeedMeta] = useState<FeedSource[]>(() => readPinnedFeedMeta());
   const [pinnedFeedIds, setPinnedFeedIds] = useState<string[]>(() => readPinnedFeedIds(pinnedFeedMeta));
   const [pinnedSearches, setPinnedSearches] = useState<string[]>(() => readPinnedSearches());
@@ -1437,6 +1452,14 @@ export function App() {
     });
   }
 
+  function toggleShowMedia() {
+    setShowMedia((current) => {
+      const next = !current;
+      localStorage.setItem(showMediaStorageKey, next ? "true" : "false");
+      return next;
+    });
+  }
+
   async function clearLocalReaderData() {
     Object.keys(localStorage)
       .filter((key) => key.startsWith("bigbsky:"))
@@ -1904,6 +1927,7 @@ export function App() {
   return (
     <TagSearchContext.Provider value={openTag}>
       <ShowNsfwContext.Provider value={showNsfw}>
+      <ShowMediaContext.Provider value={showMedia}>
       <div className={`app-shell width-${workspaceWidth} ${navOpen ? "nav-open" : "nav-hidden"}`}>
       <aside className="left-rail" aria-label="Primary">
         <button className="brand-button" type="button" onClick={() => navigate({ kind: "feed" })} title="BigBSky">
@@ -2130,6 +2154,8 @@ export function App() {
             onWorkspaceWidthChange={updateWorkspaceWidth}
             showNsfw={showNsfw}
             onToggleNsfw={toggleShowNsfw}
+            showMedia={showMedia}
+            onToggleShowMedia={toggleShowMedia}
             currentDid={authState.session?.did}
             savedUris={savedUriSet}
             onOpenImage={setImageViewer}
@@ -2314,6 +2340,7 @@ export function App() {
 
       {imageViewer && <ImageViewer image={imageViewer} onChange={setImageViewer} onClose={() => setImageViewer(null)} />}
       </div>
+      </ShowMediaContext.Provider>
       </ShowNsfwContext.Provider>
     </TagSearchContext.Provider>
   );
@@ -2620,6 +2647,8 @@ function SurfaceView({
   onWorkspaceWidthChange,
   showNsfw,
   onToggleNsfw,
+  showMedia,
+  onToggleShowMedia,
   currentDid,
   savedUris,
 }: {
@@ -2658,6 +2687,8 @@ function SurfaceView({
   onWorkspaceWidthChange: (width: (typeof widthModes)[number]) => void;
   showNsfw: boolean;
   onToggleNsfw: () => void;
+  showMedia: boolean;
+  onToggleShowMedia: () => void;
   currentDid?: string;
   savedUris: Set<string>;
 }) {
@@ -2806,6 +2837,24 @@ function SurfaceView({
                 <span className="settings-toggle-thumb" />
               </span>
               <span>{showNsfw ? "Showing adult / graphic media" : "Hiding adult / graphic media"}</span>
+            </button>
+            <p>This preference is stored locally in this browser only.</p>
+          </article>
+          <article className="settings-panel">
+            <span>{showMedia ? "On" : "Off"}</span>
+            <h3>Show Media</h3>
+            <p>When on (default), posts show their images and videos. Turn off to read text-only: posts and link previews still appear, but images and videos are replaced by a small control you can click to reveal the media per post.</p>
+            <button
+              type="button"
+              className={showMedia ? "settings-toggle on" : "settings-toggle"}
+              role="switch"
+              aria-checked={showMedia}
+              onClick={onToggleShowMedia}
+            >
+              <span className="settings-toggle-track" aria-hidden="true">
+                <span className="settings-toggle-thumb" />
+              </span>
+              <span>{showMedia ? "Showing images & videos" : "Hiding images & videos"}</span>
             </button>
             <p>This preference is stored locally in this browser only.</p>
           </article>
@@ -4442,6 +4491,19 @@ function SensitiveMediaGate({ values, onReveal }: { values: string[]; onReveal: 
   );
 }
 
+// Shown in place of images/video when the "Show Media" setting is off. Clicking
+// reveals the media for that one card without changing the global setting.
+function MediaHiddenButton({ kind, onReveal }: { kind: "image" | "video"; onReveal: () => void }) {
+  const label = kind === "video" ? "Video hidden" : "Media hidden";
+  return (
+    <button type="button" className="media-hidden-button" onClick={onReveal}>
+      {kind === "video" ? <Film size={16} /> : <Image size={16} />}
+      <span>{label}</span>
+      <span className="media-hidden-show">Show</span>
+    </button>
+  );
+}
+
 function PostCard({
   currentDid,
   isSaved = false,
@@ -4468,6 +4530,7 @@ function PostCard({
   const post = item.post;
   const onOpenTag = useContext(TagSearchContext);
   const showNsfw = useContext(ShowNsfwContext);
+  const showMedia = useContext(ShowMediaContext);
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
   const [mediaRevealed, setMediaRevealed] = useState(false);
   const images = getEmbedImages(post.embed);
@@ -4487,6 +4550,10 @@ function PostCard({
   // not about media, so they don't hide images/video).
   const mediaWarningValues = sensitiveMediaValues([...labels, ...(post.author.labels ?? [])]);
   const gateMedia = !showNsfw && mediaWarningValues.length > 0 && (images.length > 0 || !!video) && !mediaRevealed;
+  // "Show Media" off: hide images/video/link-thumb behind a per-card reveal,
+  // unless already gated as sensitive (that gate wins) or revealed for this card.
+  const hideMediaForSetting = !showMedia && !mediaRevealed && !gateMedia;
+  const linkMediaHidden = hideMediaForSetting && !!external?.thumb;
   const moderationNotes = [
     ...(post.viewer?.threadMuted ? ["Thread muted"] : []),
     ...(post.viewer?.replyDisabled ? ["Replies limited"] : []),
@@ -4559,6 +4626,8 @@ function PostCard({
       )}
       {gateMedia ? (
         <SensitiveMediaGate values={mediaWarningValues} onReveal={() => setMediaRevealed(true)} />
+      ) : hideMediaForSetting && (images.length > 0 || !!video) ? (
+        <MediaHiddenButton kind={images.length > 0 ? "image" : "video"} onReveal={() => setMediaRevealed(true)} />
       ) : (
         <>
           {images.length > 0 && (
@@ -4606,17 +4675,28 @@ function PostCard({
               <EyeOff size={13} /> Hide sensitive media
             </button>
           )}
+          {mediaRevealed && mediaWarningValues.length === 0 && !showMedia && (images.length > 0 || !!video) && (
+            <button type="button" className="sensitive-media-hide" onClick={() => setMediaRevealed(false)}>
+              <EyeOff size={13} /> Hide media
+            </button>
+          )}
         </>
       )}
       {external && (
-        <div className="link-card">
+        <div className={linkMediaHidden ? "link-card no-media" : "link-card"}>
           <a href={external.uri} target="_blank" rel="noreferrer">
-            {external.thumb && <img alt="" src={external.thumb} loading="lazy" decoding="async" />}
+            {external.thumb && !linkMediaHidden && <img alt="" src={external.thumb} loading="lazy" decoding="async" />}
             <span>
               <strong>{external.title || external.uri}</strong>
               <small>{external.description}</small>
             </span>
           </a>
+          {linkMediaHidden && (
+            <button type="button" className="media-hidden-button link-media-hidden" onClick={() => setMediaRevealed(true)}>
+              <Image size={15} />
+              <span className="media-hidden-show">Show image</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onOpenLinkPreview?.({ ...external, sourcePost: post, uri: external.uri || "" })}
@@ -4692,6 +4772,7 @@ function QuotedPostCard({
 }) {
   const onOpenTag = useContext(TagSearchContext);
   const showNsfw = useContext(ShowNsfwContext);
+  const showMedia = useContext(ShowMediaContext);
   const [mediaRevealed, setMediaRevealed] = useState(false);
   const embeddedExternal = getExternalEmbed(record.embeds?.[0] ?? record.value?.embed);
   const embeddedImages = getEmbedImages(record.embeds?.[0] ?? record.value?.embed);
@@ -4702,6 +4783,7 @@ function QuotedPostCard({
     ...(record.author?.labels ?? []),
   ]);
   const gateMedia = !showNsfw && mediaWarningValues.length > 0 && (embeddedImages.length > 0 || !!embeddedVideo) && !mediaRevealed;
+  const hideMediaForSetting = !showMedia && !mediaRevealed && !gateMedia;
   const quotedPost = record.author
     ? ({
         uri: record.uri,
@@ -4746,6 +4828,8 @@ function QuotedPostCard({
       )}
       {gateMedia ? (
         <SensitiveMediaGate values={mediaWarningValues} onReveal={() => setMediaRevealed(true)} />
+      ) : hideMediaForSetting && (embeddedImages.length > 0 || !!embeddedVideo) ? (
+        <MediaHiddenButton kind={embeddedImages.length > 0 ? "image" : "video"} onReveal={() => setMediaRevealed(true)} />
       ) : (
         <>
           {embeddedImages.length > 0 && (
@@ -4770,8 +4854,8 @@ function QuotedPostCard({
         </>
       )}
       {embeddedExternal && (
-        <a className="link-card quote-link-card" href={embeddedExternal.uri} target="_blank" rel="noreferrer">
-          {embeddedExternal.thumb && <img alt="" src={embeddedExternal.thumb} loading="lazy" decoding="async" />}
+        <a className={hideMediaForSetting && embeddedExternal.thumb ? "link-card quote-link-card no-media" : "link-card quote-link-card"} href={embeddedExternal.uri} target="_blank" rel="noreferrer">
+          {embeddedExternal.thumb && !hideMediaForSetting && <img alt="" src={embeddedExternal.thumb} loading="lazy" decoding="async" />}
           <span>
             <strong>{embeddedExternal.title || embeddedExternal.uri}</strong>
             <small>{embeddedExternal.description}</small>
