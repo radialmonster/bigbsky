@@ -2288,6 +2288,16 @@ export function App() {
     });
     navigate(routeState, path);
   };
+  // Open the signed-in user's own profile on a specific tab (used by the
+  // self-profile shortcuts). profileTab isn't reset on navigation, so setting it
+  // before opening lands the reader on the right tab.
+  const openSelfTab = (tab: (typeof profileTabs)[number]) => {
+    if (!authState.session) {
+      return;
+    }
+    setProfileTab(tab);
+    openProfile(authState.session as Profile);
+  };
   const openFeedSource = (source: FeedSource) => {
     setActiveSourceId(source.id);
     remember({
@@ -2623,6 +2633,8 @@ export function App() {
             onOpenLinkPreview={openLinkPreview}
             onToggleSaved={toggleSavedPost}
             onTogglePinnedNotification={togglePinnedNotification}
+            onOpenSelfTab={openSelfTab}
+            onOpenSurfaceNav={openNavigation}
           />
         ) : route.kind === "search" ? (
           <SearchView
@@ -3123,6 +3135,8 @@ function SurfaceView({
   onOpenProfile,
   onOpenPost,
   onOpenPostByUri,
+  onOpenSelfTab,
+  onOpenSurfaceNav,
   onReauthorize,
   homeSourceId,
   homeOptions,
@@ -3178,6 +3192,8 @@ function SurfaceView({
   onOpenProfile: (profile: Profile) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenPostByUri: (uri: string, actor: string) => void;
+  onOpenSelfTab: (tab: (typeof profileTabs)[number]) => void;
+  onOpenSurfaceNav: (item: string) => void;
   onReauthorize: () => void;
   homeSourceId: string;
   homeOptions: Array<{ id: string; label: string; needsAuth: boolean }>;
@@ -3502,10 +3518,10 @@ function SurfaceView({
     return (
       <SelfProfileSurface
         auth={auth.session}
-        localLists={localLists}
-        pinnedFeedCount={pinnedFeedCount}
         savedPostCount={savedPostCount}
         onOpenProfile={onOpenProfile}
+        onOpenSelfTab={onOpenSelfTab}
+        onOpenSurfaceNav={onOpenSurfaceNav}
         onSignOut={onSignOut}
       />
     );
@@ -4009,69 +4025,31 @@ function ProfileListsTab({ actor, onOpenFeed }: { actor: string; onOpenFeed: (so
 
 function SelfProfileSurface({
   auth,
-  localLists,
-  pinnedFeedCount,
   savedPostCount,
   onOpenProfile,
+  onOpenSelfTab,
+  onOpenSurfaceNav,
   onSignOut,
 }: {
   auth: AuthSnapshot;
-  localLists: LocalList[];
-  pinnedFeedCount: number;
   savedPostCount: number;
   onOpenProfile: (profile: Profile) => void;
+  onOpenSelfTab: (tab: (typeof profileTabs)[number]) => void;
+  onOpenSurfaceNav: (item: string) => void;
   onSignOut: () => void | Promise<void>;
 }) {
-  const accountPanels = [
-    {
-      title: "Posts",
-      status: "Active",
-      detail: "Open the signed-in public profile reader without leaving the static shell.",
-      action: "Open public profile",
-      disabled: false,
-    },
-    {
-      title: "Replies",
-      status: "Active",
-      detail: "The public profile reader includes the replies tab over loaded author posts.",
-      action: "Open profile reader",
-      disabled: false,
-    },
-    {
-      title: "Media",
-      status: "Active",
-      detail: "The public profile reader can filter loaded posts to images and video cards.",
-      action: "Open profile reader",
-      disabled: false,
-    },
-    {
-      title: "Likes",
-      status: "Reserved",
-      detail: `${savedPostCount.toLocaleString()} browser-local saved post${savedPostCount === 1 ? "" : "s"} live on the Saved route. A dedicated Bluesky Likes tab isn't surfaced in BigBSky yet.`,
-      action: "Open profile reader",
-      disabled: true,
-    },
-    {
-      title: "Feeds",
-      status: "Active",
-      detail: `${pinnedFeedCount.toLocaleString()} local pin${pinnedFeedCount === 1 ? "" : "s"} sit in this browser; your subscribed Bluesky feeds load into the selector and you can follow/unfollow feeds directly.`,
-      action: "Use Feed selector",
-      disabled: true,
-    },
-    {
-      title: "Starter Packs",
-      status: "Reserved",
-      detail: "Starter Pack ownership and management are reserved for authenticated account APIs.",
-      action: "Needs account API",
-      disabled: true,
-    },
-    {
-      title: "Lists",
-      status: "Active",
-      detail: "Your real Bluesky lists — the ones you created and the curation lists you subscribe to — load on the Lists route. Open a curation list to read it as a timeline.",
-      action: "Open profile reader",
-      disabled: true,
-    },
+  const bskyProfileUrl = `https://bsky.app/profile/${encodeURIComponent(auth.handle || "")}`;
+  // Each shortcut navigates somewhere real — own-profile tabs, app surfaces, or
+  // out to Bluesky for things BigBSky delegates rather than builds.
+  const shortcuts: Array<{ title: string; detail: string; cta: string; onClick?: () => void; href?: string }> = [
+    { title: "Posts", detail: "Your posts in the profile reader.", cta: "Open", onClick: () => onOpenSelfTab("posts") },
+    { title: "Replies", detail: "Your replies tab.", cta: "Open", onClick: () => onOpenSelfTab("replies") },
+    { title: "Media", detail: "Just your image and video posts.", cta: "Open", onClick: () => onOpenSelfTab("media") },
+    { title: "Feeds", detail: "Your saved and pinned feeds.", cta: "Open", onClick: () => onOpenSelfTab("feeds") },
+    { title: "Lists", detail: "Lists you created and subscribe to.", cta: "Open Lists", onClick: () => onOpenSurfaceNav("Lists") },
+    { title: "Saved", detail: `${savedPostCount.toLocaleString()} post${savedPostCount === 1 ? "" : "s"} saved in this browser.`, cta: "Open Saved", onClick: () => onOpenSurfaceNav("Saved") },
+    { title: "Notifications", detail: "Likes, replies, follows, and mentions.", cta: "Open", onClick: () => onOpenSurfaceNav("Notifications") },
+    { title: "Likes", detail: "Your liked posts (opens on Bluesky).", cta: "Open on Bluesky", href: `${bskyProfileUrl}/likes` },
   ];
 
   return (
@@ -4102,31 +4080,30 @@ function SelfProfileSurface({
           <button type="button" onClick={() => onOpenProfile(auth as Profile)}>
             Open public profile
           </button>
-          <a
-            className="self-profile-action-link"
-            href={`https://bsky.app/profile/${encodeURIComponent(auth.handle || "")}`}
-            target="_blank"
-            rel="noreferrer"
-            title="Edit your profile on Bluesky"
-          >
+          <a className="self-profile-action-link" href={bskyProfileUrl} target="_blank" rel="noreferrer" title="Edit your profile on Bluesky">
             Edit profile on Bluesky
           </a>
-          <button type="button" onClick={onSignOut}>
-            Sign out
+          <button type="button" className="self-profile-signout" onClick={onSignOut}>
+            <LogOut size={16} /> Sign out
           </button>
         </div>
       </section>
-      <section className="self-profile-tabs" aria-label="Self-profile account sections">
-        {accountPanels.map((panel) => (
-          <article className="self-profile-tab-card" key={panel.title}>
-            <span>{panel.status}</span>
-            <h3>{panel.title}</h3>
-            <p>{panel.detail}</p>
-            <button type="button" disabled={panel.disabled} onClick={() => onOpenProfile(auth as Profile)}>
-              {panel.action}
+      <section className="self-profile-tabs" aria-label="Profile shortcuts">
+        {shortcuts.map((shortcut) =>
+          shortcut.href ? (
+            <a className="self-profile-tab-card" key={shortcut.title} href={shortcut.href} target="_blank" rel="noreferrer">
+              <h3>{shortcut.title}</h3>
+              <p>{shortcut.detail}</p>
+              <span className="self-profile-tab-cta">{shortcut.cta}</span>
+            </a>
+          ) : (
+            <button className="self-profile-tab-card" key={shortcut.title} type="button" onClick={shortcut.onClick}>
+              <h3>{shortcut.title}</h3>
+              <p>{shortcut.detail}</p>
+              <span className="self-profile-tab-cta">{shortcut.cta}</span>
             </button>
-          </article>
-        ))}
+          ),
+        )}
       </section>
     </div>
   );
