@@ -2443,18 +2443,19 @@ export function App() {
         <nav className="rail-nav">
           {navigationItems.map((item, index) => {
             const Icon = navIcons[index];
-            // The Profile entry shows the signed-in account's avatar (replacing
-            // the old separate account-switcher icon) and opens the account hub.
-            const showAvatar = item === "Profile" && !!authState.session;
+            // The Profile entry opens the account hub. It uses the same line icon
+            // as the rest of the rail so it matches; when signed in the tooltip
+            // carries the account handle.
+            const signedInProfile = item === "Profile" && !!authState.session;
             return (
               <button
                 key={item}
-                className={showAvatar ? "rail-button rail-button-avatar" : "rail-button"}
+                className="rail-button"
                 type="button"
-                title={showAvatar ? `Profile · @${authState.session!.handle}` : item}
+                title={signedInProfile ? `Profile · @${authState.session!.handle}` : item}
                 onClick={() => openNavigation(item)}
               >
-                {showAvatar ? <Avatar profile={authState.session ?? undefined} /> : <Icon size={20} />}
+                <Icon size={20} />
                 <span>{item}</span>
               </button>
             );
