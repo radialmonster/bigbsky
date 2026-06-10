@@ -209,6 +209,24 @@ button {
   transform: rotate(45deg);
 }
 
+/* On the mobile top bar the avatar sits top-right, so the desktop
+   left:56px/bottom positioning threw the dropdown off-screen. Pin it to the
+   viewport just below the bar instead. */
+@media (max-width: 720px) {
+  .account-switcher {
+    position: fixed;
+    top: 68px;
+    right: 8px;
+    left: auto;
+    bottom: auto;
+    width: min(288px, calc(100vw - 16px));
+  }
+
+  .account-switcher::before {
+    display: none;
+  }
+}
+
 .account-switcher .account-identity {
   grid-template-columns: 38px minmax(0, 1fr);
 }
