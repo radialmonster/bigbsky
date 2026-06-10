@@ -6,9 +6,9 @@ import {
   EyeOff,
   Film,
   Hash,
+  Heart,
   Home,
   Image,
-  LayoutList,
   Link as LinkIcon,
   List,
   Loader2,
@@ -59,7 +59,6 @@ import {
   getFeedGenerator,
   getPopularFeedGenerators,
   getTrendingTopics,
-  getProfile,
   getRecordEmbed,
   getVideoEmbed,
   searchActors,
@@ -257,7 +256,7 @@ type DevMetrics = {
 };
 
 type AuthState = {
-  status: "checking" | "signed-out" | "signing-in" | "signed-in" | "callback" | "error";
+  status: "checking" | "signed-out" | "signing-in" | "signing-out" | "signed-in" | "callback" | "error";
   session: AuthSnapshot | null;
   message?: string;
 };
@@ -412,23 +411,12 @@ function readComposerDraft() {
   try {
     const draft = JSON.parse(localStorage.getItem(composerDraftStorageKey) || "{}") as {
       posts?: string[];
-      mediaSlots?: Record<string, number>;
     };
     return {
       posts: Array.isArray(draft.posts) && draft.posts.length > 0 ? draft.posts : [""],
-      mediaSlots: draft.mediaSlots ?? {},
     };
   } catch {
-    return { posts: [""], mediaSlots: {} };
-  }
-}
-
-function readWorkspaceWidthPreference() {
-  try {
-    const stored = localStorage.getItem(workspaceWidthStorageKey);
-    return widthModes.includes(stored as (typeof widthModes)[number]) ? (stored as (typeof widthModes)[number]) : "balanced";
-  } catch {
-    return "balanced";
+    return { posts: [""] };
   }
 }
 
@@ -1064,6 +1052,33 @@ export function App() {
     () => ({ canBlock: !!signedInDid, selfDid: signedInDid, getState: getBlockState, toggle: toggleBlock }),
     [signedInDid, getBlockState, toggleBlock],
   );
+
+  // Viewer-relative state (like / bookmark / follow / block records) only comes
+  // back on authenticated reads, so anything fetched under one identity is stale
+  // under another. When the signed-in identity changes (sign-in, sign-out, or an
+  // account switch) drop the in-memory caches and optimistic overrides so the
+  // next render refetches with the correct viewer state. Skipped on first mount
+  // (nothing is cached yet); the feed loader's AbortController tears down any
+  // public fetch still in flight when auth resolves, so it can't repopulate.
+  const authCacheMountRef = useRef(false);
+  useEffect(() => {
+    if (!authCacheMountRef.current) {
+      authCacheMountRef.current = true;
+      return;
+    }
+    feedCacheRef.current = {};
+    feedMetadataCacheRef.current = {};
+    listMetadataCacheRef.current = {};
+    profileCacheRef.current = {};
+    searchCacheRef.current = {};
+    actorSearchCacheRef.current = {};
+    feedSearchCacheRef.current = {};
+    threadCacheRef.current = {};
+    threadBranchCacheRef.current = {};
+    setLikeOverrides({});
+    setBookmarkOverrides({});
+    setBlockOverrides({});
+  }, [signedInDid]);
 
   useEffect(() => {
     if (!signedInDid) {
@@ -1908,7 +1923,7 @@ export function App() {
     setDensityByContext({});
     setWidthByContext({});
     setRecentItems([]);
-    setComposerDraft({ posts: [""], mediaSlots: {} });
+    setComposerDraft({ posts: [""] });
     setLocalLists([]);
     setPinnedFeedIds([]);
     setPinnedSearches([]);
@@ -1959,7 +1974,7 @@ export function App() {
 
   async function handleSignOut() {
     const did = authState.session?.did;
-    setAuthState((current) => ({ ...current, status: "signing-in", message: "Signing out locally." }));
+    setAuthState((current) => ({ ...current, status: "signing-out", message: "Signing out locally." }));
     const warning = await signOut(did);
     setAuthState({
       status: warning ? "error" : "signed-out",
@@ -2589,6 +2604,7 @@ export function App() {
           />
         ) : route.kind === "surface" && route.name === "bookmarks" ? (
           <BookmarksView
+            containerRef={timelineRef}
             signedIn={!!authState.session}
             currentDid={authState.session?.did}
             onOpenImage={setImageViewer}
@@ -2600,6 +2616,7 @@ export function App() {
           />
         ) : route.kind === "surface" ? (
           <SurfaceView
+            containerRef={timelineRef}
             auth={authState}
             name={route.name}
             density={density}
@@ -2624,7 +2641,6 @@ export function App() {
             onCreateLocalList={createLocalList}
             onDensityChange={updateDensity}
             onDeleteLocalList={deleteLocalList}
-            onToggleListPost={togglePostInLocalList}
             onOpenFeed={openFeedSource}
             onOpenProfile={openProfile}
             onOpenPostByUri={openPostByUri}
@@ -2647,10 +2663,6 @@ export function App() {
             followedFeedUris={followedFeedUris}
             followBusyUri={followBusyUri}
             onToggleFollowFeed={toggleFollowFeed}
-            currentDid={authState.session?.did}
-            onOpenImage={setImageViewer}
-            onOpenPost={openPost}
-            onOpenLinkPreview={openLinkPreview}
             onTogglePinnedNotification={togglePinnedNotification}
             onOpenSelfTab={openSelfTab}
             onOpenSurfaceNav={openNavigation}
@@ -3286,6 +3298,7 @@ function HomeSourcePicker({
 }
 
 function SurfaceView({
+  containerRef,
   auth,
   name,
   density,
@@ -3310,12 +3323,8 @@ function SurfaceView({
   onCreateLocalList,
   onDensityChange,
   onDeleteLocalList,
-  onToggleListPost,
   onOpenFeed,
-  onOpenImage,
-  onOpenLinkPreview,
   onOpenProfile,
-  onOpenPost,
   onOpenPostByUri,
   onOpenSelfTab,
   onOpenSurfaceNav,
@@ -3339,8 +3348,8 @@ function SurfaceView({
   followedFeedUris,
   followBusyUri,
   onToggleFollowFeed,
-  currentDid,
 }: {
+  containerRef: RefObject<HTMLDivElement | null>;
   auth: AuthState;
   name: string;
   density: string;
@@ -3365,12 +3374,8 @@ function SurfaceView({
   onCreateLocalList: (name: string, description: string) => void;
   onDensityChange: (density: string) => void;
   onDeleteLocalList: (id: string) => void;
-  onToggleListPost: (listId: string, post: FeedPost) => void;
   onOpenFeed: (source: FeedSource) => void;
-  onOpenImage: (image: ImageViewerState) => void;
-  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
   onOpenProfile: (profile: Profile) => void;
-  onOpenPost: (post: FeedPost) => void;
   onOpenPostByUri: (uri: string, actor: string) => void;
   onOpenSelfTab: (tab: (typeof profileTabs)[number]) => void;
   onOpenSurfaceNav: (item: string) => void;
@@ -3394,7 +3399,6 @@ function SurfaceView({
   followedFeedUris: Set<string>;
   followBusyUri: string | null;
   onToggleFollowFeed: (feedUri: string, label?: string) => void;
-  currentDid?: string;
 }) {
   const title = name.charAt(0).toUpperCase() + name.slice(1);
   const surfaces: Record<string, { copy: string; cards: Array<{ title: string; detail: string; status: string }> }> = {
@@ -3666,6 +3670,7 @@ function SurfaceView({
   if (name === "lists") {
     return (
       <ListsSurface
+        containerRef={containerRef}
         signedIn={!!auth.session}
         signedInDid={signedInDid}
         myLists={myLists}
@@ -4896,6 +4901,7 @@ function BlueskyListCard({
 }
 
 function ListsSurface({
+  containerRef,
   signedIn,
   signedInDid,
   myLists,
@@ -4909,6 +4915,7 @@ function ListsSurface({
   onCreateList,
   onDeleteList,
 }: {
+  containerRef: RefObject<HTMLDivElement | null>;
   signedIn: boolean;
   signedInDid?: string;
   myLists: { owned: ListView[]; subscribed: ListView[] };
@@ -4949,7 +4956,7 @@ function ListsSurface({
   }
 
   return (
-    <div className="timeline comfortable">
+    <div className="timeline comfortable" ref={containerRef}>
       <section className="surface-placeholder">
         <h2>Lists</h2>
         <p>Your Bluesky lists — the curation and moderation lists you created, plus curation lists you subscribe to. Open a curation list to read it as a timeline; manage members on a list you own.</p>
@@ -5084,7 +5091,7 @@ function SignInForm({
   onSignIn: (handle: string) => void | Promise<void>;
 }) {
   const [handle, setHandle] = useState("");
-  const isBusy = status === "checking" || status === "callback" || status === "signing-in";
+  const isBusy = status === "checking" || status === "callback" || status === "signing-in" || status === "signing-out";
 
   return (
     <form
@@ -5328,8 +5335,8 @@ function Composer({
   onDraftChange,
   onPosted,
 }: {
-  draft: { posts: string[]; mediaSlots: Record<string, number> };
-  onDraftChange: (draft: { posts: string[]; mediaSlots: Record<string, number> }) => void;
+  draft: { posts: string[] };
+  onDraftChange: (draft: { posts: string[] }) => void;
   onPosted?: () => void;
 }) {
   const drafts = draft.posts.length > 0 ? draft.posts : [""];
@@ -5352,7 +5359,7 @@ function Composer({
 
   useEffect(() => {
     if (drafts.some((postDraft) => postDraft.trim().length > 0)) {
-      localStorage.setItem(composerDraftStorageKey, JSON.stringify({ posts: drafts, mediaSlots: {} }));
+      localStorage.setItem(composerDraftStorageKey, JSON.stringify({ posts: drafts }));
     } else {
       localStorage.removeItem(composerDraftStorageKey);
     }
@@ -5371,7 +5378,6 @@ function Composer({
   function setDrafts(nextPosts: string[]) {
     onDraftChange({
       posts: nextPosts.length > 0 ? nextPosts : [""],
-      mediaSlots: {},
     });
   }
 
@@ -5449,7 +5455,7 @@ function Composer({
       .flat()
       .forEach((image) => URL.revokeObjectURL(image.url));
     setImages({});
-    const emptyDraft = { posts: [""], mediaSlots: {} };
+    const emptyDraft = { posts: [""] };
     localStorage.removeItem(composerDraftStorageKey);
     onDraftChange(emptyDraft);
   }
@@ -5472,7 +5478,7 @@ function Composer({
         .flat()
         .forEach((image) => URL.revokeObjectURL(image.url));
       setImages({});
-      const emptyDraft = { posts: [""], mediaSlots: {} };
+      const emptyDraft = { posts: [""] };
       localStorage.removeItem(composerDraftStorageKey);
       onDraftChange(emptyDraft);
       setExpanded(false);
@@ -5633,6 +5639,7 @@ function SearchBox({
 // so this list and bsky.app stay in sync. The per-card Bookmark/Bookmarked
 // toggle comes from BookmarkContext (consumed inside PostCard), not props.
 function BookmarksView({
+  containerRef,
   currentDid,
   localLists,
   signedIn,
@@ -5642,6 +5649,7 @@ function BookmarksView({
   onOpenProfile,
   onToggleListPost,
 }: {
+  containerRef: RefObject<HTMLDivElement | null>;
   currentDid?: string;
   localLists: LocalList[];
   signedIn: boolean;
@@ -5704,7 +5712,7 @@ function BookmarksView({
   };
 
   return (
-    <div className="timeline comfortable">
+    <div className="timeline comfortable" ref={containerRef}>
       <section className="surface-placeholder">
         <h2>Bookmarks</h2>
         <p>Posts you bookmark on Bluesky. Bookmarks are synced with your account and also appear on bsky.app.</p>
@@ -6262,6 +6270,9 @@ function PostCard({
                         alt: viewerImage.alt || "",
                       }))
                       .filter((viewerImage) => viewerImage.src);
+                    if (viewerImages.length === 0) {
+                      return;
+                    }
                     const selectedIndex = Math.max(0, viewerImages.findIndex((viewerImage) => viewerImage.src === (image.fullsize || image.thumb)));
                     onOpenImage?.({ images: viewerImages, index: selectedIndex });
                   }}
@@ -6344,11 +6355,11 @@ function PostCard({
             onClick={() => likeCtx.toggle(post)}
             title={likeView.liked ? "Unlike" : "Like"}
           >
-            <Bell size={16} /> {likeView.count}
+            <Heart size={16} /> {likeView.count}
           </button>
         ) : (
           <span>
-            <Bell size={16} /> {post.likeCount ?? 0}
+            <Heart size={16} /> {post.likeCount ?? 0}
           </span>
         )}
         {bookmarkCtx?.canBookmark && bookmarkView ? (
@@ -6965,6 +6976,12 @@ function ImageViewer({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [goNext, goPrevious, onClose]);
+
+  // Defensive: an embed whose images all lack a usable src would leave `selected`
+  // undefined. Callers already filter these out, so just close rather than crash.
+  if (!selected) {
+    return null;
+  }
 
   return (
     <div

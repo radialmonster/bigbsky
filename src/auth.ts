@@ -543,8 +543,8 @@ export type ReplyRef = { root: PostRef; parent: PostRef };
 export type ComposerImage = { file: Blob; alt: string };
 export type ComposerPostInput = { text: string; images?: ComposerImage[] };
 
-// Bluesky's app.bsky.embed.images lexicon caps a post at 4 images.
-export const MAX_POST_IMAGES = 4;
+// Bluesky's app.bsky.embed.images lexicon caps a post at 10 images.
+export const MAX_POST_IMAGES = 10;
 
 // Upload composer images as blobs (scope blob:image/*) and build the
 // app.bsky.embed.images embed. Returns undefined when there are no images.
