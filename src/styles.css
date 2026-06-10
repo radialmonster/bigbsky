@@ -2574,6 +2574,18 @@ button.surface-action {
   color: var(--bsky-blue-soft);
 }
 
+.post-actions button.liked {
+  color: #ec4899;
+}
+
+.post-actions button.liked svg {
+  fill: currentColor;
+}
+
+.profile-detail-actions button.following {
+  background: var(--app-surface-2);
+}
+
 .post-list-menu {
   position: relative;
 }

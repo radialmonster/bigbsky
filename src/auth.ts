@@ -384,6 +384,32 @@ export async function unfollowAccount(followUri: string): Promise<void> {
   await agent.deleteFollow(followUri);
 }
 
+// Like a post: creates an app.bsky.feed.like record (scope
+// repo:app.bsky.feed.like). Needs the post's uri and cid. Returns the like
+// record URI for later unliking. Throws if signed out.
+export async function likePost(uri: string, cid: string): Promise<string> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to like posts.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const { uri: likeUri } = await agent.like(uri, cid);
+  return likeUri;
+}
+
+// Unlike a post by deleting the like record (uri from viewer.like or a prior
+// likePost call). Throws if signed out.
+export async function unlikePost(likeUri: string): Promise<void> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to manage likes.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  await agent.deleteLike(likeUri);
+}
+
 export async function clearOAuthSessionStorage() {
   if (!("indexedDB" in window)) {
     return;

@@ -79,8 +79,10 @@ import {
   getProfileAuthed,
   getSubscribedFeeds,
   initAuthSession,
+  likePost,
   unfollowAccount,
   unfollowFeed,
+  unlikePost,
   looksLikeOAuthCallback,
   signOut,
   startSignIn,
@@ -101,6 +103,17 @@ const ShowNsfwContext = createContext<boolean>(false);
 // Read by post cards to decide whether to render images/video at all. When
 // off, media is replaced by a click-to-reveal affordance (text still shows).
 const ShowMediaContext = createContext<boolean>(true);
+
+// Like state + toggle, provided once and consumed directly by post cards so we
+// don't thread like props through the virtualized list and every call site.
+// Override state lives in the parent (App) so it survives row virtualization.
+type LikeView = { liked: boolean; count: number };
+type LikeContextValue = {
+  canLike: boolean;
+  getState: (post: FeedPost) => LikeView;
+  toggle: (post: FeedPost) => void;
+};
+const LikeContext = createContext<LikeContextValue | null>(null);
 
 function readShowNsfw() {
   try {
@@ -780,6 +793,67 @@ export function App() {
   // Protocol preferences and surface them in the feed selector. Cleared on
   // sign-out. Failures are non-fatal: the selector keeps its public feeds.
   const signedInDid = authState.status === "signed-in" ? authState.session?.did : undefined;
+
+  // Like overrides keyed by post URI: { uri } is the like-record URI ("" / falsy
+  // = not liked), count is the displayed like count. Lives here (not in the
+  // card) so optimistic state survives row virtualization. in-flight set guards
+  // against double-taps.
+  const [likeOverrides, setLikeOverrides] = useState<Record<string, { uri?: string; count: number }>>({});
+  const likeInFlight = useRef<Set<string>>(new Set());
+
+  const getLikeState = useCallback(
+    (post: FeedPost): LikeView => {
+      const ov = likeOverrides[post.uri];
+      if (ov) {
+        return { liked: !!ov.uri, count: ov.count };
+      }
+      return { liked: !!post.viewer?.like, count: post.likeCount ?? 0 };
+    },
+    [likeOverrides],
+  );
+
+  const toggleLike = useCallback(
+    (post: FeedPost) => {
+      if (!signedInDid || likeInFlight.current.has(post.uri)) {
+        return;
+      }
+      const ov = likeOverrides[post.uri];
+      const liked = ov ? !!ov.uri : !!post.viewer?.like;
+      const likeUri = ov ? ov.uri : post.viewer?.like;
+      const baseCount = ov ? ov.count : post.likeCount ?? 0;
+      likeInFlight.current.add(post.uri);
+      // Optimistic update.
+      setLikeOverrides((current) => ({
+        ...current,
+        [post.uri]: liked ? { uri: undefined, count: Math.max(0, baseCount - 1) } : { uri: "pending", count: baseCount + 1 },
+      }));
+      void (async () => {
+        try {
+          if (liked) {
+            if (likeUri && likeUri !== "pending") {
+              await unlikePost(likeUri);
+            }
+            setLikeOverrides((current) => ({ ...current, [post.uri]: { uri: undefined, count: Math.max(0, baseCount - 1) } }));
+          } else {
+            const newUri = await likePost(post.uri, post.cid);
+            setLikeOverrides((current) => ({ ...current, [post.uri]: { uri: newUri, count: baseCount + 1 } }));
+          }
+        } catch {
+          // Revert to pre-click state.
+          setLikeOverrides((current) => ({ ...current, [post.uri]: { uri: liked ? likeUri : undefined, count: baseCount } }));
+        } finally {
+          likeInFlight.current.delete(post.uri);
+        }
+      })();
+    },
+    [signedInDid, likeOverrides],
+  );
+
+  const likeContextValue = useMemo<LikeContextValue>(
+    () => ({ canLike: !!signedInDid, getState: getLikeState, toggle: toggleLike }),
+    [signedInDid, getLikeState, toggleLike],
+  );
+
   useEffect(() => {
     if (!signedInDid) {
       setSubscribedFeeds([]);
@@ -1972,6 +2046,7 @@ export function App() {
     <TagSearchContext.Provider value={openTag}>
       <ShowNsfwContext.Provider value={showNsfw}>
       <ShowMediaContext.Provider value={showMedia}>
+      <LikeContext.Provider value={likeContextValue}>
       <div className={`app-shell width-${workspaceWidth} ${navOpen ? "nav-open" : "nav-hidden"}`}>
       <aside className="left-rail" aria-label="Primary">
         <button className="brand-button" type="button" onClick={() => navigate({ kind: "feed" })} title="BigBSky">
@@ -2398,6 +2473,7 @@ export function App() {
 
       {imageViewer && <ImageViewer image={imageViewer} onChange={setImageViewer} onClose={() => setImageViewer(null)} />}
       </div>
+      </LikeContext.Provider>
       </ShowMediaContext.Provider>
       </ShowNsfwContext.Provider>
     </TagSearchContext.Provider>
@@ -4699,6 +4775,8 @@ function PostCard({
   const onOpenTag = useContext(TagSearchContext);
   const showNsfw = useContext(ShowNsfwContext);
   const showMedia = useContext(ShowMediaContext);
+  const likeCtx = useContext(LikeContext);
+  const likeView = likeCtx?.getState(post);
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
   const [mediaRevealed, setMediaRevealed] = useState(false);
   const images = getEmbedImages(post.embed);
@@ -4888,9 +4966,20 @@ function PostCard({
         <span>
           <Repeat2 size={16} /> {post.repostCount ?? 0}
         </span>
-        <span>
-          <Bell size={16} /> {post.likeCount ?? 0}
-        </span>
+        {likeCtx?.canLike && likeView ? (
+          <button
+            type="button"
+            className={likeView.liked ? "liked" : ""}
+            onClick={() => likeCtx.toggle(post)}
+            title={likeView.liked ? "Unlike" : "Like"}
+          >
+            <Bell size={16} /> {likeView.count}
+          </button>
+        ) : (
+          <span>
+            <Bell size={16} /> {post.likeCount ?? 0}
+          </span>
+        )}
         <button
           className={isSaved ? "saved" : ""}
           type="button"
