@@ -23,13 +23,6 @@ export const feedSources: FeedSource[] = [
     group: "Official",
     description: "Posts from members of the Bluesky team.",
   },
-  {
-    id: "bigbsky",
-    label: "BigBSky Route Test",
-    uri: "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot",
-    group: "Project",
-    description: "Project placeholder using the public Discover feed while app-specific feeds are deferred.",
-  },
 ];
 
 export const navigationItems = [
