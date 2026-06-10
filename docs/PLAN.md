@@ -1242,6 +1242,48 @@ The agent uses this loop: edit code → Vite hot-reloads the open tab → `eval`
 `screenshot`/`console` to observe the result, with the operator driving anything
 that needs real interaction (e.g. OAuth sign-in, which still can't be automated).
 
+### Testing the deployed origin (OAuth / signed-in features)
+
+OAuth only works on the deployed origin (`https://bigbsky.com`), not the
+localhost Vite preview — see the OAuth-testing memory. So any feature gated on
+sign-in (Block/unblock, Like/Follow writes, authed viewer-state, the composer
+writes) must be verified against the live site after the Cloudflare build, not
+against `localhost:5174`.
+
+Workflow:
+
+1. **Push first, then wait for the Cloudflare build.** Git push to `main`
+   auto-builds Pages; the build takes ~1-3 min. The site keeps serving the old
+   hashed bundle until the new deploy goes live.
+2. **Launch Chrome at the deployed origin** (same flags, just the prod URL):
+
+   ```
+   & "C:\Program Files\Google\Chrome\Application\chrome.exe" `
+     --remote-debugging-port=9222 `
+     --user-data-dir=$env:TEMP\chrome-debug-profile `
+     https://bigbsky.com/
+   ```
+
+   The dedicated `--user-data-dir` profile persists the OAuth session between
+   launches, so the operator usually only has to sign in once.
+3. **Confirm the new code actually shipped** before testing behavior — fetch the
+   page HTML, extract the hashed `assets/index-*.js` name, fetch it, and grep for
+   a string unique to the change (e.g. a new button label or confirm-copy
+   substring). If the grep misses, the deploy hasn't finished — wait and re-check.
+   One-liner via the helper:
+
+   ```
+   node scripts/cdp.mjs eval "(async()=>{const h=await (await fetch(location.href)).text();const p=[...new Set(h.match(/assets\/index-[^\"']+\.js/g))];const out={};for(const f of p){const t=await (await fetch('/'+f)).text();out[f]={hasMyString:t.includes('Blocking')};}return out;})()"
+   ```
+
+4. **Operator signs in** (Claude never types the password; CDP only reads/clicks
+   after the operator authenticates).
+5. **Drive the check** with `eval`/`screenshot` — navigate to the surface
+   (e.g. `location.href='https://bigbsky.com/profile/<handle>'`), then assert the
+   expected control/state is present (e.g. a `.block` button, or `viewer.like`
+   seeding a liked state). The signed-in-only controls won't render when signed
+   out, so step 4 is required for moderation/write verification.
+
 ## Reference Sources
 
 - AT Protocol source / lexicons (canonical XRPC methods, types, lexicons): https://github.com/bluesky-social/atproto
