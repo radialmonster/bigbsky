@@ -400,27 +400,41 @@ export function getEmbedImages(embed: unknown) {
     return [];
   }
 
+  type EmbedImage = {
+    thumb?: string;
+    thumbnail?: string;
+    fullsize?: string;
+    alt?: string;
+    aspectRatio?: { width?: number; height?: number };
+  };
+  const normalize = (images: EmbedImage[]) =>
+    images.map((image) => ({
+      thumb: image.thumb ?? image.thumbnail,
+      fullsize: image.fullsize,
+      alt: image.alt,
+      aspectRatio: image.aspectRatio,
+    }));
+
   const candidate = embed as {
-    images?: Array<{
-      thumb?: string;
-      fullsize?: string;
-      alt?: string;
-      aspectRatio?: { width?: number; height?: number };
-    }>;
+    images?: EmbedImage[];
+    items?: EmbedImage[];
     media?: {
-      images?: Array<{
-        thumb?: string;
-        fullsize?: string;
-        alt?: string;
-        aspectRatio?: { width?: number; height?: number };
-      }>;
+      images?: EmbedImage[];
+      items?: EmbedImage[];
     };
   };
   if (Array.isArray(candidate.images)) {
-    return candidate.images;
+    return normalize(candidate.images);
+  }
+  if (Array.isArray(candidate.items)) {
+    return normalize(candidate.items);
   }
 
-  return Array.isArray(candidate.media?.images) ? candidate.media.images : [];
+  if (Array.isArray(candidate.media?.images)) {
+    return normalize(candidate.media.images);
+  }
+
+  return Array.isArray(candidate.media?.items) ? normalize(candidate.media.items) : [];
 }
 
 export function getExternalEmbed(embed: unknown) {

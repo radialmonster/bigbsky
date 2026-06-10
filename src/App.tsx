@@ -262,7 +262,7 @@ type AuthState = {
 };
 
 const densityModes = ["comfortable", "compact", "media"];
-// Bluesky now allows up to 10 images per post (was 4).
+// Bluesky's newer gallery embed allows up to 10 authored images per post.
 const maxPostImages = 10;
 
 // Authenticated reverse-chronological home timeline. Only shown/loaded when

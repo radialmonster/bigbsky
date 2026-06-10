@@ -543,11 +543,36 @@ export type ReplyRef = { root: PostRef; parent: PostRef };
 export type ComposerImage = { file: Blob; alt: string };
 export type ComposerPostInput = { text: string; images?: ComposerImage[] };
 
-// Bluesky's app.bsky.embed.images lexicon caps a post at 10 images.
+// Bluesky supports up to 10 authored images via app.bsky.embed.gallery. The
+// older app.bsky.embed.images embed is still capped at 4 by its lexicon, so
+// buildImageEmbed writes images for 1-4 and gallery for 5-10.
 export const MAX_POST_IMAGES = 10;
 
-// Upload composer images as blobs (scope blob:image/*) and build the
-// app.bsky.embed.images embed. Returns undefined when there are no images.
+async function getImageAspectRatio(file: Blob): Promise<{ width: number; height: number }> {
+  if ("createImageBitmap" in window) {
+    const bitmap = await createImageBitmap(file);
+    const ratio = { width: bitmap.width, height: bitmap.height };
+    bitmap.close();
+    return ratio;
+  }
+
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new globalThis.Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: image.naturalWidth || 1, height: image.naturalHeight || 1 });
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Unable to read image dimensions."));
+    };
+    image.src = url;
+  });
+}
+
+// Upload composer images as blobs (scope blob:image/*) and build the appropriate
+// Bluesky image embed. Returns undefined when there are no images.
 async function buildImageEmbed(
   agent: { uploadBlob: (data: Blob, opts?: { encoding?: string }) => Promise<{ data: { blob: unknown } }> },
   images: ComposerImage[],
@@ -555,14 +580,26 @@ async function buildImageEmbed(
   if (images.length === 0) {
     return undefined;
   }
-  const uploaded: Array<{ alt: string; image: unknown }> = [];
+  const uploaded: Array<{ alt: string; image: unknown; aspectRatio: { width: number; height: number } }> = [];
   for (const image of images.slice(0, MAX_POST_IMAGES)) {
-    const response = await agent.uploadBlob(image.file, {
-      encoding: (image.file as File).type || "image/jpeg",
-    });
-    uploaded.push({ alt: image.alt || "", image: response.data.blob });
+    const [aspectRatio, response] = await Promise.all([
+      getImageAspectRatio(image.file),
+      agent.uploadBlob(image.file, {
+        encoding: (image.file as File).type || "image/jpeg",
+      }),
+    ]);
+    uploaded.push({ alt: image.alt || "", image: response.data.blob, aspectRatio });
   }
-  return { $type: "app.bsky.embed.images", images: uploaded };
+  if (uploaded.length <= 4) {
+    return { $type: "app.bsky.embed.images", images: uploaded };
+  }
+  return {
+    $type: "app.bsky.embed.gallery",
+    items: uploaded.map((image) => ({
+      $type: "app.bsky.embed.gallery#image",
+      ...image,
+    })),
+  };
 }
 
 // Publish a single post (optionally a reply, optionally with images). Detects
