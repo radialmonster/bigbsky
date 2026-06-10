@@ -2623,6 +2623,7 @@ export function App() {
             showMedia={showMedia}
             onToggleShowMedia={toggleShowMedia}
             canFollowFeeds={!!signedInDid}
+            subscribedFeeds={subscribedFeeds}
             followedFeedUris={followedFeedUris}
             followBusyUri={followBusyUri}
             onToggleFollowFeed={toggleFollowFeed}
@@ -3154,6 +3155,7 @@ function SurfaceView({
   showMedia,
   onToggleShowMedia,
   canFollowFeeds,
+  subscribedFeeds,
   followedFeedUris,
   followBusyUri,
   onToggleFollowFeed,
@@ -3211,6 +3213,7 @@ function SurfaceView({
   showMedia: boolean;
   onToggleShowMedia: () => void;
   canFollowFeeds: boolean;
+  subscribedFeeds: FeedSource[];
   followedFeedUris: Set<string>;
   followBusyUri: string | null;
   onToggleFollowFeed: (feedUri: string, label?: string) => void;
@@ -3228,7 +3231,7 @@ function SurfaceView({
       ],
     },
     feeds: {
-      copy: "Feeds live in the desktop selector. When signed in, your subscribed Bluesky feeds load into a \"My Feeds\" group and you can follow/unfollow feeds directly from BigBSky.",
+      copy: "Your saved Bluesky feeds, the built-in feeds, and popular feeds to discover. Open any feed as a timeline, pin it to the top of the selector, or follow/unfollow it on your account.",
       cards: [
         { title: "Pinned Feeds", detail: "Local pins keep important destinations at the top of the selector, stored only in this browser.", status: "Local" },
         { title: "Discover New Feeds", detail: "Feed search opens known public Feed sources immediately.", status: "Active" },
@@ -3596,34 +3599,95 @@ function SurfaceView({
         />
       )}
       {name === "feeds" && (
-        <section className="feed-directory-grid" aria-label="Known Feed destinations">
-          {feedSources.map((source) => (
-            <article className="feed-directory-card" key={source.id}>
-              <button type="button" onClick={() => onOpenFeed(source)}>
-                <span>{source.group}</span>
-                <strong>{source.label}</strong>
-                <small>{source.description}</small>
-              </button>
-              <button
-                className={pinnedFeedIds.includes(source.id) ? "directory-pin pinned" : "directory-pin"}
-                type="button"
-                onClick={() => onTogglePinnedFeed(source)}
-              >
-                {pinnedFeedIds.includes(source.id) ? "Pinned" : "Pin locally"}
-              </button>
+        <>
+          <section className="bsky-list-section" aria-label="Your feeds">
+            <h3 className="bsky-list-section-heading">Your feeds</h3>
+            {!auth.session ? (
+              <EmptyState
+                title="Sign in to see your feeds"
+                message="Your saved Bluesky feeds load here once you sign in. Browse the built-in and popular feeds below in the meantime."
+              />
+            ) : subscribedFeeds.length === 0 ? (
+              <EmptyState
+                title="No saved feeds yet"
+                message="Follow a feed below (or from any feed's header) and it shows up here and in the feed selector."
+              />
+            ) : (
+              <div className="feed-directory-grid">
+                {subscribedFeeds.map((source) => (
+                  <article className="feed-directory-card" key={source.id}>
+                    <button type="button" onClick={() => onOpenFeed(source)}>
+                      <span>{source.group}</span>
+                      <strong>{source.label}</strong>
+                      <small>{source.description}</small>
+                    </button>
+                    <div className="feed-directory-card-actions">
+                      <button
+                        className={pinnedFeedIds.includes(source.id) ? "directory-pin pinned" : "directory-pin"}
+                        type="button"
+                        onClick={() => onTogglePinnedFeed(source)}
+                      >
+                        {pinnedFeedIds.includes(source.id) ? "Pinned" : "Pin locally"}
+                      </button>
+                      {canFollowFeeds && (
+                        <button
+                          type="button"
+                          className="directory-unfollow"
+                          onClick={() => onToggleFollowFeed(source.uri, source.label)}
+                          disabled={followBusyUri === source.uri}
+                        >
+                          {followBusyUri === source.uri ? "…" : "Following"}
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+          <section className="bsky-list-section" aria-label="Built-in feeds">
+            <h3 className="bsky-list-section-heading">Built-in feeds</h3>
+            <div className="feed-directory-grid">
+              {feedSources.map((source) => (
+                <article className="feed-directory-card" key={source.id}>
+                  <button type="button" onClick={() => onOpenFeed(source)}>
+                    <span>{source.group}</span>
+                    <strong>{source.label}</strong>
+                    <small>{source.description}</small>
+                  </button>
+                  <button
+                    className={pinnedFeedIds.includes(source.id) ? "directory-pin pinned" : "directory-pin"}
+                    type="button"
+                    onClick={() => onTogglePinnedFeed(source)}
+                  >
+                    {pinnedFeedIds.includes(source.id) ? "Pinned" : "Pin locally"}
+                  </button>
+                </article>
+              ))}
+            </div>
+          </section>
+          <ExploreDiscoverFeeds
+            onOpenFeed={onOpenFeed}
+            pinnedFeedIds={pinnedFeedIds}
+            onTogglePinnedFeed={onTogglePinnedFeed}
+            canFollowFeeds={canFollowFeeds}
+            followedFeedUris={followedFeedUris}
+            followBusyUri={followBusyUri}
+            onToggleFollowFeed={onToggleFollowFeed}
+          />
+        </>
+      )}
+      {name !== "feeds" && (
+        <section className="surface-grid" aria-label={`${title} sections`}>
+          {surface.cards.map((card) => (
+            <article className="surface-card" key={card.title}>
+              <span>{card.status}</span>
+              <h3>{card.title}</h3>
+              <p>{card.detail}</p>
             </article>
           ))}
         </section>
       )}
-      <section className="surface-grid" aria-label={`${title} sections`}>
-        {surface.cards.map((card) => (
-          <article className="surface-card" key={card.title}>
-            <span>{card.status}</span>
-            <h3>{card.title}</h3>
-            <p>{card.detail}</p>
-          </article>
-        ))}
-      </section>
     </div>
   );
 }

@@ -2019,6 +2019,24 @@ button.surface-action {
   background: rgba(5, 96, 255, 0.12);
 }
 
+.feed-directory-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.directory-unfollow {
+  min-height: 32px;
+  margin-top: 12px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--bsky-blue-soft);
+  box-shadow: inset 0 0 0 1px var(--bsky-blue-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .discover-feeds {
   margin-top: 18px;
 }
