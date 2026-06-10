@@ -543,13 +543,10 @@ export type ReplyRef = { root: PostRef; parent: PostRef };
 export type ComposerImage = { file: Blob; alt: string };
 export type ComposerPostInput = { text: string; images?: ComposerImage[] };
 
-// Temporary deployed protocol probe: app.bsky.embed.gallery has a hard schema
-// ceiling of 20. Normal BigBSky authoring should return to the current Bluesky
-// soft limit of 10 after this probe.
 // Bluesky supports up to 10 authored images via app.bsky.embed.gallery. The
 // older app.bsky.embed.images embed is still capped at 4 by its lexicon, so
 // buildImageEmbed writes images for 1-4 and gallery for 5-10.
-export const MAX_POST_IMAGES = 20;
+export const MAX_POST_IMAGES = 10;
 
 async function getImageAspectRatio(file: Blob): Promise<{ width: number; height: number }> {
   if ("createImageBitmap" in window) {
