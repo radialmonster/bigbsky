@@ -2621,7 +2621,7 @@ button.surface-action {
 
 .post-header {
   display: grid;
-  grid-template-columns: 46px minmax(0, 1fr) 36px;
+  grid-template-columns: 46px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
 }

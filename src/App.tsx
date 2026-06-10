@@ -2051,15 +2051,11 @@ export function App() {
     const withoutPost = (items: FeedItem[]) => items.filter((item) => item.post.uri !== uri);
     setFeedState((current) => ({ ...current, items: withoutPost(current.items) }));
     setSearchState((current) => ({ ...current, posts: current.posts.filter((post) => post.uri !== uri) }));
-    Object.values(feedCacheRef.current).forEach((state) => {
-      state.items = withoutPost(state.items);
-    });
-    Object.values(profileCacheRef.current).forEach((state) => {
-      state.feed.items = withoutPost(state.feed.items);
-    });
-    Object.values(searchCacheRef.current).forEach((state) => {
-      state.posts = state.posts.filter((post) => post.uri !== uri);
-    });
+    feedCacheRef.current = {};
+    profileCacheRef.current = {};
+    searchCacheRef.current = {};
+    threadCacheRef.current = {};
+    threadBranchCacheRef.current = {};
     setBookmarkOverrides((current) => ({ ...current, [uri]: false }));
   }, []);
 
@@ -6274,9 +6270,6 @@ function PostCard({
         <button className="author-button" type="button" onClick={() => onOpenProfile?.(post.author)}>
           <strong>{displayName(post.author)}</strong>
           <span>@{post.author.handle}</span>
-        </button>
-        <button type="button" title="More">
-          <MoreHorizontal size={18} />
         </button>
       </header>
       {item.reason?.by && <p className="reason">Reposted by {displayName(item.reason.by)}</p>}
