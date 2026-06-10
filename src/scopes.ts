@@ -13,7 +13,7 @@
 //
 //   rpc:<method>?aud=did:web:api.bsky.app%23bsky_appview  (one per method)
 //     READ + AppView writes. We enumerate the specific AppView methods the
-//     reader calls (feed.getTimeline/getFeed/getFeedGenerator(s)/getAuthorFeed/
+//     reader calls (feed.getTimeline/getFeed/getFeedSkeleton/getFeedGenerator(s)/getAuthorFeed/
 //     getActorFeeds/getListFeed/getPostThread/getLikes/getRepostedBy/getQuotes/
 //     searchPosts, graph.getList(s), actor.getProfile/searchActors/
 //     getPreferences/putPreferences, unspecced.getPopularFeedGenerators/
