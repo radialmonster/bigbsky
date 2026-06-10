@@ -67,6 +67,7 @@ import {
 import {
   type AuthSnapshot,
   type ListMember,
+  type NotificationItem,
   type SubscribedFeed,
   blockAccount,
   clearOAuthSessionStorage,
@@ -83,10 +84,14 @@ import {
   getListMembers,
   getMissingScopes,
   getMyLists,
+  getNotifications,
   getProfileAuthed,
   getSubscribedFeeds,
+  markNotificationsSeen,
+  muteList,
   removeListItem,
   subscribeBlockList,
+  unmuteList,
   unsubscribeBlockList,
   initAuthSession,
   likePost,
@@ -2191,6 +2196,18 @@ export function App() {
     });
     navigate(routeState, path);
   };
+  // Open a post by its AT-URI given the post author's handle/DID (used by
+  // notifications, which carry uris rather than full post objects).
+  const openPostByUri = (uri: string, actor: string) => {
+    const rkey = uri.split("/").pop();
+    if (!rkey || !actor) {
+      return;
+    }
+    const path = `/profile/${encodeURIComponent(actor)}/post/${encodeURIComponent(rkey)}`;
+    const routeState = { kind: "post", actor, rkey } as const;
+    remember({ label: "Post conversation", detail: `@${actor}`, path, route: routeState });
+    navigate(routeState, path);
+  };
   const openProfile = (author: Profile) => {
     const path = `/profile/${encodeURIComponent(author.handle)}`;
     const routeState = { kind: "profile", actor: author.handle } as const;
@@ -2511,6 +2528,7 @@ export function App() {
             onToggleListPost={togglePostInLocalList}
             onOpenFeed={openFeedSource}
             onOpenProfile={openProfile}
+            onOpenPostByUri={openPostByUri}
             onOpenSearch={() => navigate({ kind: "search" }, "/search")}
             onOpenSearchQuery={submitSearch}
             onSignIn={handleSignIn}
@@ -3031,6 +3049,7 @@ function SurfaceView({
   onOpenLinkPreview,
   onOpenProfile,
   onOpenPost,
+  onOpenPostByUri,
   onOpenSearch,
   onOpenSearchQuery,
   onSignIn,
@@ -3081,6 +3100,7 @@ function SurfaceView({
   onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
   onOpenProfile: (profile: Profile) => void;
   onOpenPost: (post: FeedPost) => void;
+  onOpenPostByUri: (uri: string, actor: string) => void;
   onOpenSearch: () => void;
   onOpenSearchQuery: (query: string) => void;
   onSignIn: (handle: string) => void | Promise<void>;
@@ -3352,6 +3372,8 @@ function SurfaceView({
         localListCount={localLists.length}
         onOpenSearch={onOpenSearch}
         onTogglePinnedNotification={onTogglePinnedNotification}
+        onOpenPostByUri={onOpenPostByUri}
+        onOpenProfile={onOpenProfile}
       />
     );
   }
@@ -3990,6 +4012,134 @@ function SelfProfileSurface({
   );
 }
 
+const notificationReasonText: Record<string, string> = {
+  like: "liked your post",
+  repost: "reposted your post",
+  follow: "followed you",
+  mention: "mentioned you",
+  reply: "replied to you",
+  quote: "quoted your post",
+  "starterpack-joined": "joined via your starter pack",
+};
+
+function AuthedNotifications({
+  selfHandle,
+  onOpenPostByUri,
+  onOpenProfile,
+}: {
+  selfHandle: string;
+  onOpenPostByUri: (uri: string, actor: string) => void;
+  onOpenProfile: (profile: Profile) => void;
+}) {
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [items, setItems] = useState<NotificationItem[]>([]);
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [tab, setTab] = useState<"all" | "mentions">("all");
+
+  useEffect(() => {
+    let cancelled = false;
+    setStatus("loading");
+    getNotifications()
+      .then((page) => {
+        if (cancelled) {
+          return;
+        }
+        setItems(page.notifications);
+        setCursor(page.cursor);
+        setStatus("ready");
+        // Mark seen so the unread count resets; non-fatal if it fails.
+        void markNotificationsSeen().catch(() => {});
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStatus("error");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function loadMore() {
+    if (!cursor || loadingMore) {
+      return;
+    }
+    setLoadingMore(true);
+    getNotifications(cursor)
+      .then((page) => {
+        setItems((current) => [...current, ...page.notifications]);
+        setCursor(page.cursor);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingMore(false));
+  }
+
+  // mentions tab = direct interactions on your posts/handle.
+  const mentionReasons = new Set(["mention", "reply", "quote"]);
+  const visible = tab === "mentions" ? items.filter((item) => mentionReasons.has(item.reason)) : items;
+
+  function openTarget(item: NotificationItem) {
+    if (item.reason === "follow" || item.reason === "starterpack-joined") {
+      onOpenProfile(item.author);
+      return;
+    }
+    if ((item.reason === "like" || item.reason === "repost") && item.reasonSubject) {
+      // The subject post is the signed-in user's own post.
+      onOpenPostByUri(item.reasonSubject, selfHandle);
+      return;
+    }
+    // reply / mention / quote: the notification record itself is the post.
+    onOpenPostByUri(item.uri, item.author.handle);
+  }
+
+  return (
+    <>
+      <section className="notification-tabs" aria-label="Notification filters">
+        <button className={tab === "all" ? "selected" : ""} type="button" onClick={() => setTab("all")}>
+          All
+        </button>
+        <button className={tab === "mentions" ? "selected" : ""} type="button" onClick={() => setTab("mentions")}>
+          Mentions
+        </button>
+      </section>
+      {status === "loading" && <LoadingState label="Loading notifications" />}
+      {status === "error" && <ErrorState message="Could not load notifications." />}
+      {status === "ready" && visible.length === 0 && (
+        <EmptyState title="No notifications" message={tab === "mentions" ? "No mentions, replies, or quotes yet." : "You're all caught up."} />
+      )}
+      {status === "ready" && visible.length > 0 && (
+        <section className="notif-feed" aria-label="Notifications">
+          {visible.map((item) => (
+            <button
+              type="button"
+              className={item.isRead ? "notif-row" : "notif-row unread"}
+              key={`${item.uri}:${item.reason}:${item.indexedAt}`}
+              onClick={() => openTarget(item)}
+            >
+              <Avatar profile={item.author} />
+              <div className="notif-body">
+                <p>
+                  <strong>{displayName(item.author)}</strong>{" "}
+                  <span className="notif-handle">@{item.author.handle}</span>{" "}
+                  {notificationReasonText[item.reason] || item.reason}
+                </p>
+                {item.record?.text && <p className="notif-text">{item.record.text}</p>}
+                <small>{formatPostTime(item.indexedAt)}</small>
+              </div>
+            </button>
+          ))}
+          {cursor && (
+            <button type="button" className="notif-load-more" onClick={loadMore} disabled={loadingMore}>
+              {loadingMore ? "Loading…" : "Load more"}
+            </button>
+          )}
+        </section>
+      )}
+    </>
+  );
+}
+
 function NotificationsSurface({
   auth,
   savedPostCount,
@@ -4000,6 +4150,8 @@ function NotificationsSurface({
   localListCount,
   onOpenSearch,
   onTogglePinnedNotification,
+  onOpenPostByUri,
+  onOpenProfile,
 }: {
   auth: AuthState;
   savedPostCount: number;
@@ -4010,6 +4162,8 @@ function NotificationsSurface({
   localListCount: number;
   onOpenSearch: () => void;
   onTogglePinnedNotification: (id: string) => void;
+  onOpenPostByUri: (uri: string, actor: string) => void;
+  onOpenProfile: (profile: Profile) => void;
 }) {
   const events = [
     {
@@ -4060,36 +4214,41 @@ function NotificationsSurface({
     <div className="timeline comfortable">
       <section className="surface-placeholder">
         <h2>Notifications</h2>
-        <p>Local reader events render here now. Account notifications, mentions, and follows can replace this inbox once signed-in reads are available.</p>
+        <p>
+          {auth.session
+            ? "Your Bluesky notifications — likes, reposts, follows, replies, mentions, and quotes. Click any item to open the related post or profile."
+            : "Sign in to see your Bluesky notifications. The local reader summary below stays available either way."}
+        </p>
+      </section>
+
+      {auth.session ? (
+        <AuthedNotifications selfHandle={auth.session.handle} onOpenPostByUri={onOpenPostByUri} onOpenProfile={onOpenProfile} />
+      ) : (
         <button className="surface-action" type="button" onClick={onOpenSearch}>
           Open mention search
         </button>
-      </section>
-      <section className="notification-tabs" aria-label="Notification filters">
-        <button className="selected" type="button">
-          All
-        </button>
-        <button type="button" onClick={onOpenSearch}>
-          Mentions
-        </button>
-      </section>
-      <section className="notification-list" aria-label="Local notifications">
-        {sortedEvents.map((event) => {
-          const isPinned = pinnedNotificationIds.includes(event.id);
-          return (
-            <article className={isPinned ? "notification-item pinned" : "notification-item"} key={event.id}>
-              <span>{event.status}</span>
-              <div>
-                <h3>{event.title}</h3>
-                <p>{event.detail}</p>
-                <button type="button" onClick={() => onTogglePinnedNotification(event.id)}>
-                  {isPinned ? "Unpin notification" : "Pin notification"}
-                </button>
-              </div>
-            </article>
-          );
-        })}
-      </section>
+      )}
+
+      <details className="notif-local">
+        <summary>Browser reader summary</summary>
+        <section className="notification-list" aria-label="Local reader summary">
+          {sortedEvents.map((event) => {
+            const isPinned = pinnedNotificationIds.includes(event.id);
+            return (
+              <article className={isPinned ? "notification-item pinned" : "notification-item"} key={event.id}>
+                <span>{event.status}</span>
+                <div>
+                  <h3>{event.title}</h3>
+                  <p>{event.detail}</p>
+                  <button type="button" onClick={() => onTogglePinnedNotification(event.id)}>
+                    {isPinned ? "Unpin" : "Pin"}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </section>
+      </details>
     </div>
   );
 }
@@ -4224,6 +4383,10 @@ function BlueskyListCard({
   // URI. Only meaningful for moderation lists you don't own.
   const [blockUri, setBlockUri] = useState<string | undefined>(list.viewer?.blocked);
   const [subBusy, setSubBusy] = useState(false);
+  // Mute-list subscription state, seeded from viewer.muted. muteActorList is an
+  // AppView procedure (no record uri), so this is just a boolean.
+  const [muted, setMuted] = useState<boolean>(!!list.viewer?.muted);
+  const [muteBusy, setMuteBusy] = useState(false);
 
   async function handleDelete() {
     if (!onDelete || deleting) {
@@ -4266,6 +4429,31 @@ function BlueskyListCard({
     }
   }
 
+  async function handleToggleMute() {
+    if (muteBusy) {
+      return;
+    }
+    const previous = muted;
+    setMuteBusy(true);
+    try {
+      if (previous) {
+        setMuted(false);
+        await unmuteList(list.uri);
+      } else {
+        if (!window.confirm(`Mute everyone on "${list.name}"? Their posts and reposts will be hidden from your feeds.`)) {
+          setMuteBusy(false);
+          return;
+        }
+        setMuted(true);
+        await muteList(list.uri);
+      }
+    } catch {
+      setMuted(previous);
+    } finally {
+      setMuteBusy(false);
+    }
+  }
+
   return (
     <article className="bsky-list-card">
       <div className="bsky-list-card-head">
@@ -4300,10 +4488,15 @@ function BlueskyListCard({
             {managing ? "Done" : "Manage members"}
           </button>
         )}
-        {/* Subscribe-as-block is only meaningful for someone else's modlist. */}
+        {/* Subscribing as block/mute is only meaningful for someone else's modlist. */}
         {isModlist && !isOwn && (
           <button type="button" className={blockUri ? "list-subscribed" : ""} onClick={handleToggleSubscribe} disabled={subBusy}>
             {blockUri ? "Unsubscribe block" : "Subscribe (block)"}
+          </button>
+        )}
+        {isModlist && !isOwn && (
+          <button type="button" className={muted ? "list-subscribed" : ""} onClick={handleToggleMute} disabled={muteBusy}>
+            {muted ? "Unmute list" : "Mute list"}
           </button>
         )}
         <a href={listBskyUrl(list)} target="_blank" rel="noreferrer">

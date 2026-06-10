@@ -15,9 +15,11 @@
 //     READ + AppView writes. We enumerate the specific AppView methods the
 //     reader calls (feed.getTimeline/getFeed/getFeedSkeleton/getFeedGenerator(s)/getAuthorFeed/
 //     getActorFeeds/getListFeed/getPostThread/getLikes/getRepostedBy/getQuotes/
-//     searchPosts, graph.getList(s), actor.getProfile/searchActors/
-//     getPreferences/putPreferences, unspecced.getPopularFeedGenerators/
-//     getTrendingTopics) rather than the `rpc:*` wildcard. Reason: the bare
+//     searchPosts, graph.getList(s)/muteActorList/unmuteActorList,
+//     actor.getProfile/searchActors/getPreferences/putPreferences,
+//     notification.listNotifications/getUnreadCount/updateSeen,
+//     unspecced.getPopularFeedGenerators/getTrendingTopics) rather than the
+//     `rpc:*` wildcard. Reason: the bare
 //     `*` method wildcard makes Bluesky's consent screen list "Chat — Read and
 //     send messages" (the wildcard matches chat.bsky.* method names), even
 //     though `aud` restricts the token to the AppView and chat is never

@@ -861,6 +861,92 @@ export async function unsubscribeBlockList(listblockUri: string): Promise<void> 
   await agent.com.atproto.repo.deleteRecord({ repo, collection: "app.bsky.graph.listblock", rkey });
 }
 
+// Subscribe to a list as a MUTE list (app.bsky.graph.muteActorList — an AppView
+// procedure, not a repo record, so there is nothing to delete; unsubscribe is
+// unmuteActorList below). Needs the muteActorList scope. Throws if signed out.
+export async function muteList(listUri: string): Promise<void> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to mute lists.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  await agent.app.bsky.graph.muteActorList({ list: listUri });
+}
+
+export async function unmuteList(listUri: string): Promise<void> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to manage list mutes.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  await agent.app.bsky.graph.unmuteActorList({ list: listUri });
+}
+
+// --- Notifications (AppView reads; scopes notification.listNotifications /
+// getUnreadCount / updateSeen) ---
+
+export type NotificationItem = {
+  uri: string;
+  cid: string;
+  author: Profile;
+  reason: string; // like | repost | follow | mention | reply | quote | starterpack-joined | ...
+  reasonSubject?: string; // at-uri of the subject post for like/repost
+  record?: { text?: string; createdAt?: string };
+  isRead: boolean;
+  indexedAt: string;
+};
+
+export type NotificationsPage = { notifications: NotificationItem[]; cursor?: string; seenAt?: string };
+
+// Fetch a page of the signed-in user's notifications. Returns an empty page when
+// signed out. Routed through the user's session/AppView.
+export async function getNotifications(cursor?: string): Promise<NotificationsPage> {
+  const session = await ensureSession();
+  if (!session) {
+    return { notifications: [] };
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const response = await agent.app.bsky.notification.listNotifications({
+    limit: 40,
+    ...(cursor ? { cursor } : {}),
+  });
+  return {
+    notifications: (response.data.notifications ?? []) as unknown as NotificationItem[],
+    cursor: response.data.cursor,
+    seenAt: response.data.seenAt,
+  };
+}
+
+// Number of unread notifications, for a badge. 0 when signed out / on error.
+export async function getUnreadNotificationCount(): Promise<number> {
+  const session = await ensureSession();
+  if (!session) {
+    return 0;
+  }
+  try {
+    const { Agent } = await import("@atproto/api");
+    const agent = new Agent(session);
+    const response = await agent.app.bsky.notification.getUnreadCount();
+    return response.data.count ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+// Mark notifications seen as of now, so the unread count resets. No-op signed out.
+export async function markNotificationsSeen(): Promise<void> {
+  const session = await ensureSession();
+  if (!session) {
+    return;
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  await agent.app.bsky.notification.updateSeen({ seenAt: new Date().toISOString() });
+}
+
 export async function clearOAuthSessionStorage() {
   if (!("indexedDB" in window)) {
     return;
