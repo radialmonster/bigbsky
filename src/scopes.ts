@@ -11,15 +11,21 @@
 //   atproto
 //     Required base scope; identifies the account.
 //
-//   rpc:*?aud=did:web:api.bsky.app%23bsky_appview
-//     READ + AppView writes. Every AppView query the reader makes (timeline,
-//     feeds, threads, profiles, lists, search, notifications) plus the AppView
-//     procedures we use: saving/pinning feeds & lists (actor.putPreferences)
-//     and muting accounts/threads/lists (graph.mute*). Scoped to the AppView
-//     audience only — no repo-write power, no PDS admin, no chat. `rpc` covers
-//     both query and procedure methods, so putPreferences/mute need no separate
-//     scope. The `#` fragment in `aud` is percent-encoded as `%23` per the
-//     permission spec.
+//   rpc:<method>?aud=did:web:api.bsky.app%23bsky_appview  (one per method)
+//     READ + AppView writes. We enumerate the specific AppView methods the
+//     reader calls (feed.getTimeline/getFeed/getFeedGenerator(s)/getAuthorFeed/
+//     getActorFeeds/getListFeed/getPostThread/getLikes/getRepostedBy/getQuotes/
+//     searchPosts, graph.getList(s), actor.getProfile/searchActors/
+//     getPreferences/putPreferences, unspecced.getPopularFeedGenerators/
+//     getTrendingTopics) rather than the `rpc:*` wildcard. Reason: the bare
+//     `*` method wildcard makes Bluesky's consent screen list "Chat — Read and
+//     send messages" (the wildcard matches chat.bsky.* method names), even
+//     though `aud` restricts the token to the AppView and chat is never
+//     callable. Enumerating only app.bsky.* methods keeps chat off the consent
+//     screen. Partial wildcards (`app.bsky.*`) are not allowed by the spec, so
+//     the list is explicit; adding a new authenticated AppView read means
+//     adding a line here (and existing users re-authorizing). The `#` fragment
+//     in `aud` is percent-encoded as `%23` per the permission spec.
 //
 //   repo:app.bsky.feed.post        new posts + replies/comments (quotes reuse this)
 //   repo:app.bsky.feed.like        like / unlike
