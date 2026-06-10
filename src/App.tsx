@@ -397,7 +397,10 @@ function isPinnedFeedMeta(value: unknown): value is FeedSource {
     typeof source.uri === "string" &&
     typeof source.label === "string" &&
     typeof source.description === "string" &&
-    (source.group === "Core" || source.group === "Official" || source.group === "Project")
+    (source.group === "Core" ||
+      source.group === "Official" ||
+      source.group === "Discovered" ||
+      source.group === "Project") // legacy alias for Discovered; kept so older pins still load
   );
 }
 
@@ -1059,7 +1062,7 @@ export function App() {
           id: route.uri,
           uri: route.uri,
           label: list ? "List" : "Public Feed",
-          group: "Project",
+          group: "Discovered",
           description: list ? "Public Bluesky list timeline." : "Public Bluesky feed opened from discovery.",
         };
       }
@@ -3575,7 +3578,7 @@ function DiscoverFeedCard({
     id: feed.uri,
     uri: feed.uri,
     label: feed.displayName || "Public Feed",
-    group: "Project",
+    group: "Discovered",
     description: feed.description || "Public Bluesky feed opened from discovery.",
   };
 
@@ -3738,7 +3741,7 @@ function ProfileListsTab({ actor, onOpenFeed }: { actor: string; onOpenFeed: (so
               id: list.uri,
               uri: list.uri,
               label: list.name || "List",
-              group: "Project",
+              group: "Discovered",
               description: list.description || "Public Bluesky list timeline.",
             };
             const body = (
@@ -4911,7 +4914,7 @@ function SearchView({
                       id: feed.uri,
                       uri: feed.uri,
                       label: feed.displayName || "Public Feed",
-                      group: "Project",
+                      group: "Discovered",
                       description: feed.description || "Public Bluesky feed opened from search.",
                     })
                   }

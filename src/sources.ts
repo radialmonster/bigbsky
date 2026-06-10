@@ -4,7 +4,11 @@ export type FeedSource = {
   id: string;
   label: string;
   uri: string;
-  group: "Core" | "Official" | "Project" | "My Feeds";
+  // "Discovered" tags transient sources for dynamically-opened public feeds/
+  // lists (discovery/search/at:// routes); it is not a selector group. "Project"
+  // is the legacy name for the same thing, kept only so older persisted pinned
+  // metadata still validates.
+  group: "Core" | "Official" | "Discovered" | "Project" | "My Feeds";
   description: string;
 };
 
