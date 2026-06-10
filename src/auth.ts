@@ -437,6 +437,53 @@ export async function searchPostsAuthed(
   };
 }
 
+export type PostRef = { uri: string; cid: string };
+export type ReplyRef = { root: PostRef; parent: PostRef };
+
+// Publish a single post (optionally a reply). Detects rich-text facets (links,
+// @mentions, #hashtags) so they render/click correctly, the same way the reader
+// renders incoming posts. Writes an app.bsky.feed.post record (scope
+// repo:app.bsky.feed.post). Returns the new post's uri+cid. Throws if signed out.
+export async function publishPost(opts: { text: string; reply?: ReplyRef; langs?: string[] }): Promise<PostRef> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to post.");
+  }
+  const { Agent, RichText } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const richText = new RichText({ text: opts.text });
+  await richText.detectFacets(agent);
+  const result = await agent.post({
+    text: richText.text,
+    ...(richText.facets ? { facets: richText.facets } : {}),
+    ...(opts.reply ? { reply: opts.reply } : {}),
+    ...(opts.langs && opts.langs.length > 0 ? { langs: opts.langs } : {}),
+  });
+  return { uri: result.uri, cid: result.cid };
+}
+
+// Publish an ordered thread: each post after the first replies to the previous
+// one and shares the first post as the thread root, matching how bsky.app
+// composes a multi-post thread. Blank entries are skipped. Returns the root
+// post's ref. Throws if signed out or nothing to post.
+export async function publishThread(texts: string[]): Promise<PostRef> {
+  const clean = texts.map((text) => text.trim()).filter((text) => text.length > 0);
+  if (clean.length === 0) {
+    throw new Error("Nothing to post.");
+  }
+  let root: PostRef | null = null;
+  let parent: PostRef | null = null;
+  for (const text of clean) {
+    const reply: ReplyRef | undefined = root && parent ? { root, parent } : undefined;
+    const ref = await publishPost({ text, reply });
+    if (!root) {
+      root = ref;
+    }
+    parent = ref;
+  }
+  return root as PostRef;
+}
+
 // Follow an account: creates an app.bsky.graph.follow record in the user's
 // repo (scope repo:app.bsky.graph.follow). Returns the follow record URI so the
 // caller can unfollow later. Throws if signed out.

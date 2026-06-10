@@ -774,6 +774,21 @@ button {
   font-weight: 700;
 }
 
+.composer-media-note {
+  margin: 0;
+  padding: 0 14px 8px;
+  color: var(--app-text-muted);
+  font-size: 12px;
+}
+
+.composer-error {
+  margin: 0;
+  padding: 0 14px 8px;
+  color: #f87171;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .composer-actions {
   display: flex;
   align-items: center;

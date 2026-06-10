@@ -80,6 +80,8 @@ import {
   getSubscribedFeeds,
   initAuthSession,
   likePost,
+  publishPost,
+  publishThread,
   searchPostsAuthed,
   unblockAccount,
   unfollowAccount,
@@ -1573,6 +1575,25 @@ export function App() {
     return () => controller.abort();
   }, [route]);
 
+  // Re-fetch the open thread (bypassing the cache) after publishing a reply so
+  // the new reply appears in the conversation.
+  const reloadThread = useCallback(() => {
+    if (route.kind !== "post") {
+      return;
+    }
+    const cacheKey = `${route.actor}:${route.rkey}`;
+    delete threadCacheRef.current[cacheKey];
+    setThread({ status: "loading" });
+    getPostThreadAuthed(route.actor, route.rkey)
+      .then((response) => {
+        threadCacheRef.current[cacheKey] = response.thread;
+        setThread({ status: "ready", node: response.thread });
+      })
+      .catch((error) => {
+        setThread({ status: "error", error: error instanceof Error ? error.message : String(error) });
+      });
+  }, [route]);
+
   function loadThreadBranch(uri: string) {
     if (thread.status !== "ready" || !thread.node || loadingThreadBranches[uri]) {
       return;
@@ -2046,6 +2067,12 @@ export function App() {
 
     void loadFeed(activeSource, feedState.cursor);
   };
+  // Force a fresh load of the active feed (bypassing the in-memory cache) so a
+  // just-published post shows up without a manual refresh.
+  const reloadActiveFeed = useCallback(() => {
+    delete feedCacheRef.current[`feed:${activeSource.id}`];
+    void loadFeed(activeSource);
+  }, [activeSource, loadFeed]);
   const openPost = (post: FeedPost) => {
     const path = postPath(post);
     if (!path) {
@@ -2318,6 +2345,8 @@ export function App() {
             savedUris={savedUriSet}
             localLists={localLists}
             onToggleListPost={togglePostInLocalList}
+            canReply={!!authState.session}
+            onReplied={reloadThread}
           />
         ) : route.kind === "surface" && route.name === "saved" ? (
           <SavedPostsView
@@ -2489,6 +2518,7 @@ export function App() {
               <Composer
                 draft={composerDraft}
                 onDraftChange={setComposerDraft}
+                onPosted={reloadActiveFeed}
               />
             )}
             {feedState.status === "loading" && <LoadingState label="Loading public Bluesky posts" />}
@@ -4290,17 +4320,22 @@ function ProfileDetailHeader({
 function Composer({
   draft,
   onDraftChange,
+  onPosted,
 }: {
   draft: { posts: string[]; mediaSlots: Record<string, number> };
   onDraftChange: (draft: { posts: string[]; mediaSlots: Record<string, number> }) => void;
+  onPosted?: () => void;
 }) {
   const drafts = draft.posts.length > 0 ? draft.posts : [""];
   const mediaSlots = draft.mediaSlots;
   const overLimit = drafts.some((postDraft) => postDraft.length > 300);
   const hasContent = drafts.some((postDraft) => postDraft.trim().length > 0) || Object.values(mediaSlots).some((count) => count > 0);
+  const hasMediaPlaceholders = Object.values(mediaSlots).some((count) => count > 0);
   // Collapsed by default to keep the top of the feed clean; expand on click.
   // Start expanded if a local draft is already in progress so it isn't hidden.
   const [expanded, setExpanded] = useState(hasContent);
+  const [posting, setPosting] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
 
   useEffect(() => {
     if (hasContent) {
@@ -4347,6 +4382,27 @@ function Composer({
     onDraftChange(emptyDraft);
   }
 
+  async function handlePostAll() {
+    if (posting || overLimit || !hasContent) {
+      return;
+    }
+    setPosting(true);
+    setPostError(null);
+    try {
+      await publishThread(drafts);
+      // Posted: clear the draft, collapse, and refresh the feed so it appears.
+      const emptyDraft = { posts: [""], mediaSlots: {} };
+      localStorage.removeItem(composerDraftStorageKey);
+      onDraftChange(emptyDraft);
+      setExpanded(false);
+      onPosted?.();
+    } catch (error) {
+      setPostError(error instanceof Error ? error.message : "Could not publish. Try again.");
+    } finally {
+      setPosting(false);
+    }
+  }
+
   if (!expanded) {
     return (
       <section className="composer composer-collapsed" aria-label="Composer">
@@ -4387,7 +4443,7 @@ function Composer({
                 )}
               </div>
               <textarea
-                placeholder={index === 0 ? "Draft a post (posting from BigBSky is coming soon)" : "Continue the thread"}
+                placeholder={index === 0 ? "What's on your mind?" : "Continue the thread"}
                 value={draft}
                 onChange={(event) => updateDraft(index, event.target.value)}
               />
@@ -4410,16 +4466,22 @@ function Composer({
           );
         })}
       </div>
+      {hasMediaPlaceholders && (
+        <p className="composer-media-note">
+          Image attachments don't publish from BigBSky yet — only the text of each post will be posted.
+        </p>
+      )}
+      {postError && <p className="composer-error" role="alert">{postError}</p>}
       <div className="composer-footer">
-        <span>{hasContent ? "Draft autosaved locally" : "No local draft"}</span>
-        <button type="button" onClick={() => setDrafts([...drafts, ""])} title="Add post to thread">
+        <span>{posting ? "Publishing…" : hasContent ? "Draft autosaved locally" : "No local draft"}</span>
+        <button type="button" onClick={() => setDrafts([...drafts, ""])} title="Add post to thread" disabled={posting}>
           <Plus size={17} /> Add post
         </button>
-        <button type="button" onClick={clearDraft} disabled={!hasContent}>
+        <button type="button" onClick={clearDraft} disabled={!hasContent || posting}>
           Clear draft
         </button>
-        <button type="button" disabled={overLimit || !hasContent}>
-          Post All
+        <button type="button" onClick={handlePostAll} disabled={overLimit || !hasContent || posting}>
+          {posting ? "Posting…" : drafts.filter((d) => d.trim()).length > 1 ? "Post All" : "Post"}
         </button>
       </div>
     </section>
@@ -5452,6 +5514,8 @@ function ThreadView({
   onToggleListPost,
   onToggleSaved,
   savedUris,
+  canReply = false,
+  onReplied,
 }: {
   currentDid?: string;
   localLists: LocalList[];
@@ -5465,9 +5529,13 @@ function ThreadView({
   onToggleListPost: (listId: string, post: FeedPost) => void;
   onToggleSaved: (post: FeedPost) => void;
   savedUris: Set<string>;
+  canReply?: boolean;
+  onReplied?: () => void;
 }) {
   const [expandedBranches, setExpandedBranches] = useState<Record<string, boolean>>({});
   const [engagement, setEngagement] = useState<null | "reposts" | "quotes" | "likes">(null);
+  const [replyPosting, setReplyPosting] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
   const rootPost = findFirstThreadPost(thread.node);
   const parentNodes = collectThreadParents(thread.node);
   const replyDraftKey = rootPost ? `${replyDraftPrefix}${rootPost.uri}` : "";
@@ -5489,6 +5557,31 @@ function ThreadView({
       localStorage.removeItem(replyDraftKey);
     }
   }, [replyDraftKey, replyText]);
+
+  async function handleReply() {
+    if (!rootPost || replyPosting || !replyText.trim() || remainingReplyChars < 0) {
+      return;
+    }
+    // Reply to the post being viewed (the thread anchor). The thread root is the
+    // anchor's own reply.root when it is itself a reply, otherwise the anchor.
+    const parent = { uri: rootPost.uri, cid: rootPost.cid };
+    const rootRef = rootPost.record.reply?.root;
+    const root = rootRef?.uri && rootRef?.cid ? { uri: rootRef.uri, cid: rootRef.cid } : parent;
+    setReplyPosting(true);
+    setReplyError(null);
+    try {
+      await publishPost({ text: replyText.trim(), reply: { root, parent } });
+      setReplyText("");
+      if (replyDraftKey) {
+        localStorage.removeItem(replyDraftKey);
+      }
+      onReplied?.();
+    } catch (error) {
+      setReplyError(error instanceof Error ? error.message : "Could not publish reply. Try again.");
+    } finally {
+      setReplyPosting(false);
+    }
+  }
 
   if (thread.status === "loading") {
     return <LoadingState label="Loading thread" />;
@@ -5556,14 +5649,20 @@ function ThreadView({
       )}
       <section className="reply-composer" aria-label="Reply composer">
         <textarea
-          placeholder="Draft a reply (replying from BigBSky is coming soon)."
+          placeholder={canReply ? "Write your reply" : "Sign in to reply."}
           value={replyText}
           onChange={(event) => setReplyText(event.currentTarget.value)}
+          disabled={!canReply || replyPosting}
         />
+        {replyError && <p className="composer-error" role="alert">{replyError}</p>}
         <div className="composer-actions">
           <span className={remainingReplyChars < 0 ? "over-limit" : ""}>{remainingReplyChars}</span>
-          <button type="button" disabled={remainingReplyChars < 0 || replyText.trim().length === 0}>
-            Reply
+          <button
+            type="button"
+            onClick={handleReply}
+            disabled={!canReply || replyPosting || remainingReplyChars < 0 || replyText.trim().length === 0}
+          >
+            {replyPosting ? "Replying…" : "Reply"}
           </button>
         </div>
       </section>
