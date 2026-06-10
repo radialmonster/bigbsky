@@ -1,6 +1,7 @@
 import {
   Bell,
   Bookmark,
+  Check,
   Compass,
   EyeOff,
   Feather,
@@ -298,10 +299,29 @@ function resolveHomeSource(homeId: string, signedIn: boolean, subscribed: FeedSo
   const known =
     feedSources.find((source) => source.id === homeId) ??
     subscribed.find((source) => source.id === homeId || source.uri === homeId);
-  // A custom/subscribed feed only appears in `subscribed` while signed in; if
-  // signed out we won't find it, so fall back to public Discover.
-  return known ?? publicHomeFallback;
+  if (known) {
+    return known;
+  }
+  // A saved feed or list chosen as Home is identified by its at:// URI but may
+  // not be in `subscribed` (lists never are; a custom feed isn't while signed
+  // out). When signed in, open it as a synthetic source the feed loader
+  // understands — getListFeed for list URIs, the public feed path otherwise.
+  // Signed out, fall back to public Discover so Home never breaks.
+  if (signedIn && homeId.startsWith("at://")) {
+    const list = isListUri(homeId);
+    return {
+      id: homeId,
+      uri: homeId,
+      label: list ? "List" : "Feed",
+      group: "Discovered",
+      description: list ? "Your Bluesky list timeline." : "Your saved feed.",
+    };
+  }
+  return publicHomeFallback;
 }
+// One entry in the Settings "Open Home to" picker. `group` drives the section
+// headings (Following / Feeds / Lists) in the searchable picker.
+type HomeOption = { id: string; label: string; needsAuth: boolean; group: "Following" | "Feeds" | "Lists" };
 const widthModes = ["balanced", "wide", "focus"] as const;
 const searchTabs = ["posts", "people", "feeds"] as const;
 const profileTabs = ["posts", "replies", "media", "videos", "feeds", "lists"] as const;
@@ -1081,6 +1101,9 @@ export function App() {
 
   // Load the user's real Bluesky lists when they visit /lists while signed in.
   const onListsRoute = route.kind === "surface" && route.name === "lists";
+  // The Settings Home-page picker also offers the user's lists, so load them
+  // when Settings opens — not just on the Lists page.
+  const onSettingsRoute = route.kind === "surface" && route.name === "settings";
   const reloadMyLists = useCallback(() => {
     if (!signedInDid) {
       setMyLists({ owned: [], subscribed: [] });
@@ -1096,14 +1119,14 @@ export function App() {
       .catch(() => setMyListsStatus("error"));
   }, [signedInDid]);
   useEffect(() => {
-    if (onListsRoute && signedInDid && myListsStatus === "idle") {
+    if ((onListsRoute || onSettingsRoute) && signedInDid && myListsStatus === "idle") {
       reloadMyLists();
     }
     if (!signedInDid) {
       setMyLists({ owned: [], subscribed: [] });
       setMyListsStatus("idle");
     }
-  }, [onListsRoute, signedInDid, myListsStatus, reloadMyLists]);
+  }, [onListsRoute, onSettingsRoute, signedInDid, myListsStatus, reloadMyLists]);
 
   // Create a moderation/block list, then refresh so it appears under "Your lists".
   const handleCreateModList = useCallback(
@@ -1195,14 +1218,12 @@ export function App() {
   // the user's subscribed feeds when signed in. Following is always offered (it
   // falls back to Discover when signed out).
   const homeOptions = useMemo(() => {
-    const options: Array<{ id: string; label: string; needsAuth: boolean }> = [
-      { id: "following", label: "Following", needsAuth: true },
-    ];
+    const options: HomeOption[] = [{ id: "following", label: "Following", needsAuth: true, group: "Following" }];
     // Track both ids and uris so a subscribed copy of a built-in feed (same uri,
     // different id) doesn't appear twice.
     const seen = new Set<string>(["following"]);
     for (const source of feedSources) {
-      options.push({ id: source.id, label: source.label, needsAuth: false });
+      options.push({ id: source.id, label: source.label, needsAuth: false, group: "Feeds" });
       seen.add(source.id);
       seen.add(source.uri);
     }
@@ -1210,12 +1231,23 @@ export function App() {
       if (seen.has(source.id) || seen.has(source.uri)) {
         continue;
       }
-      options.push({ id: source.id, label: source.label, needsAuth: true });
+      options.push({ id: source.id, label: source.label, needsAuth: true, group: "Feeds" });
       seen.add(source.id);
       seen.add(source.uri);
     }
+    // Curation lists (owned + subscribed) open as a Home timeline via
+    // getListFeed; moderation lists can't be read that way, so they're skipped.
+    // Lists need sign-in. Dedupe by URI so an owned list that's also surfaced as
+    // subscribed isn't listed twice.
+    for (const list of [...myLists.owned, ...myLists.subscribed]) {
+      if (!list.purpose?.includes("curatelist") || seen.has(list.uri)) {
+        continue;
+      }
+      options.push({ id: list.uri, label: list.name || "List", needsAuth: true, group: "Lists" });
+      seen.add(list.uri);
+    }
     return options;
-  }, [subscribedFeeds]);
+  }, [subscribedFeeds, myLists]);
   const feedRoutePath = (source: FeedSource) => `/feed/${encodeURIComponent(source.id)}`;
   const densityKey = route.kind === "feed" ? `feed:${activeSource.id}` : route.kind;
   const density = densityByContext[densityKey] || densityByContext.default || "comfortable";
@@ -3081,6 +3113,181 @@ function MeasuredPostRow({
   );
 }
 
+// Searchable replacement for the old native <select> Home-page picker. A native
+// dropdown doesn't scale once a user has many feeds and lists, so this filters
+// as you type and groups results by Following / Feeds / Lists. Keyboard: type to
+// filter, Up/Down to move, Enter to choose, Escape to close.
+function HomeSourcePicker({
+  value,
+  options,
+  signedIn,
+  onChange,
+}: {
+  value: string;
+  options: HomeOption[];
+  signedIn: boolean;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const listRef = useRef<HTMLUListElement | null>(null);
+
+  const selected = options.find((option) => option.id === value);
+  const optionLabel = (option: HomeOption) =>
+    `${option.label}${option.needsAuth && !signedIn ? " (needs sign-in)" : ""}`;
+  const buttonLabel = selected ? optionLabel(selected) : "Choose a feed or list";
+
+  const filtered = useMemo(() => {
+    const trimmed = query.trim().toLowerCase();
+    if (!trimmed) {
+      return options;
+    }
+    return options.filter((option) => `${option.label} ${option.group}`.toLowerCase().includes(trimmed));
+  }, [options, query]);
+
+  // Group the filtered options while preserving their original order.
+  const groups = useMemo(() => {
+    const order: HomeOption["group"][] = ["Following", "Feeds", "Lists"];
+    return order
+      .map((group) => ({ group, items: filtered.filter((option) => option.group === group) }))
+      .filter((entry) => entry.items.length > 0);
+  }, [filtered]);
+
+  // Close on outside click.
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const onPointerDown = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [open]);
+
+  // When opening (or as the filter changes), focus the input and point the
+  // active highlight at the current selection, clamping into range.
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    inputRef.current?.focus();
+  }, [open]);
+  useEffect(() => {
+    const selectedIndex = filtered.findIndex((option) => option.id === value);
+    setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
+  }, [filtered, value]);
+
+  const commit = (option: HomeOption | undefined) => {
+    if (!option) {
+      return;
+    }
+    onChange(option.id);
+    setOpen(false);
+    setQuery("");
+  };
+
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveIndex((index) => Math.min(index + 1, filtered.length - 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveIndex((index) => Math.max(index - 1, 0));
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      commit(filtered[activeIndex]);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      setOpen(false);
+      setQuery("");
+    }
+  };
+
+  // Keep the highlighted option scrolled into view.
+  useEffect(() => {
+    if (!open || !listRef.current) {
+      return;
+    }
+    const node = listRef.current.querySelector<HTMLElement>(`[data-index="${activeIndex}"]`);
+    node?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, open]);
+
+  return (
+    <div className="home-picker" ref={containerRef}>
+      <button
+        type="button"
+        className="home-picker-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span>{buttonLabel}</span>
+        <ChevronDown size={16} aria-hidden />
+      </button>
+      {open && (
+        <div className="home-picker-popover">
+          <div className="home-picker-search">
+            <Search size={15} aria-hidden />
+            <input
+              ref={inputRef}
+              type="text"
+              role="combobox"
+              aria-expanded
+              aria-controls="home-picker-list"
+              aria-autocomplete="list"
+              placeholder="Search feeds and lists"
+              value={query}
+              onInput={(event) => setQuery(event.currentTarget.value)}
+              onKeyDown={onKeyDown}
+            />
+          </div>
+          <ul className="home-picker-list" id="home-picker-list" role="listbox" ref={listRef}>
+            {filtered.length === 0 ? (
+              <li className="home-picker-empty" role="presentation">
+                No matches
+              </li>
+            ) : (
+              groups.map((entry) => (
+                <li key={entry.group} role="presentation">
+                  <div className="home-picker-group" role="presentation">
+                    {entry.group}
+                  </div>
+                  <ul role="presentation">
+                    {entry.items.map((option) => {
+                      const index = filtered.indexOf(option);
+                      const isSelected = option.id === value;
+                      return (
+                        <li
+                          key={option.id}
+                          data-index={index}
+                          role="option"
+                          aria-selected={isSelected}
+                          className={`home-picker-option${index === activeIndex ? " active" : ""}`}
+                          onMouseEnter={() => setActiveIndex(index)}
+                          onClick={() => commit(option)}
+                        >
+                          <span>{optionLabel(option)}</span>
+                          {isSelected && <Check size={15} aria-hidden />}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SurfaceView({
   auth,
   name,
@@ -3172,7 +3379,7 @@ function SurfaceView({
   onOpenSurfaceNav: (item: string) => void;
   onReauthorize: () => void;
   homeSourceId: string;
-  homeOptions: Array<{ id: string; label: string; needsAuth: boolean }>;
+  homeOptions: HomeOption[];
   onHomeSourceChange: (id: string) => void;
   onOpenSearch: () => void;
   onOpenSearchQuery: (query: string) => void;
@@ -3270,17 +3477,15 @@ function SurfaceView({
             <span>Home</span>
             <h3>Home Page</h3>
             <p>Choose what the house icon and bigbsky.com open. Following needs sign-in; if you&apos;re signed out, Home falls back to Discover so it never breaks.</p>
-            <label className="settings-select" aria-label="Home page feed">
-              <span>Open Home to</span>
-              <select value={homeSourceId} onChange={(event) => onHomeSourceChange(event.currentTarget.value)}>
-                {homeOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                    {option.needsAuth && !auth.session ? " (needs sign-in)" : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="settings-select" role="group" aria-label="Home page feed">
+              <span id="home-picker-label">Open Home to</span>
+              <HomeSourcePicker
+                value={homeSourceId}
+                options={homeOptions}
+                signedIn={!!auth.session}
+                onChange={onHomeSourceChange}
+              />
+            </div>
             {homeSourceId !== "discover" && !auth.session && (
               <p className="settings-note">Signed out — Home currently shows Discover until you sign in.</p>
             )}

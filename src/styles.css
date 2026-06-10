@@ -1191,6 +1191,128 @@ button {
   font-weight: 700;
 }
 
+/* Searchable Home-page picker (replaces the native <select> so it scales to
+   many feeds and lists). */
+.home-picker {
+  position: relative;
+}
+
+.home-picker-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface-2);
+  color: var(--app-text);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-picker-trigger span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-picker-popover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+
+.home-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--app-border);
+  color: var(--app-text-muted);
+}
+
+.home-picker-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--app-text);
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+}
+
+.home-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+}
+
+.home-picker-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.home-picker-group {
+  padding: 8px 12px 4px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--app-text-muted);
+}
+
+.home-picker-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--app-text);
+  cursor: pointer;
+}
+
+.home-picker-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-picker-option.active {
+  background: var(--app-surface-2);
+}
+
+.home-picker-option[aria-selected="true"] {
+  color: var(--bsky-blue);
+}
+
+.home-picker-empty {
+  padding: 14px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--app-text-muted);
+  text-align: center;
+}
+
 .settings-note {
   color: var(--bsky-blue-soft) !important;
   font-size: 12px !important;
