@@ -3483,6 +3483,44 @@ button.surface-action {
   color: var(--app-text);
 }
 
+.explore-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 560px;
+  margin-top: 12px;
+  padding: 0 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-surface-2);
+}
+
+.explore-search svg {
+  flex: 0 0 auto;
+  color: var(--app-text-muted);
+}
+
+.explore-search input {
+  min-width: 0;
+  flex: 1;
+  height: 44px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--app-text);
+  font-size: 15px;
+}
+
+.explore-search button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 16px;
+  border-radius: 8px;
+  background: var(--bsky-blue);
+  color: #fff;
+  font-weight: 700;
+}
+
 .search-box-clear {
   display: inline-flex;
   align-items: center;

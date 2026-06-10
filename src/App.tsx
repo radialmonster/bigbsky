@@ -3223,12 +3223,8 @@ function SurfaceView({
   const title = name.charAt(0).toUpperCase() + name.slice(1);
   const surfaces: Record<string, { copy: string; cards: Array<{ title: string; detail: string; status: string }> }> = {
     explore: {
-      copy: "Explore is your discovery doorway for search, trending topics, people, and Feed discovery. When you're signed in, results carry your follow/like state.",
-      cards: [
-        { title: "Search", detail: "Public post, profile, and local Feed search is available now.", status: "Active" },
-        { title: "Trending", detail: "The right rail keeps lightweight topic entry points visible.", status: "Static" },
-        { title: "Discover Feeds", detail: "Local Feed destinations are grouped and searchable without a horizontal tab strip.", status: "Active" },
-      ],
+      copy: "Search posts, people, and feeds, or jump into a trending topic. To browse and discover feeds, use the Feeds page.",
+      cards: [],
     },
     feeds: {
       copy: "Your saved Bluesky feeds, the built-in feeds, and popular feeds to discover. Open any feed as a timeline, pin it to the top of the selector, or follow/unfollow it on your account.",
@@ -3577,27 +3573,9 @@ function SurfaceView({
       <section className="surface-placeholder">
         <h2>{title}</h2>
         <p>{surface.copy}</p>
-        {name === "explore" && (
-          <a className="surface-action" href="/search" onClick={(event) => {
-            event.preventDefault();
-            onOpenSearch();
-          }}>
-            Open search
-          </a>
-        )}
+        {name === "explore" && <ExploreSearch onSearch={onOpenSearchQuery} />}
       </section>
       {name === "explore" && <ExploreTrendingTopics onOpenSearchQuery={onOpenSearchQuery} />}
-      {name === "explore" && (
-        <ExploreDiscoverFeeds
-          onOpenFeed={onOpenFeed}
-          pinnedFeedIds={pinnedFeedIds}
-          onTogglePinnedFeed={onTogglePinnedFeed}
-          canFollowFeeds={canFollowFeeds}
-          followedFeedUris={followedFeedUris}
-          followBusyUri={followBusyUri}
-          onToggleFollowFeed={onToggleFollowFeed}
-        />
-      )}
       {name === "feeds" && (
         <>
           <section className="bsky-list-section" aria-label="Your feeds">
@@ -3677,7 +3655,7 @@ function SurfaceView({
           />
         </>
       )}
-      {name !== "feeds" && (
+      {name !== "feeds" && surface.cards.length > 0 && (
         <section className="surface-grid" aria-label={`${title} sections`}>
           {surface.cards.map((card) => (
             <article className="surface-card" key={card.title}>
@@ -3689,6 +3667,28 @@ function SurfaceView({
         </section>
       )}
     </div>
+  );
+}
+
+function ExploreSearch({ onSearch }: { onSearch: (query: string) => void }) {
+  const [query, setQuery] = useState("");
+  return (
+    <form
+      className="explore-search"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSearch(query);
+      }}
+    >
+      <Search size={18} />
+      <input
+        aria-label="Search Bluesky"
+        placeholder="Search posts, people, and feeds"
+        value={query}
+        onInput={(event) => setQuery(event.currentTarget.value)}
+      />
+      <button type="submit">Search</button>
+    </form>
   );
 }
 
