@@ -1008,14 +1008,6 @@ export function App() {
       }),
     ) as Record<string, FeedSource[]>;
   }, [feedSearch, pinnedSources, visibleSources]);
-  const feedMapSummary = useMemo(
-    () =>
-      feedSources.reduce<Record<string, number>>((groups, source) => {
-        groups[source.group] = (groups[source.group] ?? 0) + 1;
-        return groups;
-      }, {}),
-    [],
-  );
   const entityCache = useMemo<EntityCache>(() => {
     const posts: Record<string, FeedPost> = {};
     const profiles: Record<string, Profile> = {};
@@ -2433,7 +2425,6 @@ export function App() {
             onTogglePinned={togglePinnedFeed}
           />
         )}
-        <FeedMapPanel groups={feedMapSummary} />
         <PinnedSearchesPanel searches={pinnedSearches} onOpen={submitSearch} onToggle={togglePinnedSearch} />
         <PinnedProfilesPanel profiles={pinnedProfiles} onOpen={openProfile} onToggle={togglePinnedProfile} />
         <LinkPreviewPanel
@@ -5975,20 +5966,6 @@ function TrendingPanel({
           </button>
         </>
       )}
-    </section>
-  );
-}
-
-function FeedMapPanel({ groups }: { groups: Record<string, number> }) {
-  return (
-    <section className="context-panel feed-map-panel">
-      <h2>Feed Map</h2>
-      {Object.entries(groups).map(([group, count]) => (
-        <div key={group}>
-          <span>{group}</span>
-          <strong>{count}</strong>
-        </div>
-      ))}
     </section>
   );
 }
