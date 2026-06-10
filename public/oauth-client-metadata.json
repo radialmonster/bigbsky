@@ -7,7 +7,7 @@
     "https://bigbsky.com/oauth/callback",
     "https://bigbsky.pages.dev/oauth/callback"
   ],
-  "scope": "atproto rpc:*?aud=did:web:api.bsky.app#bsky_appview repo:app.bsky.feed.post repo:app.bsky.feed.like repo:app.bsky.feed.repost repo:app.bsky.graph.follow repo:app.bsky.graph.list repo:app.bsky.graph.listitem blob:image/*",
+  "scope": "atproto rpc:*?aud=did:web:api.bsky.app%23bsky_appview repo:app.bsky.feed.post repo:app.bsky.feed.like repo:app.bsky.graph.follow repo:app.bsky.graph.block repo:app.bsky.graph.list repo:app.bsky.graph.listitem repo:app.bsky.graph.listblock blob:image/*",
   "grant_types": [
     "authorization_code",
     "refresh_token"

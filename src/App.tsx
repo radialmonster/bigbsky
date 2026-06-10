@@ -1730,6 +1730,13 @@ export function App() {
   }
 
   function openNavigation(item: string) {
+    if (item === "Chat") {
+      // BigBSky does not handle DMs; the Chat nav opens Bluesky messages
+      // directly rather than routing to an in-app surface.
+      window.open("https://bsky.app/messages", "_blank", "noopener,noreferrer");
+      return;
+    }
+
     if (item === "Home") {
       const source = feedSources[0];
       setActiveSourceId(source.id);
@@ -2740,14 +2747,6 @@ function SurfaceView({
 }) {
   const title = name.charAt(0).toUpperCase() + name.slice(1);
   const surfaces: Record<string, { copy: string; cards: Array<{ title: string; detail: string; status: string }> }> = {
-    chat: {
-      copy: "Direct messages stay deferred until the API and privacy posture are handled.",
-      cards: [
-        { title: "Requests", detail: "Signed-in message requests belong here once DM support is safe.", status: "Deferred" },
-        { title: "Inbox", detail: "The shell reserves a message list without storing conversations on BigBSky.", status: "OAuth later" },
-        { title: "New chat", detail: "Composer entry point remains disabled until private-message scopes are settled.", status: "Blocked" },
-      ],
-    },
     explore: {
       copy: "Explore is the public discovery doorway for search, trending topics, people, and Feed discovery while signed-in recommendations wait on OAuth.",
       cards: [
@@ -3030,6 +3029,30 @@ function SurfaceView({
         onOpenProfile={onOpenProfile}
         onSignOut={onSignOut}
       />
+    );
+  }
+
+  if (name === "chat") {
+    return (
+      <div className="timeline comfortable">
+        <section className="surface-placeholder">
+          <h2>Chat</h2>
+          <p>
+            BigBSky is a reader and intentionally does not handle direct
+            messages. DMs stay on Bluesky, where your conversations and privacy
+            controls already live — we don&apos;t request chat permissions or
+            store any messages.
+          </p>
+          <a
+            className="surface-action"
+            href="https://bsky.app/messages"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open messages on Bluesky
+          </a>
+        </section>
+      </div>
     );
   }
 
@@ -3582,9 +3605,15 @@ function SelfProfileSurface({
           <button type="button" onClick={() => onOpenProfile(auth as Profile)}>
             Open public profile
           </button>
-          <button type="button" disabled title="Edit profile requires authenticated write support">
-            Edit profile
-          </button>
+          <a
+            className="self-profile-action-link"
+            href={`https://bsky.app/profile/${encodeURIComponent(auth.handle || "")}`}
+            target="_blank"
+            rel="noreferrer"
+            title="Edit your profile on Bluesky"
+          >
+            Edit profile on Bluesky
+          </a>
           <button type="button" onClick={onSignOut}>
             Sign out
           </button>

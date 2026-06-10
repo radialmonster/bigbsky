@@ -21,6 +21,7 @@ Standing instructions from the operator. These override autonomous judgment (inc
 - **Do not add popups, previews, peeks, hover cards, modals, or similar interstitial UI unless explicitly asked.** (An author-peek and a thread-preview side-panel were both removed for this reason.) Authors open via the profile route; threads open by opening the post.
 - When unsure whether a change adds a sidebar item, popup, preview, or modal, ask first.
 - **AT Protocol API reference:** the canonical source for available XRPC methods, lexicons, and types is the atproto repository — `https://github.com/bluesky-social/atproto` (lexicons under `lexicons/`, e.g. `app/bsky/...`). Check it when choosing endpoints/fields rather than guessing.
+- **Keep OAuth scopes minimal and reader-first; delegate non-reader writes to bsky.app.** `public/oauth-client-metadata.json` is the single source of truth for the requested `scope` (`src/scopes.ts` imports it and re-exports `OAUTH_SCOPE`, so the two cannot drift). Currently granted writes: post/reply, like, follow accounts, block accounts, build/subscribe block lists, and image upload — everything else is read through the AppView `rpc:*?aud=did:web:api.bsky.app%23bsky_appview` scope (which also covers `putPreferences` and `mute`). Do not add a scope until the matching UI is actually built. Features we intentionally DELEGATE to Bluesky rather than build — and whose UI must **link out in a new tab, not implement** — include: direct messages / chat (→ `https://bsky.app/messages`), profile editing (→ `https://bsky.app/profile/<handle>`), reposts, reply-gates/thread-gates, video posting, and account/email/handle changes. If a surface for one of these exists, it opens the equivalent Bluesky page. (Done so far: the Chat surface now delegates to Bluesky messages; the self-profile "Edit profile" control links to the user's Bluesky profile.)
 
 ## Product Direction
 
@@ -966,6 +967,7 @@ Request budget mindset:
 - Include multi-post/thread composer UI. Status: first pass implemented as a client-only thread composer with add/remove draft posts, Drafts/Post All controls, and per-post validation.
 - Include per-post media attachment UI and upload/posting flow. Status: partial; each draft post supports up to four local media placeholders, with actual upload/posting deferred until OAuth and write APIs are added.
 - Include 300-character counter and validation per post in composer UI. Status: implemented for the current placeholder composer and each draft in the thread composer.
+- Build a real Notifications view (replies, mentions, likes, reposts, follows, quotes) from the authenticated AppView, replacing the current local-inbox stub on the Notifications route. Status: planned. No new OAuth scope is required — `app.bsky.notification.listNotifications` / `getUnreadCount` (reads) and `app.bsky.notification.updateSeen` (mark-as-read) are AppView methods already covered by the `rpc:*?aud=...%23bsky_appview` scope. Keep the existing local pinned-notifications affordance; layer the authenticated feed on top when a session is restored.
 - Experiment with wider post/card formats for text, media, link cards, quote posts, and threads. Status: implemented as first pass; quote-post cards, quoted media/link/video previews, alt badges, and content-label chips now render from loaded post data.
 - Add public timeline/feed/profile/thread data loading. Status: implemented.
 - Add standalone post-thread data loading for `/profile/:handleOrDid/post/:rkey`, including direct-open support for Bluesky-style copied post URLs. Status: implemented.
@@ -1126,7 +1128,8 @@ Behavioral rule: when the operator states an environment constraint ("preview on
 - Rate limits and public API behavior may affect anonymous browsing.
 - Some Bluesky features may require authenticated requests even for read-like behavior.
 - CORS behavior must be verified against the exact endpoints and SDK path we choose.
-- Direct messages should be out of scope for v1 because they change the privacy and security posture.
+- Direct messages should be out of scope for v1 because they change the privacy and security posture. (The Chat surface now links out to `https://bsky.app/messages` instead of staging an in-app DM shell.)
+- OAuth consent UX (check later): the granular scope list (ten `rpc:`/`repo:`/`blob:` tokens) renders as a raw token list on Bluesky's consent screen with no friendly labels, and the permission spec warns such lists are "unlikely to be reviewed carefully." Revisit once Permission Sets mature — adopt an official `app.bsky` Permission Set if Bluesky publishes one, or author our own `include:` set, so the consent screen reads as meaningful capability summaries ("read + basic posting") rather than a token dump. Not blocking; trust/clarity polish.
 - Search behavior may differ between public and authenticated contexts.
 - Creative features must remain client-side over loaded data. Global clustering, shared Feed maps, cross-device preference sync, server analytics, and article extraction are out of v1 unless the static-hosting constraint changes.
 
@@ -1168,6 +1171,55 @@ Behavioral rule: when the operator states an environment constraint ("preview on
 - Opening profile and thread previews reuses already-loaded post/author data before making detail requests.
 - Switching between Feeds restores cached pages and scroll position without refetching the visible page from scratch. Status: locally verified by the `npm run build` reader-behavior guard on 2026-06-08; feed selector switching now preserves cached offsets instead of forcing `top: 0`, and cached Feed/Profile states restore from browser memory before requesting again.
 - Search and Feed selector input do not send a network request for every keystroke. Status: locally verified by the `npm run build` reader-behavior guard on 2026-06-08; Feed filtering is derived from local `feedSources`, search text edits only draft query state, and Bluesky search requests run only after explicit `/search?q=` navigation.
+
+## Dev Tooling: Live Browser Inspection (CDP)
+
+Claude can connect to a running Chrome and inspect the live app over the Chrome
+DevTools Protocol (CDP). This works and is the agreed way to share a browser
+session, since the agent cannot see the operator's normal browser. **Confirmed
+working 2026-06-09** (eval, screenshot, and console capture all verified against
+the running app tab).
+
+### One-time launch (operator or agent)
+
+Start Chrome with remote debugging on a dedicated profile so it doesn't collide
+with the operator's normal Chrome windows:
+
+```
+& "C:\Program Files\Google\Chrome\Application\chrome.exe" `
+  --remote-debugging-port=9222 `
+  --user-data-dir=$env:TEMP\chrome-debug-profile `
+  --auto-open-devtools-for-tabs `
+  http://127.0.0.1:5174/
+```
+
+Verify the CDP endpoint is up: `http://127.0.0.1:9222/json/version` returns JSON.
+(`--auto-open-devtools-for-tabs` creates an extra `devtools://` page target; the
+helper below filters those out and selects the real `http://` app tab, preferring
+the one on `127.0.0.1:5174`.)
+
+### Helper: `scripts/cdp.mjs`
+
+No-dependency Node CDP client (uses Node's global `WebSocket`, Node 24+). Commands:
+
+```
+node scripts/cdp.mjs eval "<js expr>"     # evaluate JS in the page, prints JSON result
+node scripts/cdp.mjs screenshot <path>    # save a PNG screenshot of the page
+node scripts/cdp.mjs html                 # print document.body.outerHTML
+node scripts/cdp.mjs console <secs>       # stream console logs, exceptions, >=400 responses
+```
+
+Examples:
+
+```
+node scripts/cdp.mjs eval "({title: document.title, url: location.href})"
+node scripts/cdp.mjs screenshot $env:TEMP\bigbsky.png
+node scripts/cdp.mjs console 8
+```
+
+The agent uses this loop: edit code → Vite hot-reloads the open tab → `eval`/
+`screenshot`/`console` to observe the result, with the operator driving anything
+that needs real interaction (e.g. OAuth sign-in, which still can't be automated).
 
 ## Reference Sources
 
