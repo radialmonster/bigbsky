@@ -176,6 +176,13 @@ button {
   height: 34px;
 }
 
+/* Profile nav button renders the account avatar instead of a line icon. */
+.rail-button-avatar .avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+}
+
 .rail-account button:hover {
   color: var(--app-text);
   background: rgba(5, 96, 255, 0.18);

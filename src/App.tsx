@@ -823,7 +823,6 @@ export function App() {
   const [authState, setAuthState] = useState<AuthState>(initialAuthState);
   const [subscribedFeeds, setSubscribedFeeds] = useState<FeedSource[]>([]);
   const [followBusyUri, setFollowBusyUri] = useState<string | null>(null);
-  const [isAccountSwitcherOpen, setIsAccountSwitcherOpen] = useState(false);
   const [virtualRenderedRows, setVirtualRenderedRows] = useState(0);
   const [thread, setThread] = useState<{ status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string }>({
     status: "idle",
@@ -1907,7 +1906,6 @@ export function App() {
     }
 
     setAuthState((current) => ({ ...current, status: "signing-in", message: `Starting Bluesky OAuth for ${trimmed}.` }));
-    setIsAccountSwitcherOpen(false);
     try {
       await startSignIn(trimmed);
     } catch (error) {
@@ -1922,7 +1920,6 @@ export function App() {
   async function handleSignOut() {
     const did = authState.session?.did;
     setAuthState((current) => ({ ...current, status: "signing-in", message: "Signing out locally." }));
-    setIsAccountSwitcherOpen(false);
     const warning = await signOut(did);
     setAuthState({
       status: warning ? "error" : "signed-out",
@@ -2134,8 +2131,10 @@ export function App() {
       return;
     }
 
-    if (item === "Profile" && authState.session) {
-      openProfile(authState.session);
+    if (item === "Profile") {
+      // The single account hub: signed in shows the account page (identity,
+      // sign out, shortcuts); signed out shows the sign-in form.
+      navigate({ kind: "surface", name: "profile" }, "/profile");
       return;
     }
 
@@ -2372,70 +2371,23 @@ export function App() {
         <nav className="rail-nav">
           {navigationItems.map((item, index) => {
             const Icon = navIcons[index];
+            // The Profile entry shows the signed-in account's avatar (replacing
+            // the old separate account-switcher icon) and opens the account hub.
+            const showAvatar = item === "Profile" && !!authState.session;
             return (
-              <button key={item} className="rail-button" type="button" title={item} onClick={() => openNavigation(item)}>
-                <Icon size={20} />
+              <button
+                key={item}
+                className={showAvatar ? "rail-button rail-button-avatar" : "rail-button"}
+                type="button"
+                title={showAvatar ? `Profile · @${authState.session!.handle}` : item}
+                onClick={() => openNavigation(item)}
+              >
+                {showAvatar ? <Avatar profile={authState.session ?? undefined} /> : <Icon size={20} />}
                 <span>{item}</span>
               </button>
             );
           })}
         </nav>
-        {authState.session && (
-          <div className="rail-account" aria-label="Signed-in account">
-            <button
-              type="button"
-              title={`Account: @${authState.session.handle}`}
-              aria-expanded={isAccountSwitcherOpen}
-              onClick={() => setIsAccountSwitcherOpen((isOpen) => !isOpen)}
-            >
-              <Avatar profile={authState.session} />
-            </button>
-            {isAccountSwitcherOpen && (
-              <div className="account-switcher" role="menu" aria-label="Account switcher">
-                <div className="account-identity">
-                  <Avatar profile={authState.session} />
-                  <span>
-                    <strong>{authState.session.displayName || authState.session.handle}</strong>
-                    <small>@{authState.session.handle}</small>
-                  </span>
-                </div>
-                <div className="account-switcher-actions">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAccountSwitcherOpen(false);
-                      openProfile(authState.session as Profile);
-                    }}
-                  >
-                    <User size={15} />
-                    Open profile
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAccountSwitcherOpen(false);
-                      openNavigation("Settings");
-                    }}
-                  >
-                    <Settings size={15} />
-                    Account settings
-                  </button>
-                  <button type="button" onClick={handleSignOut}>
-                    <LogOut size={15} />
-                    Sign out
-                  </button>
-                </div>
-                <div className="account-switcher-add">
-                  <span>
-                    <Plus size={14} />
-                    Add or switch account
-                  </span>
-                  <SignInForm status={authState.status} onSignIn={handleSignIn} />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
         <button className="compose-button" type="button" title="New post">
           <Send size={20} />
         </button>
