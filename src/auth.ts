@@ -146,7 +146,21 @@ export async function signOut(did?: string) {
     if (did) {
       const client = await getClient();
       await client.revoke(did);
-      client.dispose();
+      // Best-effort cleanup of the client's IndexedDB/listeners. The library's
+      // sync dispose() is broken in this version — it calls the undefined
+      // this[Symbol.dispose]() and throws "Symbol.dispose is not a function" —
+      // so use the async disposer (polyfilled at runtime by the library's
+      // core-js import) and swallow any failure: disposal must never turn a
+      // successful revoke into a sign-out warning. Reached via a cast because
+      // Symbol.asyncDispose isn't in our TS lib target.
+      const asyncDispose = (Symbol as { asyncDispose?: symbol }).asyncDispose;
+      if (asyncDispose) {
+        try {
+          await (client as unknown as Record<symbol, () => Promise<void>>)[asyncDispose]?.();
+        } catch {
+          /* ignore disposal failures */
+        }
+      }
       clientPromise = null;
     }
   } catch (error) {
