@@ -77,6 +77,7 @@ import {
   getPostThreadAuthed,
   getPostThreadByUriAuthed,
   getMissingScopes,
+  getMyLists,
   getProfileAuthed,
   getSubscribedFeeds,
   initAuthSession,
@@ -748,6 +749,10 @@ export function App() {
   const [composerDraft, setComposerDraft] = useState(() => readComposerDraft());
   const [savedPosts, setSavedPosts] = useState<FeedPost[]>(() => readSavedPosts());
   const [localLists, setLocalLists] = useState<LocalList[]>(() => readLocalLists());
+  // The signed-in user's real Bluesky lists (owned + subscribed), loaded on the
+  // /lists route. Status drives loading/empty/error rendering.
+  const [myLists, setMyLists] = useState<{ owned: ListView[]; subscribed: ListView[] }>({ owned: [], subscribed: [] });
+  const [myListsStatus, setMyListsStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [imageViewer, setImageViewer] = useState<ImageViewerState>(null);
   const [linkPreview, setLinkPreview] = useState<LinkPreviewState>(null);
   // The primary nav icon bar is hidden by default and revealed with the
@@ -1013,6 +1018,32 @@ export function App() {
       cancelled = true;
     };
   }, [signedInDid]);
+
+  // Load the user's real Bluesky lists when they visit /lists while signed in.
+  const onListsRoute = route.kind === "surface" && route.name === "lists";
+  const reloadMyLists = useCallback(() => {
+    if (!signedInDid) {
+      setMyLists({ owned: [], subscribed: [] });
+      setMyListsStatus("idle");
+      return;
+    }
+    setMyListsStatus("loading");
+    getMyLists()
+      .then((lists) => {
+        setMyLists(lists);
+        setMyListsStatus("ready");
+      })
+      .catch(() => setMyListsStatus("error"));
+  }, [signedInDid]);
+  useEffect(() => {
+    if (onListsRoute && signedInDid && myListsStatus === "idle") {
+      reloadMyLists();
+    }
+    if (!signedInDid) {
+      setMyLists({ owned: [], subscribed: [] });
+      setMyListsStatus("idle");
+    }
+  }, [onListsRoute, signedInDid, myListsStatus, reloadMyLists]);
 
   const followedFeedUris = useMemo(() => new Set(subscribedFeeds.map((source) => source.uri)), [subscribedFeeds]);
 
@@ -2435,6 +2466,9 @@ export function App() {
             savedPreferenceCount={Object.keys(densityByContext).length}
             localDataKeyCount={countBigbskyLocalKeys()}
             localLists={localLists}
+            myLists={myLists}
+            myListsStatus={myListsStatus}
+            onReloadMyLists={reloadMyLists}
             pinnedFeedCount={pinnedFeedIds.length}
             pinnedFeedIds={pinnedFeedIds}
             pinnedNotificationCount={pinnedNotificationIds.length}
@@ -2946,6 +2980,9 @@ function SurfaceView({
   savedPreferenceCount,
   localDataKeyCount,
   localLists,
+  myLists,
+  myListsStatus,
+  onReloadMyLists,
   pinnedFeedCount,
   pinnedFeedIds,
   pinnedNotificationCount,
@@ -2990,6 +3027,9 @@ function SurfaceView({
   savedPreferenceCount: number;
   localDataKeyCount: number;
   localLists: LocalList[];
+  myLists: { owned: ListView[]; subscribed: ListView[] };
+  myListsStatus: "idle" | "loading" | "ready" | "error";
+  onReloadMyLists: () => void;
   pinnedFeedCount: number;
   pinnedFeedIds: string[];
   pinnedNotificationCount: number;
@@ -3029,7 +3069,7 @@ function SurfaceView({
   const title = name.charAt(0).toUpperCase() + name.slice(1);
   const surfaces: Record<string, { copy: string; cards: Array<{ title: string; detail: string; status: string }> }> = {
     explore: {
-      copy: "Explore is the public discovery doorway for search, trending topics, people, and Feed discovery while signed-in recommendations wait on OAuth.",
+      copy: "Explore is your discovery doorway for search, trending topics, people, and Feed discovery. When you're signed in, results carry your follow/like state.",
       cards: [
         { title: "Search", detail: "Public post, profile, and local Feed search is available now.", status: "Active" },
         { title: "Trending", detail: "The right rail keeps lightweight topic entry points visible.", status: "Static" },
@@ -3037,11 +3077,11 @@ function SurfaceView({
       ],
     },
     feeds: {
-      copy: "Feeds are available in the desktop selector now. Local pins can keep important destinations at the top while signed-in feed sync waits for OAuth.",
+      copy: "Feeds live in the desktop selector. When signed in, your subscribed Bluesky feeds load into a \"My Feeds\" group and you can follow/unfollow feeds directly from BigBSky.",
       cards: [
-        { title: "Pinned Feeds", detail: "Pins are stored only in this browser and reflected in the selector.", status: "Local" },
-        { title: "Discover New Feeds", detail: "Feed search can open known public Feed sources immediately.", status: "Active" },
-        { title: "Edit My Feeds", detail: "Account-backed pin and ordering controls wait for OAuth.", status: "Pending" },
+        { title: "Pinned Feeds", detail: "Local pins keep important destinations at the top of the selector, stored only in this browser.", status: "Local" },
+        { title: "Discover New Feeds", detail: "Feed search opens known public Feed sources immediately.", status: "Active" },
+        { title: "Follow Feeds", detail: "Following a feed saves it to your Bluesky account; the Following control writes through your session.", status: "Active" },
       ],
     },
     lists: {
@@ -3070,20 +3110,20 @@ function SurfaceView({
     },
     profile: {
       copy: auth.session
-        ? "Self-profile is attached to the restored OAuth identity. Public posts open in the profile reader while account-only tabs are staged as account-aware panels."
-        : "Self-profile needs OAuth before edit controls, likes, feeds, starter packs, and lists can be shown.",
+        ? "Your profile is attached to your signed-in identity. Your posts open in the profile reader, and account-level edits open on Bluesky in a new tab."
+        : "Sign in to see your own profile, posts, and account controls.",
       cards: [
-        { title: "Posts", detail: "Signed-in users can open their public profile feed from this surface.", status: auth.session ? "Active" : "OAuth later" },
-        { title: "Likes", detail: "Self-only liked-post reads need authenticated account context.", status: "OAuth later" },
-        { title: "Edit Profile", detail: "Write scopes and local session handling are required first.", status: "Pending" },
+        { title: "Posts", detail: "Open your public profile feed from this surface, with your like/follow state seeded.", status: auth.session ? "Active" : "Sign in" },
+        { title: "Lists", detail: "Your real Bluesky lists — created and subscribed — load on the Lists route.", status: auth.session ? "Active" : "Sign in" },
+        { title: "Edit Profile", detail: "Profile editing is delegated to Bluesky; the control opens your profile there in a new tab.", status: "On Bluesky" },
       ],
     },
     saved: {
-      copy: "Saved posts need authenticated reads and account-aware rendering.",
+      copy: "Saved posts are a browser-local reading list — save any loaded post and it stays in this browser. Nothing is sent to a BigBSky backend.",
       cards: [
-        { title: "Saved Timeline", detail: "A stable destination exists for saved-post reads.", status: "OAuth later" },
-        { title: "Empty State", detail: "The route can show account-specific saved-state once signed in.", status: "Ready" },
-        { title: "Go Home", detail: "Saved can route back to the active reader without a document reload.", status: "Ready" },
+        { title: "Saved Timeline", detail: "Saved posts render here as full post cards you can reopen anytime.", status: "Active" },
+        { title: "Empty State", detail: "A clear empty state shows when nothing is saved yet.", status: "Ready" },
+        { title: "Go Home", detail: "Saved routes back to the active reader without a document reload.", status: "Ready" },
       ],
     },
     settings: {
@@ -3285,17 +3325,14 @@ function SurfaceView({
   if (name === "lists") {
     return (
       <ListsSurface
+        signedIn={!!auth.session}
+        myLists={myLists}
+        myListsStatus={myListsStatus}
+        onReloadMyLists={onReloadMyLists}
+        onOpenFeed={onOpenFeed}
         lists={localLists}
-        currentDid={currentDid}
-        savedUris={savedUris}
         onCreateList={onCreateLocalList}
         onDeleteList={onDeleteLocalList}
-        onToggleListPost={onToggleListPost}
-        onOpenImage={onOpenImage}
-        onOpenLinkPreview={onOpenLinkPreview}
-        onOpenPost={onOpenPost}
-        onOpenProfile={onOpenProfile}
-        onToggleSaved={onToggleSaved}
       />
     );
   }
@@ -3830,15 +3867,15 @@ function SelfProfileSurface({
     },
     {
       title: "Likes",
-      status: "OAuth later",
-      detail: `${savedPostCount.toLocaleString()} browser-local saved post${savedPostCount === 1 ? "" : "s"} are available now; Bluesky likes need authenticated reads.`,
-      action: "Needs account read",
+      status: "Reserved",
+      detail: `${savedPostCount.toLocaleString()} browser-local saved post${savedPostCount === 1 ? "" : "s"} live on the Saved route. A dedicated Bluesky Likes tab isn't surfaced in BigBSky yet.`,
+      action: "Open profile reader",
       disabled: true,
     },
     {
       title: "Feeds",
-      status: "Local",
-      detail: `${pinnedFeedCount.toLocaleString()} pinned Feed${pinnedFeedCount === 1 ? "" : "s"} are stored in this browser until account-backed Feed sync is added.`,
+      status: "Active",
+      detail: `${pinnedFeedCount.toLocaleString()} local pin${pinnedFeedCount === 1 ? "" : "s"} sit in this browser; your subscribed Bluesky feeds load into the selector and you can follow/unfollow feeds directly.`,
       action: "Use Feed selector",
       disabled: true,
     },
@@ -3851,9 +3888,9 @@ function SelfProfileSurface({
     },
     {
       title: "Lists",
-      status: "Local",
-      detail: `${localLists.length.toLocaleString()} browser-local list workspace${localLists.length === 1 ? "" : "s"} are staged for later Bluesky list sync.`,
-      action: "Use Lists route",
+      status: "Active",
+      detail: "Your real Bluesky lists — the ones you created and the curation lists you subscribe to — load on the Lists route. Open a curation list to read it as a timeline.",
+      action: "Open profile reader",
       disabled: true,
     },
   ];
@@ -3972,8 +4009,8 @@ function NotificationsSurface({
     },
     {
       id: "lists",
-      title: `${localListCount.toLocaleString()} local list workspace${localListCount === 1 ? "" : "s"}`,
-      detail: "List shells are local staging areas until authenticated list reads are added.",
+      title: `${localListCount.toLocaleString()} browser collection${localListCount === 1 ? "" : "s"}`,
+      detail: "Browser-only collections for organizing loaded posts. Your real Bluesky lists load on the Lists route.",
       status: "Lists",
     },
   ];
@@ -4020,120 +4057,190 @@ function NotificationsSurface({
   );
 }
 
+function listToFeedSource(list: ListView): FeedSource {
+  return {
+    id: list.uri,
+    uri: list.uri,
+    label: list.name || "List",
+    group: "Discovered",
+    description: list.description || "Bluesky list timeline.",
+  };
+}
+
+function listBskyUrl(list: ListView): string {
+  const handleOrDid = list.creator?.handle || list.creator?.did;
+  const rkey = list.uri.split("/").pop();
+  return handleOrDid && rkey ? `https://bsky.app/profile/${handleOrDid}/lists/${rkey}` : "https://bsky.app";
+}
+
+function BlueskyListCard({
+  list,
+  onOpenFeed,
+}: {
+  list: ListView;
+  onOpenFeed: (source: FeedSource) => void;
+}) {
+  const isModlist = list.purpose?.includes("modlist") ?? false;
+  return (
+    <article className="bsky-list-card">
+      <div className="bsky-list-card-head">
+        {list.avatar ? (
+          <img className="bsky-list-avatar" src={list.avatar} alt="" loading="lazy" decoding="async" />
+        ) : (
+          <span className="bsky-list-avatar placeholder">
+            <List size={18} />
+          </span>
+        )}
+        <div>
+          <span className="bsky-list-purpose">{listPurposeLabel(list.purpose)}</span>
+          <h3>{list.name || "List"}</h3>
+          {typeof list.listItemCount === "number" && (
+            <small>
+              {list.listItemCount.toLocaleString()} member{list.listItemCount === 1 ? "" : "s"}
+            </small>
+          )}
+        </div>
+      </div>
+      {list.description && <p className="bsky-list-desc">{list.description}</p>}
+      <div className="bsky-list-actions">
+        {/* Moderation lists aren't browsable timelines; only curation lists open
+            as a feed via getListFeed. */}
+        {!isModlist && (
+          <button type="button" onClick={() => onOpenFeed(listToFeedSource(list))}>
+            Open list
+          </button>
+        )}
+        <a href={listBskyUrl(list)} target="_blank" rel="noreferrer">
+          Open on Bluesky
+        </a>
+      </div>
+    </article>
+  );
+}
+
 function ListsSurface({
+  signedIn,
+  myLists,
+  myListsStatus,
+  onReloadMyLists,
+  onOpenFeed,
   lists,
-  currentDid,
-  savedUris,
   onCreateList,
   onDeleteList,
-  onToggleListPost,
-  onOpenImage,
-  onOpenLinkPreview,
-  onOpenPost,
-  onOpenProfile,
-  onToggleSaved,
 }: {
+  signedIn: boolean;
+  myLists: { owned: ListView[]; subscribed: ListView[] };
+  myListsStatus: "idle" | "loading" | "ready" | "error";
+  onReloadMyLists: () => void;
+  onOpenFeed: (source: FeedSource) => void;
   lists: LocalList[];
-  currentDid?: string;
-  savedUris: Set<string>;
   onCreateList: (name: string, description: string) => void;
   onDeleteList: (id: string) => void;
-  onToggleListPost: (listId: string, post: FeedPost) => void;
-  onOpenImage: (image: ImageViewerState) => void;
-  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
-  onOpenPost: (post: FeedPost) => void;
-  onOpenProfile: (profile: Profile) => void;
-  onToggleSaved: (post: FeedPost) => void;
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [selectedListId, setSelectedListId] = useState("");
-  const selectedList = lists.find((list) => list.id === selectedListId) ?? lists[0];
+  const [showLocal, setShowLocal] = useState(false);
 
   return (
     <div className="timeline comfortable">
       <section className="surface-placeholder">
         <h2>Lists</h2>
-        <p>Local list workspaces reserve the desktop list index without creating remote Bluesky lists or storing anything on BigBSky servers.</p>
+        <p>Your Bluesky lists — the curation and moderation lists you created, plus curation lists you subscribe to. Open a curation list to read it as a timeline.</p>
       </section>
-      <form
-        className="local-list-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onCreateList(name, description);
-          setName("");
-          setDescription("");
-        }}
-      >
-        <input
-          aria-label="List name"
-          maxLength={80}
-          placeholder="List name"
-          value={name}
-          onInput={(event) => setName(event.currentTarget.value)}
+
+      {!signedIn ? (
+        <EmptyState
+          title="Sign in to see your lists"
+          message="Your Bluesky lists load once you sign in. Use the Sign in control in the right rail."
         />
-        <input
-          aria-label="List description"
-          maxLength={180}
-          placeholder="Description"
-          value={description}
-          onInput={(event) => setDescription(event.currentTarget.value)}
+      ) : myListsStatus === "loading" || myListsStatus === "idle" ? (
+        <LoadingState label="Loading your Bluesky lists" />
+      ) : myListsStatus === "error" ? (
+        <div className="surface-retry">
+          <ErrorState message="Could not load your lists." />
+          <button type="button" onClick={onReloadMyLists}>
+            Retry
+          </button>
+        </div>
+      ) : myLists.owned.length === 0 && myLists.subscribed.length === 0 ? (
+        <EmptyState
+          title="No lists yet"
+          message="You haven't created or subscribed to any Bluesky lists. Create one on Bluesky, or build a moderation list from a profile's Block control."
         />
-        <button type="submit" disabled={!name.trim()}>
-          New list
-        </button>
-      </form>
-      {lists.length === 0 ? (
-        <EmptyState title="No local lists yet" message="Create a local list workspace to stage the signed-in list surface." />
       ) : (
-        <section className="local-list-grid" aria-label="Local lists">
-          {lists.map((list) => (
-            <article className={selectedList?.id === list.id ? "local-list-card selected" : "local-list-card"} key={list.id}>
-              <span>Local</span>
-              <h3>{list.name}</h3>
-              <p>{list.description || "No description yet."}</p>
-              <small>{(list.posts?.length ?? 0).toLocaleString()} post{list.posts?.length === 1 ? "" : "s"}</small>
-              <small>Created {formatPostTime(list.createdAt)}</small>
-              <div className="local-list-actions">
-                <button type="button" onClick={() => setSelectedListId(list.id)}>
-                  Open
-                </button>
-                <button type="button" onClick={() => onDeleteList(list.id)}>
-                  Delete
-                </button>
+        <>
+          {myLists.owned.length > 0 && (
+            <section className="bsky-list-section" aria-label="Lists you created">
+              <h3 className="bsky-list-section-heading">Your lists</h3>
+              <div className="bsky-list-grid">
+                {myLists.owned.map((list) => (
+                  <BlueskyListCard key={list.uri} list={list} onOpenFeed={onOpenFeed} />
+                ))}
               </div>
-            </article>
-          ))}
-        </section>
-      )}
-      {selectedList && (
-        <section className="local-list-timeline" aria-label={`${selectedList.name} posts`}>
-          <div className="local-list-timeline-header">
-            <span>Local list timeline</span>
-            <h3>{selectedList.name}</h3>
-            <p>{selectedList.posts?.length ? "Posts added from loaded reader cards render here." : "Use a post card's Lists control to add loaded posts here."}</p>
-          </div>
-          {(selectedList.posts ?? []).length === 0 ? (
-            <EmptyState title="No posts in this local list" message="Add loaded posts from any timeline post card." />
-          ) : (
-            selectedList.posts?.map((post) => (
-              <PostCard
-                currentDid={currentDid}
-                isSaved={savedUris.has(post.uri)}
-                item={{ post }}
-                key={post.uri}
-                localLists={lists}
-                onOpenImage={onOpenImage}
-                onOpenLinkPreview={onOpenLinkPreview}
-                onOpenPost={onOpenPost}
-                onOpenProfile={onOpenProfile}
-                onToggleListPost={onToggleListPost}
-                onToggleSaved={onToggleSaved}
-              />
-            ))
+            </section>
           )}
-        </section>
+          {myLists.subscribed.length > 0 && (
+            <section className="bsky-list-section" aria-label="Lists you subscribe to">
+              <h3 className="bsky-list-section-heading">Subscribed lists</h3>
+              <div className="bsky-list-grid">
+                {myLists.subscribed.map((list) => (
+                  <BlueskyListCard key={list.uri} list={list} onOpenFeed={onOpenFeed} />
+                ))}
+              </div>
+            </section>
+          )}
+        </>
       )}
+
+      {/* Browser-only collections used by the post-card "Lists" control. These
+          never sync to Bluesky; kept as a secondary, collapsed utility. */}
+      <section className="local-collections">
+        <button type="button" className="local-collections-toggle" onClick={() => setShowLocal((open) => !open)} aria-expanded={showLocal}>
+          {showLocal ? <ChevronUp size={16} /> : <Plus size={16} />}
+          Browser collections {lists.length > 0 ? `(${lists.length})` : ""}
+        </button>
+        {showLocal && (
+          <>
+            <p className="local-collections-note">
+              Private browser-only bookmarks for organizing loaded posts via a post card&apos;s Lists control. Not Bluesky lists; nothing leaves this browser.
+            </p>
+            <form
+              className="local-list-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                onCreateList(name, description);
+                setName("");
+                setDescription("");
+              }}
+            >
+              <input aria-label="Collection name" maxLength={80} placeholder="Collection name" value={name} onInput={(event) => setName(event.currentTarget.value)} />
+              <input aria-label="Collection description" maxLength={180} placeholder="Description" value={description} onInput={(event) => setDescription(event.currentTarget.value)} />
+              <button type="submit" disabled={!name.trim()}>
+                New collection
+              </button>
+            </form>
+            {lists.length > 0 && (
+              <section className="local-list-grid" aria-label="Browser collections">
+                {lists.map((list) => (
+                  <article className="local-list-card" key={list.id}>
+                    <span>Browser</span>
+                    <h3>{list.name}</h3>
+                    <p>{list.description || "No description yet."}</p>
+                    <small>
+                      {(list.posts?.length ?? 0).toLocaleString()} post{list.posts?.length === 1 ? "" : "s"}
+                    </small>
+                    <div className="local-list-actions">
+                      <button type="button" onClick={() => onDeleteList(list.id)}>
+                        Delete
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </section>
+            )}
+          </>
+        )}
+      </section>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import type { BrowserOAuthClient, OAuthSession } from "@atproto/oauth-client-browser";
-import type { FeedResponse, Profile, SearchPostsResponse, ThreadNode } from "./api";
+import type { FeedResponse, ListView, Profile, SearchPostsResponse, ThreadNode } from "./api";
 
 const productionClientId = "https://bigbsky.com/oauth-client-metadata.json";
 const handleResolver = "https://bsky.social";
@@ -297,6 +297,65 @@ export async function getSubscribedFeeds(): Promise<SubscribedFeed[]> {
       };
     })
     .filter((feed): feed is SubscribedFeed => feed !== null);
+}
+
+export type MyLists = { owned: ListView[]; subscribed: ListView[] };
+
+// Fetch the signed-in user's real Bluesky lists: the lists they created/own
+// (`app.bsky.graph.getLists` for their DID — both curation and moderation
+// lists) plus curation lists they subscribe to (pinned/saved as `type: "list"`
+// in their saved-feeds preferences). Returns empty arrays when signed out. A
+// real authenticated read through the user's session; reads already in scope.
+export async function getMyLists(): Promise<MyLists> {
+  const session = await ensureSession();
+  if (!session) {
+    return { owned: [], subscribed: [] };
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const did = agent.did;
+  if (!did) {
+    return { owned: [], subscribed: [] };
+  }
+
+  // Lists the user created/owns.
+  const ownedResponse = await agent.app.bsky.graph.getLists({ actor: did, limit: 100 });
+  const owned = (ownedResponse.data?.lists ?? []) as unknown as ListView[];
+  const ownedUris = new Set(owned.map((list) => list.uri));
+
+  // Curation lists subscribed to (saved as feeds with type "list").
+  let subscribedUris: string[] = [];
+  try {
+    const prefsResponse = await agent.app.bsky.actor.getPreferences();
+    const preferences = (prefsResponse.data?.preferences ?? []) as Array<Record<string, unknown>>;
+    for (const pref of preferences) {
+      if (pref.$type === "app.bsky.actor.defs#savedFeedsPrefV2" && Array.isArray(pref.items)) {
+        for (const item of pref.items as Array<Record<string, unknown>>) {
+          if (item.type === "list" && typeof item.value === "string" && !ownedUris.has(item.value)) {
+            subscribedUris.push(item.value);
+          }
+        }
+      }
+    }
+  } catch {
+    // Non-fatal: just show owned lists.
+  }
+  subscribedUris = Array.from(new Set(subscribedUris));
+
+  // Resolve each subscribed list's metadata.
+  const subscribed: ListView[] = [];
+  for (const uri of subscribedUris) {
+    try {
+      const response = await agent.app.bsky.graph.getList({ list: uri, limit: 1 });
+      if (response.data?.list) {
+        subscribed.push(response.data.list as unknown as ListView);
+      }
+    } catch {
+      // Skip lists that fail to resolve (deleted, blocked creator, etc.).
+    }
+  }
+
+  return { owned, subscribed };
 }
 
 // Subscribe the signed-in user to a feed generator ("Follow") by adding it to

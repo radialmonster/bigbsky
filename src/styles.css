@@ -1503,6 +1503,144 @@ button.surface-action {
   max-width: 980px;
 }
 
+/* Real Bluesky lists surface */
+.bsky-list-section {
+  margin: 0 0 18px;
+}
+
+.bsky-list-section-heading {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--app-text-muted);
+}
+
+.bsky-list-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  max-width: 980px;
+}
+
+.bsky-list-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 15px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-surface);
+}
+
+.bsky-list-card-head {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+}
+
+.bsky-list-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 9px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.bsky-list-avatar.placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--app-surface-2);
+  color: var(--app-text-muted);
+}
+
+.bsky-list-card-head h3 {
+  margin: 2px 0 0;
+  font-size: 15px;
+}
+
+.bsky-list-card-head small {
+  color: var(--app-text-muted);
+  font-size: 12px;
+}
+
+.bsky-list-purpose {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bsky-blue-soft);
+}
+
+.bsky-list-desc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--app-text-muted);
+}
+
+.bsky-list-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.bsky-list-actions button,
+.bsky-list-actions a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--app-surface-2);
+  color: var(--app-text);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.bsky-list-actions button:first-child {
+  background: var(--bsky-blue);
+  color: #fff;
+}
+
+.surface-retry {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.surface-retry button {
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: var(--app-surface-2);
+  color: var(--app-text);
+  font-weight: 700;
+}
+
+.local-collections {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--app-border);
+}
+
+.local-collections-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: transparent;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.local-collections-note {
+  margin: 8px 0 10px;
+  font-size: 12px;
+  color: var(--app-text-muted);
+  max-width: 640px;
+}
+
 .local-list-card {
   display: grid;
   min-height: 178px;
