@@ -47,7 +47,6 @@ import {
   type TrendingTopic,
   getActorFeeds,
   getActorLists,
-  getAuthorFeed,
   getLikes,
   getList,
   getListFeed,
@@ -59,27 +58,30 @@ import {
   getFeed,
   getFeedGenerator,
   getPopularFeedGenerators,
-  getPostThread,
   getTrendingTopics,
-  getPostThreadByUri,
   getProfile,
   getRecordEmbed,
   getVideoEmbed,
   searchActors,
-  searchPosts,
 } from "./api";
 import {
   type AuthSnapshot,
   type SubscribedFeed,
+  blockAccount,
   clearOAuthSessionStorage,
   followAccount,
   followFeed,
+  getAuthorFeedAuthed,
   getFeedAuthed,
   getFollowingTimeline,
+  getPostThreadAuthed,
+  getPostThreadByUriAuthed,
   getProfileAuthed,
   getSubscribedFeeds,
   initAuthSession,
   likePost,
+  searchPostsAuthed,
+  unblockAccount,
   unfollowAccount,
   unfollowFeed,
   unlikePost,
@@ -1139,7 +1141,7 @@ export function App() {
     try {
       const [profileResponse, feedResponse] = await Promise.all([
         cursor ? Promise.resolve(null) : getProfileAuthed(actor, signal),
-        getAuthorFeed(actor, cursor, signal),
+        getAuthorFeedAuthed(actor, cursor, signal),
       ]);
 
       if (profileResponse) {
@@ -1187,7 +1189,7 @@ export function App() {
     }));
 
     try {
-      const response: SearchPostsResponse = await searchPosts(query, sort, lang || undefined, cursor, signal);
+      const response: SearchPostsResponse = await searchPostsAuthed(query, sort, lang || undefined, cursor, signal);
       setSearchState((current) => {
         const next = {
           posts: cursor ? [...current.posts, ...response.posts] : response.posts,
@@ -1459,7 +1461,7 @@ export function App() {
 
     const controller = new AbortController();
     setThread({ status: "loading" });
-    getPostThread(route.actor, route.rkey, controller.signal)
+    getPostThreadAuthed(route.actor, route.rkey, controller.signal)
       .then((response) => {
         threadCacheRef.current[cacheKey] = response.thread;
         setThread({ status: "ready", node: response.thread });
@@ -1498,7 +1500,7 @@ export function App() {
     }
 
     setLoadingThreadBranches((current) => ({ ...current, [uri]: true }));
-    getPostThreadByUri(uri)
+    getPostThreadByUriAuthed(uri)
       .then((response) => {
         threadBranchCacheRef.current[uri] = response.thread;
         setThread((current) => {
@@ -2318,6 +2320,8 @@ export function App() {
               canFollow={!!signedInDid && !!profile && profile.did !== signedInDid}
               onFollow={followAccount}
               onUnfollow={unfollowAccount}
+              onBlock={blockAccount}
+              onUnblock={unblockAccount}
               selectedTab={profileTab}
               onSelectTab={setProfileTab}
               onTogglePinned={togglePinnedProfile}
@@ -4017,6 +4021,8 @@ function ProfileDetailHeader({
   canFollow,
   onFollow,
   onUnfollow,
+  onBlock,
+  onUnblock,
 }: {
   actor: string;
   isPinned: boolean;
@@ -4027,15 +4033,22 @@ function ProfileDetailHeader({
   canFollow: boolean;
   onFollow: (did: string) => Promise<string>;
   onUnfollow: (followUri: string) => Promise<void>;
+  onBlock: (did: string) => Promise<string>;
+  onUnblock: (blockUri: string) => Promise<void>;
 }) {
   const [copied, setCopied] = useState(false);
   // Follow state is seeded from the authenticated profile's viewer.following
   // record URI and re-synced when the viewed profile changes.
   const [followUri, setFollowUri] = useState<string | undefined>(profile?.viewer?.following);
   const [followBusy, setFollowBusy] = useState(false);
+  // Block state is seeded from the authenticated profile's viewer.blocking
+  // record URI and re-synced when the viewed profile changes.
+  const [blockUri, setBlockUri] = useState<string | undefined>(profile?.viewer?.blocking);
+  const [blockBusy, setBlockBusy] = useState(false);
   useEffect(() => {
     setFollowUri(profile?.viewer?.following);
-  }, [profile?.did, profile?.viewer?.following]);
+    setBlockUri(profile?.viewer?.blocking);
+  }, [profile?.did, profile?.viewer?.following, profile?.viewer?.blocking]);
 
   async function handleToggleFollow() {
     if (!profile || followBusy) {
@@ -4059,6 +4072,35 @@ function ProfileDetailHeader({
     }
   }
 
+  async function handleToggleBlock() {
+    if (!profile || blockBusy) {
+      return;
+    }
+    // Blocking is destructive (it also removes any follow relationship server-
+    // side); confirm before creating the block record.
+    if (!blockUri && !window.confirm(`Block @${profile.handle}? They won't be able to see or reply to your posts, and this also undoes any follow.`)) {
+      return;
+    }
+    const previous = blockUri;
+    setBlockBusy(true);
+    try {
+      if (previous) {
+        setBlockUri(undefined); // optimistic
+        await onUnblock(previous);
+      } else {
+        setBlockUri("pending"); // optimistic placeholder
+        const uri = await onBlock(profile.did);
+        setBlockUri(uri);
+        // A block clears the follow relationship server-side; reflect that.
+        setFollowUri(undefined);
+      }
+    } catch {
+      setBlockUri(previous); // revert on error
+    } finally {
+      setBlockBusy(false);
+    }
+  }
+
   const bskyUrl = `https://bsky.app/profile/${encodeURIComponent(profile?.handle || actor)}`;
 
   return (
@@ -4072,7 +4114,7 @@ function ProfileDetailHeader({
           <p>@{profile?.handle || actor}</p>
         </div>
         <div className="profile-detail-actions">
-          {canFollow && (
+          {canFollow && !blockUri && (
             <button
               type="button"
               className={followUri ? "following" : "follow"}
@@ -4081,6 +4123,17 @@ function ProfileDetailHeader({
               title={followUri ? "Unfollow this account" : "Follow this account"}
             >
               {followBusy ? "…" : followUri ? "Following" : "Follow"}
+            </button>
+          )}
+          {canFollow && (
+            <button
+              type="button"
+              className={blockUri ? "blocking" : "block"}
+              onClick={handleToggleBlock}
+              disabled={blockBusy || !profile}
+              title={blockUri ? "Unblock this account" : "Block this account"}
+            >
+              {blockBusy ? "…" : blockUri ? "Blocking" : "Block"}
             </button>
           )}
           <button type="button" onClick={() => onTogglePinned(profile)} disabled={!profile}>

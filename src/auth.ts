@@ -1,5 +1,5 @@
 import type { BrowserOAuthClient, OAuthSession } from "@atproto/oauth-client-browser";
-import type { FeedResponse, Profile } from "./api";
+import type { FeedResponse, Profile, SearchPostsResponse, ThreadNode } from "./api";
 
 const productionClientId = "https://bigbsky.com/oauth-client-metadata.json";
 const handleResolver = "https://bsky.social";
@@ -358,6 +358,85 @@ export async function getProfileAuthed(actor: string, signal?: AbortSignal): Pro
   return response.data as unknown as Profile;
 }
 
+// Authenticated author-feed read so viewer-relative post state (viewer.like,
+// viewer.repost) and the author's viewer.following/blocking are populated.
+// Falls back to the public read when signed out. Same shape as getAuthorFeed.
+export async function getAuthorFeedAuthed(actor: string, cursor?: string, signal?: AbortSignal): Promise<FeedResponse> {
+  const session = await ensureSession();
+  if (!session) {
+    const { getAuthorFeed } = await import("./api");
+    return getAuthorFeed(actor, cursor, signal);
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const response = await agent.app.bsky.feed.getAuthorFeed(
+    { actor, limit: 30, ...(cursor ? { cursor } : {}) },
+    signal ? { signal } : undefined,
+  );
+  return {
+    feed: (response.data.feed ?? []) as unknown as FeedResponse["feed"],
+    cursor: response.data.cursor,
+  };
+}
+
+// Authenticated post-thread read by AT-URI so the root post and every reply
+// carry viewer state (like/repost records) for correct write-button seeding.
+// Falls back to the public read when signed out.
+export async function getPostThreadByUriAuthed(uri: string, signal?: AbortSignal): Promise<{ thread: ThreadNode }> {
+  const session = await ensureSession();
+  if (!session) {
+    const { getPostThreadByUri } = await import("./api");
+    return getPostThreadByUri(uri, signal);
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const response = await agent.app.bsky.feed.getPostThread(
+    { uri, depth: 6, parentHeight: 12 },
+    signal ? { signal } : undefined,
+  );
+  return { thread: response.data.thread as unknown as ThreadNode };
+}
+
+// Authenticated post-thread read by handle/DID + rkey. Resolves the handle, then
+// reads the thread through the session. Falls back to public when signed out.
+export async function getPostThreadAuthed(handleOrDid: string, rkey: string, signal?: AbortSignal): Promise<{ thread: ThreadNode }> {
+  const session = await ensureSession();
+  if (!session) {
+    const { getPostThread } = await import("./api");
+    return getPostThread(handleOrDid, rkey, signal);
+  }
+  const { resolveHandle } = await import("./api");
+  const did = await resolveHandle(handleOrDid, signal);
+  const uri = `at://${did}/app.bsky.feed.post/${rkey}`;
+  return getPostThreadByUriAuthed(uri, signal);
+}
+
+// Authenticated post search so result cards carry viewer state. Falls back to
+// the public searchPosts (which routes through api.bsky.app) when signed out.
+export async function searchPostsAuthed(
+  query: string,
+  sort: "top" | "latest",
+  lang?: string,
+  cursor?: string,
+  signal?: AbortSignal,
+): Promise<SearchPostsResponse> {
+  const session = await ensureSession();
+  if (!session) {
+    const { searchPosts } = await import("./api");
+    return searchPosts(query, sort, lang, cursor, signal);
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const response = await agent.app.bsky.feed.searchPosts(
+    { q: query, sort, ...(lang ? { lang } : {}), limit: 30, ...(cursor ? { cursor } : {}) },
+    signal ? { signal } : undefined,
+  );
+  return {
+    posts: (response.data.posts ?? []) as unknown as SearchPostsResponse["posts"],
+    cursor: response.data.cursor,
+  };
+}
+
 // Follow an account: creates an app.bsky.graph.follow record in the user's
 // repo (scope repo:app.bsky.graph.follow). Returns the follow record URI so the
 // caller can unfollow later. Throws if signed out.
@@ -408,6 +487,58 @@ export async function unlikePost(likeUri: string): Promise<void> {
   const { Agent } = await import("@atproto/api");
   const agent = new Agent(session);
   await agent.deleteLike(likeUri);
+}
+
+// Block an account: creates an app.bsky.graph.block record in the user's repo
+// (scope repo:app.bsky.graph.block). The @atproto Agent has no block() shortcut
+// like follow()/like(), so write the record directly via createRecord. Returns
+// the block record URI so the caller can unblock later. Throws if signed out.
+export async function blockAccount(did: string): Promise<string> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to block accounts.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const repo = agent.did;
+  if (!repo) {
+    throw new Error("No active account.");
+  }
+  const { data } = await agent.com.atproto.repo.createRecord({
+    repo,
+    collection: "app.bsky.graph.block",
+    record: {
+      $type: "app.bsky.graph.block",
+      subject: did,
+      createdAt: new Date().toISOString(),
+    },
+  });
+  return data.uri;
+}
+
+// Unblock an account by deleting the block record (uri from viewer.blocking or a
+// prior blockAccount call). Throws if signed out.
+export async function unblockAccount(blockUri: string): Promise<void> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to manage blocks.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const repo = agent.did;
+  if (!repo) {
+    throw new Error("No active account.");
+  }
+  // Block URIs look like at://<did>/app.bsky.graph.block/<rkey>.
+  const rkey = blockUri.split("/").pop();
+  if (!rkey) {
+    throw new Error("Invalid block record.");
+  }
+  await agent.com.atproto.repo.deleteRecord({
+    repo,
+    collection: "app.bsky.graph.block",
+    rkey,
+  });
 }
 
 export async function clearOAuthSessionStorage() {
