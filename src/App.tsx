@@ -1188,13 +1188,21 @@ export function App() {
     const options: Array<{ id: string; label: string; needsAuth: boolean }> = [
       { id: "following", label: "Following", needsAuth: true },
     ];
+    // Track both ids and uris so a subscribed copy of a built-in feed (same uri,
+    // different id) doesn't appear twice.
+    const seen = new Set<string>(["following"]);
     for (const source of feedSources) {
       options.push({ id: source.id, label: source.label, needsAuth: false });
+      seen.add(source.id);
+      seen.add(source.uri);
     }
     for (const source of subscribedFeeds) {
-      if (!options.some((option) => option.id === source.id)) {
-        options.push({ id: source.id, label: source.label, needsAuth: true });
+      if (seen.has(source.id) || seen.has(source.uri)) {
+        continue;
       }
+      options.push({ id: source.id, label: source.label, needsAuth: true });
+      seen.add(source.id);
+      seen.add(source.uri);
     }
     return options;
   }, [subscribedFeeds]);
