@@ -652,6 +652,52 @@ export async function unlikePost(likeUri: string): Promise<void> {
   await agent.deleteLike(likeUri);
 }
 
+// Save (bookmark) a post using Bluesky's native bookmarks. Bookmarks are stored
+// privately by the AppView (not as a repo record), so this is an AppView call —
+// no record URI comes back. Needs the post's uri and cid. Throws if signed out.
+export async function bookmarkPost(uri: string, cid: string): Promise<void> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to bookmark posts.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  await agent.app.bsky.bookmark.createBookmark({ uri, cid });
+}
+
+// Remove a native bookmark. deleteBookmark takes the POST uri (there is no
+// separate bookmark-record uri). Throws if signed out.
+export async function unbookmarkPost(uri: string): Promise<void> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to manage bookmarks.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  await agent.app.bsky.bookmark.deleteBookmark({ uri });
+}
+
+// List the signed-in user's native bookmarks. The bookmark view embeds the
+// full post, so we map each present postView into a feed item — no second
+// fetch. Blocked/not-found bookmarked posts are skipped. Returns empty when
+// signed out.
+export async function getBookmarks(cursor?: string, signal?: AbortSignal): Promise<FeedResponse> {
+  const session = await ensureSession();
+  if (!session) {
+    return { feed: [] };
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const response = await agent.app.bsky.bookmark.getBookmarks(
+    { limit: 50, ...(cursor ? { cursor } : {}) },
+    signal ? { signal } : undefined,
+  );
+  const feed = (response.data.bookmarks ?? [])
+    .filter((bookmark) => bookmark.item?.$type === "app.bsky.feed.defs#postView")
+    .map((bookmark) => ({ post: bookmark.item })) as unknown as FeedResponse["feed"];
+  return { feed, cursor: response.data.cursor };
+}
+
 // Block an account: creates an app.bsky.graph.block record in the user's repo
 // (scope repo:app.bsky.graph.block). The @atproto Agent has no block() shortcut
 // like follow()/like(), so write the record directly via createRecord. Returns

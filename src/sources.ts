@@ -36,7 +36,7 @@ export const navigationItems = [
   "Chat",
   "Feeds",
   "Lists",
-  "Saved",
+  "Bookmarks",
   "Profile",
   "Settings",
 ];

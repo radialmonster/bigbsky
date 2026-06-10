@@ -78,6 +78,7 @@ export type FeedPost = {
   viewer?: {
     like?: string;
     repost?: string;
+    bookmarked?: boolean;
     threadMuted?: boolean;
     replyDisabled?: boolean;
     embeddingDisabled?: boolean;

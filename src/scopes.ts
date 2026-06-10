@@ -18,6 +18,9 @@
 //     searchPosts, graph.getList(s)/muteActorList/unmuteActorList,
 //     actor.getProfile/searchActors/getPreferences/putPreferences,
 //     notification.listNotifications/getUnreadCount/updateSeen,
+//     bookmark.getBookmarks/createBookmark/deleteBookmark (native bookmarks —
+//     bookmarks are stored privately by the AppView like mutes, not as repo
+//     records, so they are rpc: scopes, not repo:),
 //     unspecced.getPopularFeedGenerators/getTrendingTopics) rather than the
 //     `rpc:*` wildcard. Reason: the bare
 //     `*` method wildcard makes Bluesky's consent screen list "Chat — Read and

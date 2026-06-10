@@ -27,7 +27,7 @@ requirePattern(/const timelineScrollStorageKey = "bigbsky:timeline-scroll"/, "ti
 requirePattern(/sessionStorage\.setItem\(timelineScrollStorageKey, JSON\.stringify\(cache\)\)/, "timeline scroll offsets should persist across browser reloads");
 requirePattern(/window\.addEventListener\("pagehide", persistScroll\)/, "timeline scroll offsets should flush before browser reloads");
 requirePattern(/Object\.keys\(sessionStorage\)[\s\S]*key\.startsWith\("bigbsky:"\)[\s\S]*sessionStorage\.removeItem\(key\)/s, "local reader data reset should clear browser-local session scroll state");
-requirePattern(/route\.name === "saved" \|\| route\.name === "lists"[\s\S]*`surface:\$\{route\.name\}`/s, "saved and lists surfaces should receive route-specific scroll cache keys");
+requirePattern(/route\.name === "bookmarks" \|\| route\.name === "lists"[\s\S]*`surface:\$\{route\.name\}`/s, "bookmarks and lists surfaces should receive route-specific scroll cache keys");
 requirePattern(/activeScrollKey\.startsWith\("surface:"\)[\s\S]*timelineRef\.current\?\.scrollTo\(\{ top: scrollCacheRef\.current\[activeScrollKey\] \|\| 0 \}\)/s, "saved and lists surfaces should restore cached scroll offset when revisited");
 requirePattern(/function threadUnavailableState\([\s\S]*Blocked reply[\s\S]*Reply not found[\s\S]*Deleted reply[\s\S]*Reply temporarily unavailable/s, "thread unavailable states should distinguish blocked, deleted, not-found, and rate-limited branches");
 requirePattern(/<div className=\{`thread-alert \$\{state\.tone\}`\}/, "thread unavailable branches should render typed alert tones");

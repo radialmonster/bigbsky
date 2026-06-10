@@ -70,11 +70,13 @@ import {
   type NotificationItem,
   type SubscribedFeed,
   blockAccount,
+  bookmarkPost,
   clearOAuthSessionStorage,
   followAccount,
   followFeed,
   getAuthorFeedAuthed,
   getFeedAuthed,
+  getBookmarks,
   getFollowingTimeline,
   getPostThreadAuthed,
   getPostThreadByUriAuthed,
@@ -100,6 +102,7 @@ import {
   publishThread,
   searchPostsAuthed,
   unblockAccount,
+  unbookmarkPost,
   unfollowAccount,
   unfollowFeed,
   unlikePost,
@@ -134,6 +137,19 @@ type LikeContextValue = {
   toggle: (post: FeedPost) => void;
 };
 const LikeContext = createContext<LikeContextValue | null>(null);
+
+// Native Bluesky bookmark state + toggle, provided once and consumed by the
+// post card so we don't thread bookmark props through the virtualized list and
+// every call site. Override state lives in the parent (App) so it survives row
+// virtualization. Only available when signed in (bookmarks are an authenticated
+// AppView feature). Mirrors LikeContext.
+type BookmarkView = { bookmarked: boolean };
+type BookmarkContextValue = {
+  canBookmark: boolean;
+  getState: (post: FeedPost) => BookmarkView;
+  toggle: (post: FeedPost) => void;
+};
+const BookmarkContext = createContext<BookmarkContextValue | null>(null);
 
 // Block state + toggle for a post's author, provided once and consumed by the
 // post card's options menu. Keyed by author DID (not post URI) so blocking from
@@ -298,7 +314,6 @@ const searchLanguages = [
   { label: "French", value: "fr" },
 ];
 const recentStorageKey = "bigbsky:recent";
-const savedPostsStorageKey = "bigbsky:saved-posts";
 const composerDraftStorageKey = "bigbsky:composer-draft";
 const localListsStorageKey = "bigbsky:local-lists";
 const workspaceWidthStorageKey = "bigbsky:workspace-width";
@@ -350,15 +365,6 @@ function readRecentItems() {
   try {
     const items = JSON.parse(localStorage.getItem(recentStorageKey) || "[]") as RecentItem[];
     return Array.isArray(items) ? items.slice(0, 8) : [];
-  } catch {
-    return [];
-  }
-}
-
-function readSavedPosts() {
-  try {
-    const posts = JSON.parse(localStorage.getItem(savedPostsStorageKey) || "[]") as FeedPost[];
-    return Array.isArray(posts) ? posts : [];
   } catch {
     return [];
   }
@@ -797,7 +803,12 @@ export function App() {
   const [feedMetadata, setFeedMetadata] = useState<FeedGeneratorView | null>(null);
   const [listMetadata, setListMetadata] = useState<ListView | null>(null);
   const [composerDraft, setComposerDraft] = useState(() => readComposerDraft());
-  const [savedPosts, setSavedPosts] = useState<FeedPost[]>(() => readSavedPosts());
+  // Native bookmark overrides keyed by post URI: true = bookmarked, false = not
+  // bookmarked. Seeded per-post from post.viewer.bookmarked when no override is
+  // present. Lives here (not in the card) so optimistic state survives row
+  // virtualization. in-flight set guards against double-taps.
+  const [bookmarkOverrides, setBookmarkOverrides] = useState<Record<string, boolean>>({});
+  const bookmarkInFlight = useRef<Set<string>>(new Set());
   const [localLists, setLocalLists] = useState<LocalList[]>(() => readLocalLists());
   // The signed-in user's real Bluesky lists (owned + subscribed), loaded on the
   // /lists route. Status drives loading/empty/error rendering.
@@ -1285,7 +1296,6 @@ export function App() {
     const posts = [
       ...feedState.items.map((item) => item.post),
       ...searchState.posts,
-      ...savedPosts,
     ];
 
     posts.forEach((post) => {
@@ -1298,7 +1308,7 @@ export function App() {
       .sort((first, second) => second[1] - first[1] || first[0].localeCompare(second[0]))
       .slice(0, 8)
       .map(([tag, count]) => ({ tag, count }));
-  }, [feedState.items, savedPosts, searchState.posts]);
+  }, [feedState.items, searchState.posts]);
   const visibleProfileItems = useMemo(() => {
     if (route.kind !== "profile") {
       return feedState.items;
@@ -1868,7 +1878,6 @@ export function App() {
     setWidthByContext({});
     setRecentItems([]);
     setComposerDraft({ posts: [""], mediaSlots: {} });
-    setSavedPosts([]);
     setLocalLists([]);
     setPinnedFeedIds([]);
     setPinnedSearches([]);
@@ -1941,14 +1950,49 @@ export function App() {
     localStorage.removeItem(recentStorageKey);
   }
 
-  function toggleSavedPost(post: FeedPost) {
-    setSavedPosts((current) => {
-      const exists = current.some((savedPost) => savedPost.uri === post.uri);
-      const next = exists ? current.filter((savedPost) => savedPost.uri !== post.uri) : [post, ...current].slice(0, 100);
-      localStorage.setItem(savedPostsStorageKey, JSON.stringify(next));
-      return next;
-    });
-  }
+  const getBookmarkState = useCallback(
+    (post: FeedPost): BookmarkView => {
+      const ov = bookmarkOverrides[post.uri];
+      if (ov !== undefined) {
+        return { bookmarked: ov };
+      }
+      return { bookmarked: !!post.viewer?.bookmarked };
+    },
+    [bookmarkOverrides],
+  );
+
+  const toggleBookmark = useCallback(
+    (post: FeedPost) => {
+      if (!signedInDid || bookmarkInFlight.current.has(post.uri)) {
+        return;
+      }
+      const ov = bookmarkOverrides[post.uri];
+      const bookmarked = ov !== undefined ? ov : !!post.viewer?.bookmarked;
+      bookmarkInFlight.current.add(post.uri);
+      // Optimistic update.
+      setBookmarkOverrides((current) => ({ ...current, [post.uri]: !bookmarked }));
+      void (async () => {
+        try {
+          if (bookmarked) {
+            await unbookmarkPost(post.uri);
+          } else {
+            await bookmarkPost(post.uri, post.cid);
+          }
+        } catch {
+          // Revert to pre-click state.
+          setBookmarkOverrides((current) => ({ ...current, [post.uri]: bookmarked }));
+        } finally {
+          bookmarkInFlight.current.delete(post.uri);
+        }
+      })();
+    },
+    [signedInDid, bookmarkOverrides],
+  );
+
+  const bookmarkContextValue = useMemo<BookmarkContextValue>(
+    () => ({ canBookmark: !!signedInDid, getState: getBookmarkState, toggle: toggleBookmark }),
+    [signedInDid, getBookmarkState, toggleBookmark],
+  );
 
   function createLocalList(name: string, description: string) {
     const trimmedName = name.trim();
@@ -2167,7 +2211,7 @@ export function App() {
       ? `profile:${route.actor}`
       : route.kind === "feed"
         ? `feed:${activeSource.id}`
-        : route.kind === "surface" && (route.name === "saved" || route.name === "lists")
+        : route.kind === "surface" && (route.name === "bookmarks" || route.name === "lists")
           ? `surface:${route.name}`
           : "";
   const renderedRows =
@@ -2186,7 +2230,6 @@ export function App() {
         ? 1
         : 0
       : Math.ceil((route.kind === "search" ? searchState.posts.length + actorSearchState.actors.length : feedState.items.length) / 30);
-  const savedUriSet = new Set(savedPosts.map((post) => post.uri));
 
   useEffect(() => {
     const timeline = timelineRef.current;
@@ -2362,6 +2405,7 @@ export function App() {
       <ShowNsfwContext.Provider value={showNsfw}>
       <ShowMediaContext.Provider value={showMedia}>
       <LikeContext.Provider value={likeContextValue}>
+      <BookmarkContext.Provider value={bookmarkContextValue}>
       <BlockContext.Provider value={blockContextValue}>
       <div className={`app-shell width-${workspaceWidth} ${navOpen ? "nav-open" : "nav-hidden"}`}>
       <aside className="left-rail" aria-label="Primary">
@@ -2509,23 +2553,19 @@ export function App() {
             onOpenProfile={openProfile}
             onOpenLinkPreview={openLinkPreview}
             onLoadBranch={loadThreadBranch}
-            onToggleSaved={toggleSavedPost}
-            savedUris={savedUriSet}
             localLists={localLists}
             onToggleListPost={togglePostInLocalList}
             canReply={!!authState.session}
             onReplied={reloadThread}
           />
-        ) : route.kind === "surface" && route.name === "saved" ? (
-          <SavedPostsView
-            posts={savedPosts}
-            savedUris={savedUriSet}
+        ) : route.kind === "surface" && route.name === "bookmarks" ? (
+          <BookmarksView
+            signedIn={!!authState.session}
             currentDid={authState.session?.did}
             onOpenImage={setImageViewer}
             onOpenPost={openPost}
             onOpenProfile={openProfile}
             onOpenLinkPreview={openLinkPreview}
-            onToggleSaved={toggleSavedPost}
             localLists={localLists}
             onToggleListPost={togglePostInLocalList}
           />
@@ -2535,7 +2575,6 @@ export function App() {
             name={route.name}
             density={density}
             recentCount={recentItems.length}
-            savedPostCount={savedPosts.length}
             savedPreferenceCount={Object.keys(densityByContext).length}
             localDataKeyCount={countBigbskyLocalKeys()}
             localLists={localLists}
@@ -2580,11 +2619,9 @@ export function App() {
             followBusyUri={followBusyUri}
             onToggleFollowFeed={toggleFollowFeed}
             currentDid={authState.session?.did}
-            savedUris={savedUriSet}
             onOpenImage={setImageViewer}
             onOpenPost={openPost}
             onOpenLinkPreview={openLinkPreview}
-            onToggleSaved={toggleSavedPost}
             onTogglePinnedNotification={togglePinnedNotification}
             onOpenSelfTab={openSelfTab}
             onOpenSurfaceNav={openNavigation}
@@ -2606,8 +2643,6 @@ export function App() {
             onOpenPost={openPost}
             onOpenProfile={openProfile}
             onOpenLinkPreview={openLinkPreview}
-            savedUris={savedUriSet}
-            onToggleSaved={toggleSavedPost}
             localLists={localLists}
             onToggleListPost={togglePostInLocalList}
             onQueryChange={setGlobalSearchText}
@@ -2676,9 +2711,7 @@ export function App() {
                     onOpenPost={openPost}
                     onOpenProfile={openProfile}
                     onOpenLinkPreview={openLinkPreview}
-                    savedUris={savedUriSet}
                     currentDid={authState.session?.did}
-                    onToggleSaved={toggleSavedPost}
                     localLists={localLists}
                     onToggleListPost={togglePostInLocalList}
                     onRenderedRowsChange={setVirtualRenderedRows}
@@ -2715,9 +2748,7 @@ export function App() {
                 onOpenPost={openPost}
                 onOpenProfile={openProfile}
                 onOpenLinkPreview={openLinkPreview}
-                savedUris={savedUriSet}
                 currentDid={authState.session?.did}
-                onToggleSaved={toggleSavedPost}
                 localLists={localLists}
                 onToggleListPost={togglePostInLocalList}
                 onRenderedRowsChange={setVirtualRenderedRows}
@@ -2783,6 +2814,7 @@ export function App() {
       {imageViewer && <ImageViewer image={imageViewer} onChange={setImageViewer} onClose={() => setImageViewer(null)} />}
       </div>
       </BlockContext.Provider>
+      </BookmarkContext.Provider>
       </LikeContext.Provider>
       </ShowMediaContext.Provider>
       </ShowNsfwContext.Provider>
@@ -2802,9 +2834,7 @@ function VirtualPostList({
   onOpenPost,
   onOpenProfile,
   onToggleListPost,
-  onToggleSaved,
   onRenderedRowsChange,
-  savedUris,
 }: {
   children?: React.ReactNode;
   containerRef: RefObject<HTMLDivElement | null>;
@@ -2817,9 +2847,7 @@ function VirtualPostList({
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
   onToggleListPost: (listId: string, post: FeedPost) => void;
-  onToggleSaved: (post: FeedPost) => void;
   onRenderedRowsChange: (count: number) => void;
-  savedUris: Set<string>;
 }) {
   // When the NSFW preference is hidden, drop adult/graphic-labeled posts from
   // the feed entirely (not just gate their media), so they never appear.
@@ -2942,8 +2970,6 @@ function VirtualPostList({
             onOpenLinkPreview={onOpenLinkPreview}
             onOpenPost={onOpenPost}
             onOpenProfile={onOpenProfile}
-            isSaved={savedUris.has(item.post.uri)}
-            onToggleSaved={onToggleSaved}
             localLists={localLists}
             onToggleListPost={onToggleListPost}
           />
@@ -3060,7 +3086,6 @@ function SurfaceView({
   name,
   density,
   recentCount,
-  savedPostCount,
   savedPreferenceCount,
   localDataKeyCount,
   localLists,
@@ -3098,7 +3123,6 @@ function SurfaceView({
   onOpenSearchQuery,
   onSignIn,
   onSignOut,
-  onToggleSaved,
   onTogglePinnedFeed,
   onTogglePinnedNotification,
   onWorkspaceWidthChange,
@@ -3112,13 +3136,11 @@ function SurfaceView({
   followBusyUri,
   onToggleFollowFeed,
   currentDid,
-  savedUris,
 }: {
   auth: AuthState;
   name: string;
   density: string;
   recentCount: number;
-  savedPostCount: number;
   savedPreferenceCount: number;
   localDataKeyCount: number;
   localLists: LocalList[];
@@ -3156,7 +3178,6 @@ function SurfaceView({
   onOpenSearchQuery: (query: string) => void;
   onSignIn: (handle: string) => void | Promise<void>;
   onSignOut: () => void | Promise<void>;
-  onToggleSaved: (post: FeedPost) => void;
   onTogglePinnedFeed: (source: FeedSource) => void;
   onTogglePinnedNotification: (id: string) => void;
   onWorkspaceWidthChange: (width: (typeof widthModes)[number]) => void;
@@ -3170,7 +3191,6 @@ function SurfaceView({
   followBusyUri: string | null;
   onToggleFollowFeed: (feedUri: string, label?: string) => void;
   currentDid?: string;
-  savedUris: Set<string>;
 }) {
   const title = name.charAt(0).toUpperCase() + name.slice(1);
   const surfaces: Record<string, { copy: string; cards: Array<{ title: string; detail: string; status: string }> }> = {
@@ -3195,7 +3215,7 @@ function SurfaceView({
       ],
     },
     notifications: {
-      copy: "Notifications has a local inbox now so account state, saved-post activity, and draft state have a stable destination before OAuth reads are added.",
+      copy: "Notifications has a local inbox now so account state, bookmark activity, and draft state have a stable destination before OAuth reads are added.",
       cards: [
         { title: "All", detail: "Local reader/account events render in an inbox-style list.", status: "Local" },
         { title: "Mentions", detail: "Mention search opens from this surface until authenticated mention reads are available.", status: "Search" },
@@ -3220,13 +3240,9 @@ function SurfaceView({
         { title: "Edit Profile", detail: "Profile editing is delegated to Bluesky; the control opens your profile there in a new tab.", status: "On Bluesky" },
       ],
     },
-    saved: {
-      copy: "Saved posts are a browser-local reading list — save any loaded post and it stays in this browser. Nothing is sent to a BigBSky backend.",
-      cards: [
-        { title: "Saved Timeline", detail: "Saved posts render here as full post cards you can reopen anytime.", status: "Active" },
-        { title: "Empty State", detail: "A clear empty state shows when nothing is saved yet.", status: "Ready" },
-        { title: "Go Home", detail: "Saved routes back to the active reader without a document reload.", status: "Ready" },
-      ],
+    bookmarks: {
+      copy: "Your Bluesky bookmarks live on the dedicated Bookmarks page; this entry is a fallback only.",
+      cards: [],
     },
     settings: {
       copy: "Settings starts with local preferences, sign-out placement, and account/session controls.",
@@ -3354,8 +3370,8 @@ function SurfaceView({
                 <dd>{recentCount.toLocaleString()}</dd>
               </div>
               <div>
-                <dt>Saved posts</dt>
-                <dd>{savedPostCount.toLocaleString()}</dd>
+                <dt>Bookmarks</dt>
+                <dd>Bluesky account</dd>
               </div>
               <div>
                 <dt>Pinned feeds</dt>
@@ -3431,7 +3447,6 @@ function SurfaceView({
     return (
       <NotificationsSurface
         auth={auth}
-        savedPostCount={savedPostCount}
         pinnedFeedCount={pinnedFeedCount}
         pinnedNotificationIds={pinnedNotificationIds}
         pinnedProfileCount={pinnedProfileCount}
@@ -3469,7 +3484,6 @@ function SurfaceView({
     return (
       <SelfProfileSurface
         auth={auth.session}
-        savedPostCount={savedPostCount}
         onOpenProfile={onOpenProfile}
         onOpenSelfTab={onOpenSelfTab}
         onOpenSurfaceNav={onOpenSurfaceNav}
@@ -4041,14 +4055,12 @@ function ProfileListsTab({ actor, onOpenFeed }: { actor: string; onOpenFeed: (so
 
 function SelfProfileSurface({
   auth,
-  savedPostCount,
   onOpenProfile,
   onOpenSelfTab,
   onOpenSurfaceNav,
   onSignOut,
 }: {
   auth: AuthSnapshot;
-  savedPostCount: number;
   onOpenProfile: (profile: Profile) => void;
   onOpenSelfTab: (tab: (typeof profileTabs)[number]) => void;
   onOpenSurfaceNav: (item: string) => void;
@@ -4063,7 +4075,7 @@ function SelfProfileSurface({
     { title: "Media", detail: "Just your image and video posts.", cta: "Open", onClick: () => onOpenSelfTab("media") },
     { title: "Feeds", detail: "Your saved and pinned feeds.", cta: "Open", onClick: () => onOpenSelfTab("feeds") },
     { title: "Lists", detail: "Lists you created and subscribe to.", cta: "Open Lists", onClick: () => onOpenSurfaceNav("Lists") },
-    { title: "Saved", detail: `${savedPostCount.toLocaleString()} post${savedPostCount === 1 ? "" : "s"} saved in this browser.`, cta: "Open Saved", onClick: () => onOpenSurfaceNav("Saved") },
+    { title: "Bookmarks", detail: "Posts you bookmarked on Bluesky, synced with your account.", cta: "Open Bookmarks", onClick: () => onOpenSurfaceNav("Bookmarks") },
     { title: "Notifications", detail: "Likes, replies, follows, and mentions.", cta: "Open", onClick: () => onOpenSurfaceNav("Notifications") },
     { title: "Likes", detail: "Your liked posts (opens on Bluesky).", cta: "Open on Bluesky", href: `${bskyProfileUrl}/likes` },
   ];
@@ -4284,7 +4296,6 @@ function AuthedNotifications({
 
 function NotificationsSurface({
   auth,
-  savedPostCount,
   pinnedFeedCount,
   pinnedNotificationIds,
   pinnedProfileCount,
@@ -4297,7 +4308,6 @@ function NotificationsSurface({
   onReauthorize,
 }: {
   auth: AuthState;
-  savedPostCount: number;
   pinnedFeedCount: number;
   pinnedNotificationIds: string[];
   pinnedProfileCount: number;
@@ -4319,10 +4329,10 @@ function NotificationsSurface({
       status: auth.session ? "Account" : "Signed out",
     },
     {
-      id: "saved",
-      title: `${savedPostCount.toLocaleString()} saved post${savedPostCount === 1 ? "" : "s"}`,
-      detail: "Local saves are available in the Saved timeline and remain browser-only.",
-      status: "Saved",
+      id: "bookmarks",
+      title: "Bookmarks",
+      detail: "Posts you bookmark on Bluesky appear in the Bookmarks timeline, synced with your account.",
+      status: "Bookmarks",
     },
     {
       id: "feeds",
@@ -5415,54 +5425,115 @@ function SearchBox({
   );
 }
 
-function SavedPostsView({
+// Bookmarks read Bluesky's native bookmark feature for the signed-in account
+// (app.bsky.bookmark.getBookmarks) instead of a browser-local list. The
+// Bookmark action on each card writes through the authenticated bookmark API,
+// so this list and bsky.app stay in sync. The per-card Bookmark/Bookmarked
+// toggle comes from BookmarkContext (consumed inside PostCard), not props.
+function BookmarksView({
   currentDid,
   localLists,
-  posts,
-  savedUris,
+  signedIn,
   onOpenImage,
   onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
   onToggleListPost,
-  onToggleSaved,
 }: {
-  posts: FeedPost[];
   currentDid?: string;
   localLists: LocalList[];
-  savedUris: Set<string>;
+  signedIn: boolean;
   onOpenImage: (image: ImageViewerState) => void;
   onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
   onToggleListPost: (listId: string, post: FeedPost) => void;
-  onToggleSaved: (post: FeedPost) => void;
 }) {
+  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  useEffect(() => {
+    if (!signedIn) {
+      setStatus("idle");
+      setPosts([]);
+      setCursor(undefined);
+      return undefined;
+    }
+    let cancelled = false;
+    setStatus("loading");
+    void (async () => {
+      try {
+        const response = await getBookmarks();
+        if (cancelled) {
+          return;
+        }
+        setPosts(response.feed.map((item) => item.post));
+        setCursor(response.cursor);
+        setStatus("ready");
+      } catch {
+        if (!cancelled) {
+          setStatus("error");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn]);
+
+  const loadMore = () => {
+    if (!cursor || loadingMore) {
+      return;
+    }
+    setLoadingMore(true);
+    void (async () => {
+      try {
+        const response = await getBookmarks(cursor);
+        setPosts((current) => [...current, ...response.feed.map((item) => item.post)]);
+        setCursor(response.cursor);
+      } catch {
+        // Keep what we have; the load-more control stays for an explicit retry.
+      } finally {
+        setLoadingMore(false);
+      }
+    })();
+  };
+
   return (
     <div className="timeline comfortable">
       <section className="surface-placeholder">
-        <h2>Saved</h2>
-        <p>Saved posts are stored only in this browser and can be cleared from Settings.</p>
+        <h2>Bookmarks</h2>
+        <p>Posts you bookmark on Bluesky. Bookmarks are synced with your account and also appear on bsky.app.</p>
       </section>
-      {posts.length === 0 ? (
-        <EmptyState title="No saved posts yet" message="Use the save action on loaded posts to build a local saved timeline." />
+      {!signedIn ? (
+        <EmptyState
+          title="Sign in to see your bookmarks"
+          message="Bookmarks use Bluesky's native bookmark feature. Sign in from Settings to bookmark posts and read them here."
+        />
+      ) : status === "loading" ? (
+        <LoadingState label="Loading your bookmarks" />
+      ) : status === "error" ? (
+        <ErrorState message="Couldn't load bookmarks. If you just updated permissions, re-authorize from Settings, then try again." />
+      ) : posts.length === 0 ? (
+        <EmptyState title="No bookmarks yet" message="Use the Bookmark action on any post to save it to your Bluesky account." />
       ) : (
-        <section className="saved-posts-list" aria-label="Saved posts">
+        <section className="bookmarks-list" aria-label="Bookmarks">
           {posts.map((post) => (
             <PostCard
               item={{ post }}
               currentDid={currentDid}
               key={post.uri}
-              isSaved={savedUris.has(post.uri)}
               onOpenImage={onOpenImage}
               onOpenLinkPreview={onOpenLinkPreview}
               onOpenPost={onOpenPost}
               onOpenProfile={onOpenProfile}
               localLists={localLists}
               onToggleListPost={onToggleListPost}
-              onToggleSaved={onToggleSaved}
             />
           ))}
+          {cursor && <AutoLoadMoreButton label="Load more bookmarks" onLoadMore={loadMore} />}
         </section>
       )}
     </div>
@@ -5476,10 +5547,8 @@ function SearchView({
   feedSources,
   language,
   localLists,
-  onToggleSaved,
   query,
   searchState,
-  savedUris,
   sort,
   tab,
   isPinnedSearch,
@@ -5511,7 +5580,6 @@ function SearchView({
   isPinnedSearch: boolean;
   onLoadMore: () => void;
   onLanguageChange: (language: string) => void;
-  onToggleSaved: (post: FeedPost) => void;
   onToggleListPost: (listId: string, post: FeedPost) => void;
   onOpenFeed: (source: FeedSource) => void;
   onOpenImage: (image: ImageViewerState) => void;
@@ -5524,7 +5592,6 @@ function SearchView({
   onSortChange: (sort: "top" | "latest") => void;
   onTabChange: (tab: (typeof searchTabs)[number]) => void;
   onTogglePinnedSearch: (query: string) => void;
-  savedUris: Set<string>;
 }) {
   const feedResults = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -5705,8 +5772,6 @@ function SearchView({
                   onOpenProfile={onOpenProfile}
                   localLists={localLists}
                   onToggleListPost={onToggleListPost}
-                  isSaved={savedUris.has(post.uri)}
-                  onToggleSaved={onToggleSaved}
                 />
               ))}
               {searchState.cursor && (
@@ -5853,7 +5918,6 @@ function MediaHiddenButton({ kind, onReveal }: { kind: "image" | "video"; onReve
 
 function PostCard({
   currentDid,
-  isSaved = false,
   item,
   localLists = [],
   onOpenImage,
@@ -5861,10 +5925,8 @@ function PostCard({
   onOpenPost,
   onOpenProfile,
   onToggleListPost,
-  onToggleSaved,
 }: {
   currentDid?: string;
-  isSaved?: boolean;
   item: FeedItem;
   localLists?: LocalList[];
   onOpenImage?: (image: ImageViewerState) => void;
@@ -5872,7 +5934,6 @@ function PostCard({
   onOpenPost?: (post: FeedPost) => void;
   onOpenProfile?: (profile: Profile) => void;
   onToggleListPost?: (listId: string, post: FeedPost) => void;
-  onToggleSaved?: (post: FeedPost) => void;
 }) {
   const post = item.post;
   const onOpenTag = useContext(TagSearchContext);
@@ -5880,6 +5941,8 @@ function PostCard({
   const showMedia = useContext(ShowMediaContext);
   const likeCtx = useContext(LikeContext);
   const likeView = likeCtx?.getState(post);
+  const bookmarkCtx = useContext(BookmarkContext);
+  const bookmarkView = bookmarkCtx?.getState(post);
   const blockCtx = useContext(BlockContext);
   const blockView = blockCtx?.getState(post.author);
   const canBlockAuthor = !!blockCtx?.canBlock && post.author.did !== blockCtx?.selfDid;
@@ -6086,14 +6149,16 @@ function PostCard({
             <Bell size={16} /> {post.likeCount ?? 0}
           </span>
         )}
-        <button
-          className={isSaved ? "saved" : ""}
-          type="button"
-          onClick={() => onToggleSaved?.(post)}
-          title={isSaved ? "Remove from saved" : "Save post locally"}
-        >
-          <Bookmark size={16} /> {isSaved ? "Saved" : "Save"}
-        </button>
+        {bookmarkCtx?.canBookmark && bookmarkView ? (
+          <button
+            className={bookmarkView.bookmarked ? "bookmarked" : ""}
+            type="button"
+            onClick={() => bookmarkCtx.toggle(post)}
+            title={bookmarkView.bookmarked ? "Remove bookmark" : "Bookmark post"}
+          >
+            <Bookmark size={16} /> {bookmarkView.bookmarked ? "Bookmarked" : "Bookmark"}
+          </button>
+        ) : null}
         <button type="button" onClick={handleShare} title="Share post">
           <Share2 size={16} /> {shareState === "copied" ? "Copied" : shareState === "shared" ? "Shared" : shareState === "error" ? "Copy failed" : "Share"}
         </button>
@@ -6406,8 +6471,6 @@ function ThreadView({
   onOpenPost,
   onOpenProfile,
   onToggleListPost,
-  onToggleSaved,
-  savedUris,
   canReply = false,
   onReplied,
 }: {
@@ -6421,8 +6484,6 @@ function ThreadView({
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
   onToggleListPost: (listId: string, post: FeedPost) => void;
-  onToggleSaved: (post: FeedPost) => void;
-  savedUris: Set<string>;
   canReply?: boolean;
   onReplied?: () => void;
 }) {
@@ -6573,7 +6634,7 @@ function ThreadView({
               parentNodes.length,
               { loadingBranches, onLoadBranch, onOpenImage, onOpenPost, onOpenProfile },
               onOpenLinkPreview,
-              { currentDid, localLists, onToggleListPost, onToggleSaved, savedUris },
+              { currentDid, localLists, onToggleListPost },
             ),
           )}
         </section>
@@ -6582,7 +6643,7 @@ function ThreadView({
         setExpandedBranches((current) => ({ ...current, [uri]: !current[uri] })),
         { loadingBranches, onLoadBranch, onOpenImage, onOpenPost, onOpenProfile },
         onOpenLinkPreview,
-        { currentDid, localLists, onToggleListPost, onToggleSaved, savedUris },
+        { currentDid, localLists, onToggleListPost },
       )}
     </div>
   );
@@ -6604,8 +6665,6 @@ function renderThreadContextNode(
     currentDid?: string;
     localLists: LocalList[];
     onToggleListPost: (listId: string, post: FeedPost) => void;
-    onToggleSaved: (post: FeedPost) => void;
-    savedUris: Set<string>;
   },
 ) {
   if (!("post" in node)) {
@@ -6639,10 +6698,8 @@ function renderThreadContextNode(
           onOpenLinkPreview={onOpenLinkPreview}
           onOpenPost={handlers.onOpenPost}
           onOpenProfile={handlers.onOpenProfile}
-          isSaved={savedState.savedUris.has(node.post.uri)}
           localLists={savedState.localLists}
           onToggleListPost={savedState.onToggleListPost}
-          onToggleSaved={savedState.onToggleSaved}
         />
       </div>
     </div>
@@ -6844,8 +6901,6 @@ function renderThreadNode(
     currentDid?: string;
     localLists: LocalList[];
     onToggleListPost: (listId: string, post: FeedPost) => void;
-    onToggleSaved: (post: FeedPost) => void;
-    savedUris: Set<string>;
   },
 ): React.ReactNode {
   if (!("post" in node)) {
@@ -6879,10 +6934,8 @@ function renderThreadNode(
         onOpenLinkPreview={onOpenLinkPreview}
         onOpenPost={handlers.onOpenPost}
         onOpenProfile={handlers.onOpenProfile}
-        isSaved={savedState.savedUris.has(node.post.uri)}
         localLists={savedState.localLists}
         onToggleListPost={savedState.onToggleListPost}
-        onToggleSaved={savedState.onToggleSaved}
       />
       {visibleReplies.map((reply) =>
         renderThreadNode(reply, depth + 1, expandedBranches, onToggleBranch, handlers, onOpenLinkPreview, savedState),

@@ -3106,7 +3106,7 @@ button.surface-action {
   color: var(--bsky-blue-soft);
 }
 
-.post-actions button.saved {
+.post-actions button.bookmarked {
   color: var(--bsky-blue-soft);
 }
 
@@ -3245,7 +3245,7 @@ button.surface-action {
   margin-top: 0;
 }
 
-.saved-posts-list {
+.bookmarks-list {
   display: grid;
   gap: 0;
   margin-top: 14px;
