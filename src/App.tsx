@@ -2529,6 +2529,7 @@ export function App() {
             onOpenFeed={openFeedSource}
             onOpenProfile={openProfile}
             onOpenPostByUri={openPostByUri}
+            onReauthorize={handleReauthorize}
             onOpenSearch={() => navigate({ kind: "search" }, "/search")}
             onOpenSearchQuery={submitSearch}
             onSignIn={handleSignIn}
@@ -3050,6 +3051,7 @@ function SurfaceView({
   onOpenProfile,
   onOpenPost,
   onOpenPostByUri,
+  onReauthorize,
   onOpenSearch,
   onOpenSearchQuery,
   onSignIn,
@@ -3101,6 +3103,7 @@ function SurfaceView({
   onOpenProfile: (profile: Profile) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenPostByUri: (uri: string, actor: string) => void;
+  onReauthorize: () => void;
   onOpenSearch: () => void;
   onOpenSearchQuery: (query: string) => void;
   onSignIn: (handle: string) => void | Promise<void>;
@@ -3374,6 +3377,7 @@ function SurfaceView({
         onTogglePinnedNotification={onTogglePinnedNotification}
         onOpenPostByUri={onOpenPostByUri}
         onOpenProfile={onOpenProfile}
+        onReauthorize={onReauthorize}
       />
     );
   }
@@ -3389,6 +3393,7 @@ function SurfaceView({
         onCreateModList={onCreateModList}
         onDeleteModList={onDeleteModList}
         onOpenFeed={onOpenFeed}
+        onReauthorize={onReauthorize}
         lists={localLists}
         onCreateList={onCreateLocalList}
         onDeleteList={onDeleteLocalList}
@@ -4026,25 +4031,27 @@ function AuthedNotifications({
   selfHandle,
   onOpenPostByUri,
   onOpenProfile,
+  onReauthorize,
 }: {
   selfHandle: string;
   onOpenPostByUri: (uri: string, actor: string) => void;
   onOpenProfile: (profile: Profile) => void;
+  onReauthorize: () => void;
 }) {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [loadingMore, setLoadingMore] = useState(false);
   const [tab, setTab] = useState<"all" | "mentions">("all");
+  // When the read fails, check whether it's because the session is missing the
+  // notification scope (added after this user's last consent) so we can offer a
+  // contextual re-authorize instead of a dead-end error.
+  const [needsReauth, setNeedsReauth] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  const load = useCallback(() => {
     setStatus("loading");
     getNotifications()
       .then((page) => {
-        if (cancelled) {
-          return;
-        }
         setItems(page.notifications);
         setCursor(page.cursor);
         setStatus("ready");
@@ -4052,14 +4059,18 @@ function AuthedNotifications({
         void markNotificationsSeen().catch(() => {});
       })
       .catch(() => {
-        if (!cancelled) {
-          setStatus("error");
-        }
+        setStatus("error");
+        // A missing notification scope means re-auth fixes it; a generic gap
+        // (network) does not. getMissingScopes tells them apart.
+        void getMissingScopes()
+          .then((missing) => setNeedsReauth(missing.some((scope) => scope.includes("notification"))))
+          .catch(() => setNeedsReauth(false));
       });
-    return () => {
-      cancelled = true;
-    };
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   function loadMore() {
     if (!cursor || loadingMore) {
@@ -4104,7 +4115,30 @@ function AuthedNotifications({
         </button>
       </section>
       {status === "loading" && <LoadingState label="Loading notifications" />}
-      {status === "error" && <ErrorState message="Could not load notifications." />}
+      {status === "error" && (
+        <div className="surface-retry">
+          {needsReauth ? (
+            <>
+              <ErrorState message="Notifications need updated permissions. BigBSky added notification access since you last signed in — re-authorize to load them." />
+              <div className="reauth-banner-actions">
+                <button type="button" className="reauth-primary" onClick={onReauthorize}>
+                  Update permissions
+                </button>
+                <button type="button" onClick={load}>
+                  Retry
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <ErrorState message="Could not load notifications." />
+              <button type="button" onClick={load}>
+                Retry
+              </button>
+            </>
+          )}
+        </div>
+      )}
       {status === "ready" && visible.length === 0 && (
         <EmptyState title="No notifications" message={tab === "mentions" ? "No mentions, replies, or quotes yet." : "You're all caught up."} />
       )}
@@ -4152,6 +4186,7 @@ function NotificationsSurface({
   onTogglePinnedNotification,
   onOpenPostByUri,
   onOpenProfile,
+  onReauthorize,
 }: {
   auth: AuthState;
   savedPostCount: number;
@@ -4164,6 +4199,7 @@ function NotificationsSurface({
   onTogglePinnedNotification: (id: string) => void;
   onOpenPostByUri: (uri: string, actor: string) => void;
   onOpenProfile: (profile: Profile) => void;
+  onReauthorize: () => void;
 }) {
   const events = [
     {
@@ -4222,7 +4258,7 @@ function NotificationsSurface({
       </section>
 
       {auth.session ? (
-        <AuthedNotifications selfHandle={auth.session.handle} onOpenPostByUri={onOpenPostByUri} onOpenProfile={onOpenProfile} />
+        <AuthedNotifications selfHandle={auth.session.handle} onOpenPostByUri={onOpenPostByUri} onOpenProfile={onOpenProfile} onReauthorize={onReauthorize} />
       ) : (
         <button className="surface-action" type="button" onClick={onOpenSearch}>
           Open mention search
@@ -4368,12 +4404,14 @@ function BlueskyListCard({
   signedInDid,
   onOpenFeed,
   onDelete,
+  onReauthorize,
 }: {
   list: ListView;
   owned: boolean;
   signedInDid?: string;
   onOpenFeed: (source: FeedSource) => void;
   onDelete?: (listUri: string) => Promise<void>;
+  onReauthorize?: () => void;
 }) {
   const isModlist = list.purpose?.includes("modlist") ?? false;
   const isOwn = owned || (!!signedInDid && list.creator?.did === signedInDid);
@@ -4387,6 +4425,9 @@ function BlueskyListCard({
   // AppView procedure (no record uri), so this is just a boolean.
   const [muted, setMuted] = useState<boolean>(!!list.viewer?.muted);
   const [muteBusy, setMuteBusy] = useState(false);
+  // Surfaced when a subscribe/mute write fails. `reauth` flags a missing-scope
+  // failure (re-authorize fixes it) vs a generic one.
+  const [subError, setSubError] = useState<{ message: string; reauth: boolean } | null>(null);
 
   async function handleDelete() {
     if (!onDelete || deleting) {
@@ -4424,6 +4465,7 @@ function BlueskyListCard({
       }
     } catch {
       setBlockUri(previous);
+      setSubError({ message: "Could not update this block-list subscription.", reauth: false });
     } finally {
       setSubBusy(false);
     }
@@ -4449,6 +4491,16 @@ function BlueskyListCard({
       }
     } catch {
       setMuted(previous);
+      // Muting needs the muteActorList scope (added recently); a missing scope
+      // means re-auth fixes it. Tell the two cases apart.
+      const missing = await getMissingScopes().catch(() => []);
+      const needsReauth = missing.some((scope) => scope.includes("muteActorList"));
+      setSubError({
+        message: needsReauth
+          ? "Muting a list needs updated permissions — re-authorize to enable it."
+          : "Could not update this mute.",
+        reauth: needsReauth,
+      });
     } finally {
       setMuteBusy(false);
     }
@@ -4508,6 +4560,16 @@ function BlueskyListCard({
           </button>
         )}
       </div>
+      {subError && (
+        <div className="bsky-list-suberror">
+          <p className="composer-error" role="alert">{subError.message}</p>
+          {subError.reauth && onReauthorize && (
+            <button type="button" className="reauth-primary" onClick={onReauthorize}>
+              Update permissions
+            </button>
+          )}
+        </div>
+      )}
       {managing && isOwn && <ListMemberManager listUri={list.uri} />}
     </article>
   );
@@ -4522,6 +4584,7 @@ function ListsSurface({
   onCreateModList,
   onDeleteModList,
   onOpenFeed,
+  onReauthorize,
   lists,
   onCreateList,
   onDeleteList,
@@ -4534,6 +4597,7 @@ function ListsSurface({
   onCreateModList: (name: string, description: string) => Promise<void>;
   onDeleteModList: (listUri: string) => Promise<void>;
   onOpenFeed: (source: FeedSource) => void;
+  onReauthorize: () => void;
   lists: LocalList[];
   onCreateList: (name: string, description: string) => void;
   onDeleteList: (id: string) => void;
@@ -4631,7 +4695,7 @@ function ListsSurface({
               <h3 className="bsky-list-section-heading">Subscribed lists</h3>
               <div className="bsky-list-grid">
                 {myLists.subscribed.map((list) => (
-                  <BlueskyListCard key={list.uri} list={list} owned={false} signedInDid={signedInDid} onOpenFeed={onOpenFeed} />
+                  <BlueskyListCard key={list.uri} list={list} owned={false} signedInDid={signedInDid} onOpenFeed={onOpenFeed} onReauthorize={onReauthorize} />
                 ))}
               </div>
             </section>

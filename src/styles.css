@@ -880,6 +880,25 @@ button {
   color: #fff;
 }
 
+/* Standalone re-auth button (notifications error, list sub-error). */
+.surface-retry button.reauth-primary,
+.bsky-list-suberror button.reauth-primary {
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: var(--bsky-blue);
+  color: #fff;
+  font-weight: 700;
+}
+
+.bsky-list-suberror {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .composer-actions {
   display: flex;
   align-items: center;
