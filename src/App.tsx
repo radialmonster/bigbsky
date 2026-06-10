@@ -117,6 +117,18 @@ type LikeContextValue = {
 };
 const LikeContext = createContext<LikeContextValue | null>(null);
 
+// Block state + toggle for a post's author, provided once and consumed by the
+// post card's options menu. Keyed by author DID (not post URI) so blocking from
+// one post reflects on every post by that author. Mirrors LikeContext.
+type BlockView = { blocked: boolean; uri?: string };
+type BlockContextValue = {
+  canBlock: boolean;
+  selfDid?: string;
+  getState: (author: Profile) => BlockView;
+  toggle: (author: Profile) => void;
+};
+const BlockContext = createContext<BlockContextValue | null>(null);
+
 function readShowNsfw() {
   try {
     return localStorage.getItem(showNsfwStorageKey) === "true";
@@ -856,6 +868,70 @@ export function App() {
     [signedInDid, getLikeState, toggleLike],
   );
 
+  // Block overrides keyed by author DID: { uri } is the block-record URI ("" /
+  // falsy = not blocked). Lives here so optimistic state survives virtualization
+  // and is shared across every post by the same author.
+  const [blockOverrides, setBlockOverrides] = useState<Record<string, { uri?: string }>>({});
+  const blockInFlight = useRef<Set<string>>(new Set());
+
+  const getBlockState = useCallback(
+    (author: Profile): BlockView => {
+      const ov = blockOverrides[author.did];
+      if (ov) {
+        return { blocked: !!ov.uri, uri: ov.uri };
+      }
+      return { blocked: !!author.viewer?.blocking, uri: author.viewer?.blocking };
+    },
+    [blockOverrides],
+  );
+
+  const toggleBlock = useCallback(
+    (author: Profile) => {
+      if (!signedInDid || author.did === signedInDid || blockInFlight.current.has(author.did)) {
+        return;
+      }
+      const ov = blockOverrides[author.did];
+      const blocked = ov ? !!ov.uri : !!author.viewer?.blocking;
+      const blockUri = ov ? ov.uri : author.viewer?.blocking;
+      if (
+        !blocked &&
+        !window.confirm(`Block @${author.handle}? They won't be able to see or reply to your posts, and this also undoes any follow.`)
+      ) {
+        return;
+      }
+      blockInFlight.current.add(author.did);
+      // Optimistic update.
+      setBlockOverrides((current) => ({
+        ...current,
+        [author.did]: blocked ? { uri: undefined } : { uri: "pending" },
+      }));
+      void (async () => {
+        try {
+          if (blocked) {
+            if (blockUri && blockUri !== "pending") {
+              await unblockAccount(blockUri);
+            }
+            setBlockOverrides((current) => ({ ...current, [author.did]: { uri: undefined } }));
+          } else {
+            const newUri = await blockAccount(author.did);
+            setBlockOverrides((current) => ({ ...current, [author.did]: { uri: newUri } }));
+          }
+        } catch {
+          // Revert to pre-click state.
+          setBlockOverrides((current) => ({ ...current, [author.did]: { uri: blocked ? blockUri : undefined } }));
+        } finally {
+          blockInFlight.current.delete(author.did);
+        }
+      })();
+    },
+    [signedInDid, blockOverrides],
+  );
+
+  const blockContextValue = useMemo<BlockContextValue>(
+    () => ({ canBlock: !!signedInDid, selfDid: signedInDid, getState: getBlockState, toggle: toggleBlock }),
+    [signedInDid, getBlockState, toggleBlock],
+  );
+
   useEffect(() => {
     if (!signedInDid) {
       setSubscribedFeeds([]);
@@ -1138,15 +1214,28 @@ export function App() {
       loadMoreError: undefined,
     }));
 
-    try {
-      const [profileResponse, feedResponse] = await Promise.all([
-        cursor ? Promise.resolve(null) : getProfileAuthed(actor, signal),
-        getAuthorFeedAuthed(actor, cursor, signal),
-      ]);
+    // Profile and author feed load independently. A blocked account's author
+    // feed throws ("Requester has blocked actor"), but the profile read still
+    // succeeds — so we must not let a feed failure wipe the profile header,
+    // otherwise there is no way to reach the Unblock control. allSettled keeps
+    // the two outcomes separate.
+    const [profileResult, feedResult] = await Promise.allSettled([
+      cursor ? Promise.resolve(null) : getProfileAuthed(actor, signal),
+      getAuthorFeedAuthed(actor, cursor, signal),
+    ]);
 
-      if (profileResponse) {
-        setProfile(profileResponse);
-      }
+    if (signal?.aborted) {
+      return;
+    }
+
+    let profileResponse: Profile | null = null;
+    if (profileResult.status === "fulfilled" && profileResult.value) {
+      profileResponse = profileResult.value;
+      setProfile(profileResponse);
+    }
+
+    if (feedResult.status === "fulfilled") {
+      const feedResponse = feedResult.value;
       setFeedState((current) => {
         const next = {
           items: cursor ? [...current.items, ...feedResponse.feed] : feedResponse.feed,
@@ -1159,13 +1248,20 @@ export function App() {
       if (!cursor) {
         requestAnimationFrame(() => timelineRef.current?.scrollTo({ top: scrollCacheRef.current[cacheKey] || 0 }));
       }
-    } catch (error) {
-      if (!signal?.aborted) {
-        setFeedState((current) =>
-          cursor
-            ? { ...current, status: "ready", loadMoreError: rateLimitMessage(error) }
-            : { ...current, status: isRateLimit(error) ? "rate-limit" : "error", error: rateLimitMessage(error) },
-        );
+    } else {
+      const error = feedResult.reason;
+      setFeedState((current) =>
+        cursor
+          ? { ...current, status: "ready", loadMoreError: rateLimitMessage(error) }
+          : { ...current, status: isRateLimit(error) ? "rate-limit" : "error", error: rateLimitMessage(error) },
+      );
+      // Cache the profile even when the feed is unavailable so re-entry keeps the
+      // header (and its Unblock button) without another round-trip.
+      if (profileResponse && !cursor) {
+        profileCacheRef.current[cacheKey] = {
+          feed: profileCacheRef.current[cacheKey]?.feed ?? { items: [], status: "ready" },
+          profile: profileResponse,
+        };
       }
     }
   }, []);
@@ -2041,6 +2137,7 @@ export function App() {
       <ShowNsfwContext.Provider value={showNsfw}>
       <ShowMediaContext.Provider value={showMedia}>
       <LikeContext.Provider value={likeContextValue}>
+      <BlockContext.Provider value={blockContextValue}>
       <div className={`app-shell width-${workspaceWidth} ${navOpen ? "nav-open" : "nav-hidden"}`}>
       <aside className="left-rail" aria-label="Primary">
         <button className="brand-button" type="button" onClick={() => navigate({ kind: "feed" })} title="BigBSky">
@@ -2464,6 +2561,7 @@ export function App() {
 
       {imageViewer && <ImageViewer image={imageViewer} onChange={setImageViewer} onClose={() => setImageViewer(null)} />}
       </div>
+      </BlockContext.Provider>
       </LikeContext.Provider>
       </ShowMediaContext.Provider>
       </ShowNsfwContext.Provider>
@@ -4817,6 +4915,9 @@ function PostCard({
   const showMedia = useContext(ShowMediaContext);
   const likeCtx = useContext(LikeContext);
   const likeView = likeCtx?.getState(post);
+  const blockCtx = useContext(BlockContext);
+  const blockView = blockCtx?.getState(post.author);
+  const canBlockAuthor = !!blockCtx?.canBlock && post.author.did !== blockCtx?.selfDid;
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
   const [mediaRevealed, setMediaRevealed] = useState(false);
   const images = getEmbedImages(post.embed);
@@ -5053,6 +5154,29 @@ function PostCard({
             </div>
           </details>
         )}
+        <details className="post-list-menu post-more-menu">
+          <summary title="More options">
+            <MoreHorizontal size={16} />
+          </summary>
+          <div>
+            <a
+              href={`https://bsky.app/profile/${encodeURIComponent(post.author.handle)}/post/${post.uri.split("/").pop() || ""}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open on Bluesky
+            </a>
+            {canBlockAuthor && (
+              <button
+                type="button"
+                className={blockView?.blocked ? "block-listed" : ""}
+                onClick={() => blockCtx?.toggle(post.author)}
+              >
+                {blockView?.blocked ? `Unblock @${post.author.handle}` : `Block @${post.author.handle}`}
+              </button>
+            )}
+          </div>
+        </details>
       </footer>
     </article>
   );

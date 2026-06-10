@@ -2644,6 +2644,32 @@ button.surface-action {
   color: var(--bsky-blue-soft);
 }
 
+/* The "more options" menu shares the Lists dropdown styling. Its anchor item
+   must match the button rows, and it sits at the far right of the action row. */
+.post-more-menu {
+  margin-left: auto;
+}
+
+.post-list-menu div a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 32px;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: var(--app-surface-2);
+  color: var(--app-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  text-decoration: none;
+}
+
+.post-list-menu div button.block-listed,
+.post-more-menu div button {
+  color: #f87171;
+}
+
 .media .post-card.has-media {
   padding: 18px;
 }
