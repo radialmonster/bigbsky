@@ -1120,6 +1120,32 @@ button {
   opacity: 0.55;
 }
 
+.settings-select {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--app-text-muted);
+}
+
+.settings-select select {
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface-2);
+  color: var(--app-text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.settings-note {
+  color: var(--bsky-blue-soft) !important;
+  font-size: 12px !important;
+}
+
 .settings-control-group {
   display: flex;
   flex-wrap: wrap;

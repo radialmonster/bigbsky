@@ -259,6 +259,33 @@ const followingSource: FeedSource = {
   group: "Core",
   description: "Your timeline of accounts you follow, newest first.",
 };
+
+// The user's chosen Home feed (what the house icon / root "/" shows). Stored
+// locally; defaults to "following". "following" and any custom subscribed feed
+// need a signed-in session — when signed out we fall back to the public Discover
+// feed so Home never breaks if auth is lost.
+const homeSourceStorageKey = "bigbsky:home-source";
+const publicHomeFallback = feedSources.find((source) => source.id === "discover") ?? feedSources[0];
+
+function readHomeSourceId(): string {
+  try {
+    return localStorage.getItem(homeSourceStorageKey) || "following";
+  } catch {
+    return "following";
+  }
+}
+
+function resolveHomeSource(homeId: string, signedIn: boolean, subscribed: FeedSource[]): FeedSource {
+  if (homeId === "following") {
+    return signedIn ? followingSource : publicHomeFallback;
+  }
+  const known =
+    feedSources.find((source) => source.id === homeId) ??
+    subscribed.find((source) => source.id === homeId || source.uri === homeId);
+  // A custom/subscribed feed only appears in `subscribed` while signed in; if
+  // signed out we won't find it, so fall back to public Discover.
+  return known ?? publicHomeFallback;
+}
 const widthModes = ["balanced", "wide", "focus"] as const;
 const searchTabs = ["posts", "people", "feeds"] as const;
 const profileTabs = ["posts", "replies", "media", "videos", "feeds", "lists"] as const;
@@ -743,6 +770,16 @@ function threadUnavailableState(node: Exclude<ThreadNode, { post: FeedPost }>) {
 export function App() {
   const [route, setRoute] = useState<RouteState>(() => getRouteState());
   const [activeSourceId, setActiveSourceId] = useState(feedSources[0].id);
+  // The user's chosen Home feed id (house icon / root). Persisted locally.
+  const [homeSourceId, setHomeSourceIdState] = useState<string>(() => readHomeSourceId());
+  const setHomeSource = useCallback((id: string) => {
+    try {
+      localStorage.setItem(homeSourceStorageKey, id);
+    } catch {
+      /* ignore storage failures */
+    }
+    setHomeSourceIdState(id);
+  }, []);
   const [feedSearch, setFeedSearch] = useState("");
   const [globalSearchText, setGlobalSearchText] = useState(() => {
     const initialRoute = getRouteState();
@@ -1128,8 +1165,13 @@ export function App() {
         };
       }
     }
+    // Root "/" (feed route with no uri) shows the user's chosen Home feed, with a
+    // public fallback when signed out so Home never breaks.
+    if (route.kind === "feed" && !route.uri) {
+      return resolveHomeSource(homeSourceId, !!signedInDid, subscribedFeeds);
+    }
     return feedSources.find((source) => source.id === activeSourceId) ?? feedSources[0];
-  }, [route, activeSourceId, subscribedFeeds]);
+  }, [route, activeSourceId, subscribedFeeds, homeSourceId, signedInDid]);
   // Static public feeds plus the signed-in user's subscribed feeds (deduped by
   // URI so a saved copy of a built-in feed does not appear twice).
   const allSources = useMemo(() => {
@@ -1139,6 +1181,23 @@ export function App() {
     const base = signedInDid ? [followingSource, ...feedSources] : feedSources;
     return [...base, ...extras];
   }, [subscribedFeeds, signedInDid]);
+  // Home-page options for Settings: Following + the static public feeds, plus
+  // the user's subscribed feeds when signed in. Following is always offered (it
+  // falls back to Discover when signed out).
+  const homeOptions = useMemo(() => {
+    const options: Array<{ id: string; label: string; needsAuth: boolean }> = [
+      { id: "following", label: "Following", needsAuth: true },
+    ];
+    for (const source of feedSources) {
+      options.push({ id: source.id, label: source.label, needsAuth: false });
+    }
+    for (const source of subscribedFeeds) {
+      if (!options.some((option) => option.id === source.id)) {
+        options.push({ id: source.id, label: source.label, needsAuth: true });
+      }
+    }
+    return options;
+  }, [subscribedFeeds]);
   const feedRoutePath = (source: FeedSource) => `/feed/${encodeURIComponent(source.id)}`;
   const densityKey = route.kind === "feed" ? `feed:${activeSource.id}` : route.kind;
   const density = densityByContext[densityKey] || densityByContext.default || "comfortable";
@@ -2034,7 +2093,9 @@ export function App() {
     }
 
     if (item === "Home") {
-      const source = feedSources[0];
+      // Resolve at click time so the signed-in state (and thus the Following /
+      // custom-feed vs Discover fallback) is current.
+      const source = resolveHomeSource(homeSourceId, !!signedInDid, subscribedFeeds);
       setActiveSourceId(source.id);
       navigate({ kind: "feed", uri: source.id }, feedRoutePath(source));
       return;
@@ -2530,6 +2591,9 @@ export function App() {
             onOpenProfile={openProfile}
             onOpenPostByUri={openPostByUri}
             onReauthorize={handleReauthorize}
+            homeSourceId={homeSourceId}
+            homeOptions={homeOptions}
+            onHomeSourceChange={setHomeSource}
             onOpenSearch={() => navigate({ kind: "search" }, "/search")}
             onOpenSearchQuery={submitSearch}
             onSignIn={handleSignIn}
@@ -3052,6 +3116,9 @@ function SurfaceView({
   onOpenPost,
   onOpenPostByUri,
   onReauthorize,
+  homeSourceId,
+  homeOptions,
+  onHomeSourceChange,
   onOpenSearch,
   onOpenSearchQuery,
   onSignIn,
@@ -3104,6 +3171,9 @@ function SurfaceView({
   onOpenPost: (post: FeedPost) => void;
   onOpenPostByUri: (uri: string, actor: string) => void;
   onReauthorize: () => void;
+  homeSourceId: string;
+  homeOptions: Array<{ id: string; label: string; needsAuth: boolean }>;
+  onHomeSourceChange: (id: string) => void;
   onOpenSearch: () => void;
   onOpenSearchQuery: (query: string) => void;
   onSignIn: (handle: string) => void | Promise<void>;
@@ -3205,6 +3275,25 @@ function SurfaceView({
           <p>Local reader preferences and account/session controls live here. No BigBSky backend storage is used for v1 reader data.</p>
         </section>
         <section className="settings-grid" aria-label="Settings sections">
+          <article className="settings-panel">
+            <span>Home</span>
+            <h3>Home Page</h3>
+            <p>Choose what the house icon and bigbsky.com open. Following needs sign-in; if you&apos;re signed out, Home falls back to Discover so it never breaks.</p>
+            <label className="settings-select" aria-label="Home page feed">
+              <span>Open Home to</span>
+              <select value={homeSourceId} onChange={(event) => onHomeSourceChange(event.currentTarget.value)}>
+                {homeOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                    {option.needsAuth && !auth.session ? " (needs sign-in)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {homeSourceId !== "discover" && !auth.session && (
+              <p className="settings-note">Signed out — Home currently shows Discover until you sign in.</p>
+            )}
+          </article>
           <article className="settings-panel">
             <span>Active</span>
             <h3>Appearance</h3>
