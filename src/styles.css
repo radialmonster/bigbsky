@@ -789,6 +789,49 @@ button {
   font-weight: 700;
 }
 
+.reauth-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--bsky-blue);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bsky-blue) 14%, var(--app-surface));
+}
+
+.reauth-banner strong {
+  display: block;
+  font-size: 14px;
+}
+
+.reauth-banner span {
+  color: var(--app-text-muted);
+  font-size: 13px;
+}
+
+.reauth-banner-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.reauth-banner-actions button {
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: var(--app-surface-2);
+  color: var(--app-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.reauth-banner-actions button.reauth-primary {
+  background: var(--bsky-blue);
+  color: #fff;
+}
+
 .composer-actions {
   display: flex;
   align-items: center;

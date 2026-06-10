@@ -437,6 +437,33 @@ export async function searchPostsAuthed(
   };
 }
 
+// Compare the scope actually granted to the active session against the desired
+// OAUTH_SCOPE and return the desired scope tokens that are missing from the
+// grant (empty = up to date / signed out). Long-lived refresh tokens keep the
+// scope from their original consent, so after we add a scope to the client
+// metadata existing users keep the old grant until they re-authorize — this is
+// how the app detects that and offers a one-click re-auth. Compared as token
+// sets; the stored grant is byte-identical in format to OAUTH_SCOPE (verified),
+// so this does not false-positive on ordering/encoding.
+export async function getMissingScopes(): Promise<string[]> {
+  const session = await ensureSession();
+  if (!session) {
+    return [];
+  }
+  let granted = "";
+  try {
+    const info = await session.getTokenInfo(false);
+    granted = info.scope ?? "";
+  } catch {
+    return [];
+  }
+  const { OAUTH_SCOPE } = await import("./scopes");
+  const grantedSet = new Set(granted.split(/\s+/).filter(Boolean));
+  return OAUTH_SCOPE.split(/\s+/)
+    .filter(Boolean)
+    .filter((token) => !grantedSet.has(token));
+}
+
 export type PostRef = { uri: string; cid: string };
 export type ReplyRef = { root: PostRef; parent: PostRef };
 

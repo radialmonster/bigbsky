@@ -76,6 +76,7 @@ import {
   getFollowingTimeline,
   getPostThreadAuthed,
   getPostThreadByUriAuthed,
+  getMissingScopes,
   getProfileAuthed,
   getSubscribedFeeds,
   initAuthSession,
@@ -270,6 +271,7 @@ const pinnedNotificationsStorageKey = "bigbsky:pinned-notifications";
 const collapsedFeedGroupsStorageKey = "bigbsky:collapsed-feed-groups";
 const timelineScrollStorageKey = "bigbsky:timeline-scroll";
 const replyDraftPrefix = "bigbsky:reply-draft:";
+const reauthDismissKey = "bigbsky:reauth-dismissed";
 const emptyFeedState: FeedState = { items: [], status: "idle" };
 const emptySearchState: SearchState = { posts: [], status: "idle" };
 const emptyActorSearchState: ActorSearchState = { actors: [], status: "idle" };
@@ -809,6 +811,47 @@ export function App() {
   // Protocol preferences and surface them in the feed selector. Cleared on
   // sign-out. Failures are non-fatal: the selector keeps its public feeds.
   const signedInDid = authState.status === "signed-in" ? authState.session?.did : undefined;
+
+  // "Permissions updated" detection: when the desired OAUTH_SCOPE has grown
+  // beyond what this session's (long-lived) grant carries, surface a one-click
+  // re-authorize. Dismissal is remembered per missing-scope signature so the
+  // same gap doesn't nag, but a newly-added scope re-prompts.
+  const [missingScopes, setMissingScopes] = useState<string[]>([]);
+  useEffect(() => {
+    if (!signedInDid) {
+      setMissingScopes([]);
+      return;
+    }
+    let cancelled = false;
+    getMissingScopes()
+      .then((missing) => {
+        if (cancelled) {
+          return;
+        }
+        const signature = missing.slice().sort().join(" ");
+        const dismissed = localStorage.getItem(reauthDismissKey) === signature;
+        setMissingScopes(missing.length > 0 && !dismissed ? missing : []);
+      })
+      .catch(() => {
+        /* non-fatal: no prompt */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [signedInDid]);
+
+  const dismissReauth = useCallback(() => {
+    const signature = missingScopes.slice().sort().join(" ");
+    localStorage.setItem(reauthDismissKey, signature);
+    setMissingScopes([]);
+  }, [missingScopes]);
+
+  const handleReauthorize = useCallback(() => {
+    const handle = authState.session?.handle;
+    if (handle) {
+      void startSignIn(handle);
+    }
+  }, [authState.session?.handle]);
 
   // Like overrides keyed by post URI: { uri } is the like-record URI ("" / falsy
   // = not liked), count is the displayed like count. Lives here (not in the
@@ -2330,6 +2373,23 @@ export function App() {
             <Menu size={20} />
           </button>
         </header>
+
+        {missingScopes.length > 0 && (
+          <div className="reauth-banner" role="status">
+            <div>
+              <strong>Permissions updated</strong>
+              <span>BigBSky added new capabilities since you signed in. Re-authorize to keep everything working.</span>
+            </div>
+            <div className="reauth-banner-actions">
+              <button type="button" className="reauth-primary" onClick={handleReauthorize}>
+                Update permissions
+              </button>
+              <button type="button" onClick={dismissReauth}>
+                Not now
+              </button>
+            </div>
+          </div>
+        )}
 
         {route.kind === "post" ? (
           <ThreadView
