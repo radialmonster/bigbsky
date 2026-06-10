@@ -1,5 +1,22 @@
 # BigBSky Plan
 
+## TODO (open tasks)
+
+Remaining work from the OAuth-scope / write-feature pass (2026-06-09). Scopes
+for all of these are already granted in `public/oauth-client-metadata.json`.
+
+- [ ] **Block / unblock accounts** — add a Block control on the profile header (next to Follow), writing `app.bsky.graph.block`. `viewer.blocking` is already available via `getProfileAuthed`, so seed/toggle like Follow.
+- [ ] **Build & curate block lists** — UI to create a moderation list (`app.bsky.graph.list`) and add/remove accounts (`app.bsky.graph.listitem`), plus subscribe to an existing block list (`app.bsky.graph.listblock`).
+- [ ] **Compose: real post + reply** — wire the placeholder composer and inline reply box to actually publish `app.bsky.feed.post` records (replies set the reply ref). Includes the 300-char validation already present.
+- [ ] **Image upload on posts** — attach images via `blob:image/*` (the composer currently has local placeholders only).
+- [ ] **Authenticated reads for viewer-state everywhere** — route author-feed, post-thread, and search reads through the user's agent when signed in (like profile + home feed already do) so Like/Follow/Block initial state is correct on every surface, not just the home feed. (Today author-feed/thread/search are public reads with no `viewer.*`.)
+- [ ] **"Permissions updated" re-auth prompt** — on session restore, compare the session's granted scope to the desired `OAUTH_SCOPE`; if they differ, offer a one-click re-authorize. Copy says "updated", not "reduced" (scopes may grow). Needed because long-lived refresh tokens keep an old scope until re-auth.
+- [ ] **Build a real Notifications view** — replies/mentions/likes/reposts/follows/quotes from the authenticated AppView (`notification.listNotifications`/`getUnreadCount`/`updateSeen`); already covered by the `rpc` scopes, no new scope needed. (Also tracked under MVP Scope.)
+- [ ] **Stale-copy sweep** — refresh the signed-in surface cards (Explore/Feeds/Lists/Profile/Saved) that still say "OAuth later / Pending / coming soon / staged" now that OAuth, signed-in reads, feed-follow, account-follow, and like all work.
+- [ ] **Consent UX (later)** — revisit Permission Sets / an `include:` set so the consent screen reads as friendly summaries rather than a token list (see Risks).
+
+Done in this pass: minimized + enumerated OAuth scopes (no misleading "Chat" on consent), single-source scope (JSON), Chat + Edit-profile delegate to bsky.app, account Follow write, post Like write, profile replies-only empty-state, left-rail tooltip readability, removed Feed Map and Build Posture panels.
+
 ## Goal
 
 Build a desktop-first Bluesky reader that uses the AT Protocol and Bluesky APIs directly, with a wide-screen layout optimized for 1920x1080 and larger displays. The app should give signed-in users access to the same practical information and account surfaces they can get on `bsky.app`, but with the active Feed timeline reformatted to use desktop width better for scanning, reading, media, and post context without storing user data on our own backend.
