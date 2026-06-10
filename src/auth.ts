@@ -627,6 +627,22 @@ export async function publishPost(opts: { text: string; reply?: ReplyRef; langs?
   return { uri: result.uri, cid: result.cid };
 }
 
+// Delete one of the signed-in user's own posts by its at:// URI.
+export async function deletePost(postUri: string): Promise<void> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to delete posts.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const repo = agent.did;
+  const rkey = postUri.split("/").pop();
+  if (!repo || !rkey || !postUri.includes("/app.bsky.feed.post/")) {
+    throw new Error("Invalid post record.");
+  }
+  await agent.com.atproto.repo.deleteRecord({ repo, collection: "app.bsky.feed.post", rkey });
+}
+
 // Publish an ordered thread: each post after the first replies to the previous
 // one and shares the first post as the thread root, matching how bsky.app
 // composes a multi-post thread. Entries with neither text nor images are

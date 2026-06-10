@@ -99,6 +99,7 @@ import {
   MAX_POST_IMAGES,
   publishPost,
   publishThread,
+  deletePost,
   searchPostsAuthed,
   unblockAccount,
   unbookmarkPost,
@@ -161,6 +162,12 @@ type BlockContextValue = {
   toggle: (author: Profile) => void;
 };
 const BlockContext = createContext<BlockContextValue | null>(null);
+
+type DeletePostContextValue = {
+  canDelete: boolean;
+  deletePost: (post: FeedPost) => void;
+};
+const DeletePostContext = createContext<DeletePostContextValue | null>(null);
 
 function readShowNsfw() {
   try {
@@ -2040,6 +2047,50 @@ export function App() {
     [signedInDid, getBookmarkState, toggleBookmark],
   );
 
+  const removePostFromState = useCallback((uri: string) => {
+    const withoutPost = (items: FeedItem[]) => items.filter((item) => item.post.uri !== uri);
+    setFeedState((current) => ({ ...current, items: withoutPost(current.items) }));
+    setSearchState((current) => ({ ...current, posts: current.posts.filter((post) => post.uri !== uri) }));
+    Object.values(feedCacheRef.current).forEach((state) => {
+      state.items = withoutPost(state.items);
+    });
+    Object.values(profileCacheRef.current).forEach((state) => {
+      state.feed.items = withoutPost(state.feed.items);
+    });
+    Object.values(searchCacheRef.current).forEach((state) => {
+      state.posts = state.posts.filter((post) => post.uri !== uri);
+    });
+    setBookmarkOverrides((current) => ({ ...current, [uri]: false }));
+  }, []);
+
+  const handleDeletePost = useCallback(
+    (post: FeedPost) => {
+      if (!signedInDid || post.author.did !== signedInDid) {
+        return;
+      }
+      const confirmed = window.confirm("Delete this post from your Bluesky account?");
+      if (!confirmed) {
+        return;
+      }
+      void deletePost(post.uri)
+        .then(() => {
+          removePostFromState(post.uri);
+          if (route.kind === "post" && postPath(post) === window.location.pathname) {
+            navigate({ kind: "feed" }, "/");
+          }
+        })
+        .catch((error: unknown) => {
+          window.alert(error instanceof Error ? error.message : "Unable to delete post.");
+        });
+    },
+    [navigate, removePostFromState, route.kind, signedInDid],
+  );
+
+  const deletePostContextValue = useMemo<DeletePostContextValue>(
+    () => ({ canDelete: !!signedInDid, deletePost: handleDeletePost }),
+    [signedInDid, handleDeletePost],
+  );
+
   function createLocalList(name: string, description: string) {
     const trimmedName = name.trim();
     if (!trimmedName) {
@@ -2453,6 +2504,7 @@ export function App() {
       <LikeContext.Provider value={likeContextValue}>
       <BookmarkContext.Provider value={bookmarkContextValue}>
       <BlockContext.Provider value={blockContextValue}>
+      <DeletePostContext.Provider value={deletePostContextValue}>
       <div className={`app-shell width-${workspaceWidth} ${navOpen ? "nav-open" : "nav-hidden"}`}>
       <aside className="left-rail" aria-label="Primary">
         <nav className="rail-nav">
@@ -2854,6 +2906,7 @@ export function App() {
 
       {imageViewer && <ImageViewer image={imageViewer} onChange={setImageViewer} onClose={() => setImageViewer(null)} />}
       </div>
+      </DeletePostContext.Provider>
       </BlockContext.Provider>
       </BookmarkContext.Provider>
       </LikeContext.Provider>
@@ -6155,6 +6208,7 @@ function PostCard({
   const bookmarkView = bookmarkCtx?.getState(post);
   const blockCtx = useContext(BlockContext);
   const blockView = blockCtx?.getState(post.author);
+  const deletePostCtx = useContext(DeletePostContext);
   const canBlockAuthor = !!blockCtx?.canBlock && post.author.did !== blockCtx?.selfDid;
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
   const [mediaRevealed, setMediaRevealed] = useState(false);
@@ -6167,6 +6221,7 @@ function PostCard({
   const hasRichContent = images.length > 0 || !!external || !!recordEmbed || !!video;
   const postVariant = images.length > 0 || !!video ? "has-media" : external ? "has-link" : recordEmbed ? "has-quote" : "text-only";
   const isOwnPost = !!currentDid && post.author.did === currentDid;
+  const canDeletePost = !!deletePostCtx?.canDelete && isOwnPost;
   const labels = post.labels ?? [];
   // Adult content is often labeled at the account level, not the post, so check
   // the author's labels too when deciding whether to hide media.
@@ -6409,6 +6464,11 @@ function PostCard({
             >
               Open on Bluesky
             </a>
+            {canDeletePost && (
+              <button type="button" className="danger-action" onClick={() => deletePostCtx?.deletePost(post)}>
+                Delete post
+              </button>
+            )}
             {canBlockAuthor && (
               <button
                 type="button"
