@@ -74,7 +74,6 @@ button {
   padding: 16px 10px;
 }
 
-.brand-button,
 .compose-button,
 .rail-button,
 .feed-map-header button,
@@ -4325,12 +4324,6 @@ button.surface-action {
     justify-content: space-around;
     gap: 0;
     overflow: visible;
-  }
-
-  /* The brand logo is redundant on the mobile bar (Home is its own icon) and
-     its width was crowding the nav icons off the right edge. */
-  .brand-button {
-    display: none;
   }
 
   .rail-button {

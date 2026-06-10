@@ -4,7 +4,6 @@ import {
   Check,
   Compass,
   EyeOff,
-  Feather,
   Film,
   Hash,
   Home,
@@ -2441,9 +2440,6 @@ export function App() {
       <BlockContext.Provider value={blockContextValue}>
       <div className={`app-shell width-${workspaceWidth} ${navOpen ? "nav-open" : "nav-hidden"}`}>
       <aside className="left-rail" aria-label="Primary">
-        <button className="brand-button" type="button" onClick={() => navigate({ kind: "feed" })} title="BigBSky">
-          <Feather size={22} />
-        </button>
         <nav className="rail-nav">
           {navigationItems.map((item, index) => {
             const Icon = navIcons[index];
