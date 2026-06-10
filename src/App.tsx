@@ -31,7 +31,7 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { createContext, type ReactNode, type RefObject, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, type FormEvent, type ReactNode, type RefObject, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   type ActorSearchResponse,
@@ -66,6 +66,7 @@ import {
 } from "./api";
 import {
   type AuthSnapshot,
+  type ListMember,
   type SubscribedFeed,
   blockAccount,
   clearOAuthSessionStorage,
@@ -76,10 +77,17 @@ import {
   getFollowingTimeline,
   getPostThreadAuthed,
   getPostThreadByUriAuthed,
+  addAccountToList,
+  createModList,
+  deleteModList,
+  getListMembers,
   getMissingScopes,
   getMyLists,
   getProfileAuthed,
   getSubscribedFeeds,
+  removeListItem,
+  subscribeBlockList,
+  unsubscribeBlockList,
   initAuthSession,
   likePost,
   MAX_POST_IMAGES,
@@ -1044,6 +1052,23 @@ export function App() {
       setMyListsStatus("idle");
     }
   }, [onListsRoute, signedInDid, myListsStatus, reloadMyLists]);
+
+  // Create a moderation/block list, then refresh so it appears under "Your lists".
+  const handleCreateModList = useCallback(
+    async (name: string, description: string) => {
+      await createModList(name, description);
+      reloadMyLists();
+    },
+    [reloadMyLists],
+  );
+  // Delete an owned list, then refresh.
+  const handleDeleteModList = useCallback(
+    async (listUri: string) => {
+      await deleteModList(listUri);
+      reloadMyLists();
+    },
+    [reloadMyLists],
+  );
 
   const followedFeedUris = useMemo(() => new Set(subscribedFeeds.map((source) => source.uri)), [subscribedFeeds]);
 
@@ -2469,6 +2494,9 @@ export function App() {
             myLists={myLists}
             myListsStatus={myListsStatus}
             onReloadMyLists={reloadMyLists}
+            onCreateModList={handleCreateModList}
+            onDeleteModList={handleDeleteModList}
+            signedInDid={signedInDid}
             pinnedFeedCount={pinnedFeedIds.length}
             pinnedFeedIds={pinnedFeedIds}
             pinnedNotificationCount={pinnedNotificationIds.length}
@@ -2983,6 +3011,9 @@ function SurfaceView({
   myLists,
   myListsStatus,
   onReloadMyLists,
+  onCreateModList,
+  onDeleteModList,
+  signedInDid,
   pinnedFeedCount,
   pinnedFeedIds,
   pinnedNotificationCount,
@@ -3030,6 +3061,9 @@ function SurfaceView({
   myLists: { owned: ListView[]; subscribed: ListView[] };
   myListsStatus: "idle" | "loading" | "ready" | "error";
   onReloadMyLists: () => void;
+  onCreateModList: (name: string, description: string) => Promise<void>;
+  onDeleteModList: (listUri: string) => Promise<void>;
+  signedInDid?: string;
   pinnedFeedCount: number;
   pinnedFeedIds: string[];
   pinnedNotificationCount: number;
@@ -3326,9 +3360,12 @@ function SurfaceView({
     return (
       <ListsSurface
         signedIn={!!auth.session}
+        signedInDid={signedInDid}
         myLists={myLists}
         myListsStatus={myListsStatus}
         onReloadMyLists={onReloadMyLists}
+        onCreateModList={onCreateModList}
+        onDeleteModList={onDeleteModList}
         onOpenFeed={onOpenFeed}
         lists={localLists}
         onCreateList={onCreateLocalList}
@@ -4073,14 +4110,162 @@ function listBskyUrl(list: ListView): string {
   return handleOrDid && rkey ? `https://bsky.app/profile/${handleOrDid}/lists/${rkey}` : "https://bsky.app";
 }
 
+// Inline manager for the accounts on a list the user owns. Loads members on
+// mount, supports add-by-handle and per-member removal. Self-contained so the
+// Lists page doesn't have to thread member state through props.
+function ListMemberManager({ listUri }: { listUri: string }) {
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [members, setMembers] = useState<ListMember[]>([]);
+  const [handle, setHandle] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setStatus("loading");
+    getListMembers(listUri)
+      .then((result) => {
+        setMembers(result.members);
+        setStatus("ready");
+      })
+      .catch(() => setStatus("error"));
+  }, [listUri]);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function handleAdd(event: FormEvent) {
+    event.preventDefault();
+    const value = handle.trim();
+    if (!value || busy) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await addAccountToList(listUri, value);
+      setHandle("");
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not add that account.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRemove(listItemUri: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await removeListItem(listItemUri);
+      setMembers((current) => current.filter((member) => member.listItemUri !== listItemUri));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not remove that account.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="list-member-manager">
+      <form className="list-member-add" onSubmit={handleAdd}>
+        <input
+          aria-label="Add account by handle"
+          placeholder="handle.bsky.social to add"
+          value={handle}
+          onInput={(event) => setHandle(event.currentTarget.value)}
+        />
+        <button type="submit" disabled={!handle.trim() || busy}>
+          Add
+        </button>
+      </form>
+      {error && <p className="composer-error" role="alert">{error}</p>}
+      {status === "loading" && <p className="list-member-note">Loading members…</p>}
+      {status === "error" && <p className="list-member-note">Could not load members.</p>}
+      {status === "ready" && members.length === 0 && (
+        <p className="list-member-note">No accounts on this list yet. Add one by handle above.</p>
+      )}
+      {status === "ready" && members.length > 0 && (
+        <ul className="list-member-list">
+          {members.map((member) => (
+            <li key={member.listItemUri}>
+              <span>
+                <strong>{member.subject.displayName || member.subject.handle}</strong>
+                <small>@{member.subject.handle}</small>
+              </span>
+              <button type="button" onClick={() => handleRemove(member.listItemUri)} disabled={busy}>
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function BlueskyListCard({
   list,
+  owned,
+  signedInDid,
   onOpenFeed,
+  onDelete,
 }: {
   list: ListView;
+  owned: boolean;
+  signedInDid?: string;
   onOpenFeed: (source: FeedSource) => void;
+  onDelete?: (listUri: string) => Promise<void>;
 }) {
   const isModlist = list.purpose?.includes("modlist") ?? false;
+  const isOwn = owned || (!!signedInDid && list.creator?.did === signedInDid);
+  const [managing, setManaging] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  // Block-list subscription state, seeded from the list's viewer.blocked record
+  // URI. Only meaningful for moderation lists you don't own.
+  const [blockUri, setBlockUri] = useState<string | undefined>(list.viewer?.blocked);
+  const [subBusy, setSubBusy] = useState(false);
+
+  async function handleDelete() {
+    if (!onDelete || deleting) {
+      return;
+    }
+    if (!window.confirm(`Delete the list "${list.name}"? This removes it and its membership from your account.`)) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await onDelete(list.uri);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function handleToggleSubscribe() {
+    if (subBusy) {
+      return;
+    }
+    const previous = blockUri;
+    setSubBusy(true);
+    try {
+      if (previous) {
+        setBlockUri(undefined);
+        await unsubscribeBlockList(previous);
+      } else {
+        if (!window.confirm(`Subscribe to "${list.name}" as a block list? You'll block every account on it.`)) {
+          setSubBusy(false);
+          return;
+        }
+        setBlockUri("pending");
+        const uri = await subscribeBlockList(list.uri);
+        setBlockUri(uri);
+      }
+    } catch {
+      setBlockUri(previous);
+    } finally {
+      setSubBusy(false);
+    }
+  }
+
   return (
     <article className="bsky-list-card">
       <div className="bsky-list-card-head">
@@ -4110,28 +4295,51 @@ function BlueskyListCard({
             Open list
           </button>
         )}
+        {isOwn && (
+          <button type="button" onClick={() => setManaging((open) => !open)}>
+            {managing ? "Done" : "Manage members"}
+          </button>
+        )}
+        {/* Subscribe-as-block is only meaningful for someone else's modlist. */}
+        {isModlist && !isOwn && (
+          <button type="button" className={blockUri ? "list-subscribed" : ""} onClick={handleToggleSubscribe} disabled={subBusy}>
+            {blockUri ? "Unsubscribe block" : "Subscribe (block)"}
+          </button>
+        )}
         <a href={listBskyUrl(list)} target="_blank" rel="noreferrer">
           Open on Bluesky
         </a>
+        {isOwn && onDelete && (
+          <button type="button" className="list-delete" onClick={handleDelete} disabled={deleting}>
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
+        )}
       </div>
+      {managing && isOwn && <ListMemberManager listUri={list.uri} />}
     </article>
   );
 }
 
 function ListsSurface({
   signedIn,
+  signedInDid,
   myLists,
   myListsStatus,
   onReloadMyLists,
+  onCreateModList,
+  onDeleteModList,
   onOpenFeed,
   lists,
   onCreateList,
   onDeleteList,
 }: {
   signedIn: boolean;
+  signedInDid?: string;
   myLists: { owned: ListView[]; subscribed: ListView[] };
   myListsStatus: "idle" | "loading" | "ready" | "error";
   onReloadMyLists: () => void;
+  onCreateModList: (name: string, description: string) => Promise<void>;
+  onDeleteModList: (listUri: string) => Promise<void>;
   onOpenFeed: (source: FeedSource) => void;
   lists: LocalList[];
   onCreateList: (name: string, description: string) => void;
@@ -4140,13 +4348,52 @@ function ListsSurface({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [showLocal, setShowLocal] = useState(false);
+  const [modName, setModName] = useState("");
+  const [modDescription, setModDescription] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  async function handleCreateModList(event: FormEvent) {
+    event.preventDefault();
+    if (!modName.trim() || creating) {
+      return;
+    }
+    setCreating(true);
+    setCreateError(null);
+    try {
+      await onCreateModList(modName, modDescription);
+      setModName("");
+      setModDescription("");
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : "Could not create the list.");
+    } finally {
+      setCreating(false);
+    }
+  }
 
   return (
     <div className="timeline comfortable">
       <section className="surface-placeholder">
         <h2>Lists</h2>
-        <p>Your Bluesky lists — the curation and moderation lists you created, plus curation lists you subscribe to. Open a curation list to read it as a timeline.</p>
+        <p>Your Bluesky lists — the curation and moderation lists you created, plus curation lists you subscribe to. Open a curation list to read it as a timeline; manage members on a list you own.</p>
       </section>
+
+      {signedIn && (
+        <section className="mod-list-create" aria-label="Create a moderation list">
+          <h3 className="bsky-list-section-heading">New moderation list</h3>
+          <p className="local-collections-note">
+            Create a block/mute list on your Bluesky account, then add accounts to it. You (or anyone who subscribes to it as a block list) will block every member.
+          </p>
+          <form className="local-list-form" onSubmit={handleCreateModList}>
+            <input aria-label="List name" maxLength={64} placeholder="List name" value={modName} onInput={(event) => setModName(event.currentTarget.value)} />
+            <input aria-label="List description" maxLength={300} placeholder="Description (optional)" value={modDescription} onInput={(event) => setModDescription(event.currentTarget.value)} />
+            <button type="submit" disabled={!modName.trim() || creating}>
+              {creating ? "Creating…" : "Create list"}
+            </button>
+          </form>
+          {createError && <p className="composer-error" role="alert">{createError}</p>}
+        </section>
+      )}
 
       {!signedIn ? (
         <EmptyState
@@ -4174,7 +4421,14 @@ function ListsSurface({
               <h3 className="bsky-list-section-heading">Your lists</h3>
               <div className="bsky-list-grid">
                 {myLists.owned.map((list) => (
-                  <BlueskyListCard key={list.uri} list={list} onOpenFeed={onOpenFeed} />
+                  <BlueskyListCard
+                    key={list.uri}
+                    list={list}
+                    owned
+                    signedInDid={signedInDid}
+                    onOpenFeed={onOpenFeed}
+                    onDelete={onDeleteModList}
+                  />
                 ))}
               </div>
             </section>
@@ -4184,7 +4438,7 @@ function ListsSurface({
               <h3 className="bsky-list-section-heading">Subscribed lists</h3>
               <div className="bsky-list-grid">
                 {myLists.subscribed.map((list) => (
-                  <BlueskyListCard key={list.uri} list={list} onOpenFeed={onOpenFeed} />
+                  <BlueskyListCard key={list.uri} list={list} owned={false} signedInDid={signedInDid} onOpenFeed={onOpenFeed} />
                 ))}
               </div>
             </section>

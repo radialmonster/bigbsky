@@ -236,6 +236,13 @@ export type ListView = {
   listItemCount?: number;
   creator?: Profile;
   indexedAt?: string;
+  // Viewer-relative state on authenticated reads. `blocked` holds the
+  // listblock record URI when the viewer subscribes to this list as a block
+  // list; `muted` is true when subscribed as a mute list.
+  viewer?: {
+    muted?: boolean;
+    blocked?: string;
+  };
 };
 
 export type ActorListsResponse = {

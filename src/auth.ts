@@ -704,6 +704,163 @@ export async function unblockAccount(blockUri: string): Promise<void> {
   });
 }
 
+// --- Moderation / block-list curation ---
+// Scopes repo:app.bsky.graph.list / .listitem / .listblock are all granted.
+// (Subscribing to a *mute* list would need app.bsky.graph.muteActorList, which
+// is NOT in scope, so only block-list subscription is implemented here.)
+
+// Create a moderation list (the kind used for block/mute lists). Returns the
+// new list's at:// uri. Throws if signed out.
+export async function createModList(name: string, description?: string): Promise<string> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to create a list.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const repo = agent.did;
+  if (!repo) {
+    throw new Error("No active account.");
+  }
+  const { data } = await agent.com.atproto.repo.createRecord({
+    repo,
+    collection: "app.bsky.graph.list",
+    record: {
+      $type: "app.bsky.graph.list",
+      purpose: "app.bsky.graph.defs#modlist",
+      name: name.trim(),
+      ...(description?.trim() ? { description: description.trim() } : {}),
+      createdAt: new Date().toISOString(),
+    },
+  });
+  return data.uri;
+}
+
+// Delete a list the user owns (and implicitly its membership). Throws if signed
+// out. listUri is at://<did>/app.bsky.graph.list/<rkey>.
+export async function deleteModList(listUri: string): Promise<void> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to manage lists.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const repo = agent.did;
+  const rkey = listUri.split("/").pop();
+  if (!repo || !rkey) {
+    throw new Error("Invalid list.");
+  }
+  await agent.com.atproto.repo.deleteRecord({ repo, collection: "app.bsky.graph.list", rkey });
+}
+
+// Add an account to a list the user owns. Accepts a handle or DID (handles are
+// resolved first). Returns the listitem record uri (needed to remove the member
+// later). Throws if signed out or the handle can't be resolved.
+export async function addAccountToList(listUri: string, handleOrDid: string): Promise<string> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to manage lists.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const repo = agent.did;
+  if (!repo) {
+    throw new Error("No active account.");
+  }
+  const { resolveHandle } = await import("./api");
+  const did = await resolveHandle(handleOrDid.trim().replace(/^@/, ""));
+  const { data } = await agent.com.atproto.repo.createRecord({
+    repo,
+    collection: "app.bsky.graph.listitem",
+    record: {
+      $type: "app.bsky.graph.listitem",
+      subject: did,
+      list: listUri,
+      createdAt: new Date().toISOString(),
+    },
+  });
+  return data.uri;
+}
+
+// Remove a list member by deleting its listitem record (uri from getListMembers
+// or a prior addAccountToList call). Throws if signed out.
+export async function removeListItem(listItemUri: string): Promise<void> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to manage lists.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const repo = agent.did;
+  const rkey = listItemUri.split("/").pop();
+  if (!repo || !rkey) {
+    throw new Error("Invalid list item.");
+  }
+  await agent.com.atproto.repo.deleteRecord({ repo, collection: "app.bsky.graph.listitem", rkey });
+}
+
+export type ListMember = { listItemUri: string; subject: Profile };
+
+// Read a list with its members. Each member carries the listitem record uri so
+// the caller can remove it. Routes through the session so viewer state is set.
+export async function getListMembers(listUri: string): Promise<{ list: ListView; members: ListMember[] }> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to view list members.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const response = await agent.app.bsky.graph.getList({ list: listUri, limit: 100 });
+  const list = response.data.list as unknown as ListView;
+  const members = (response.data.items ?? []).map((item) => ({
+    listItemUri: item.uri,
+    subject: item.subject as unknown as Profile,
+  }));
+  return { list, members };
+}
+
+// Subscribe to a list as a block list: creates an app.bsky.graph.listblock
+// record. Returns its uri (needed to unsubscribe). Throws if signed out.
+export async function subscribeBlockList(listUri: string): Promise<string> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to subscribe to lists.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const repo = agent.did;
+  if (!repo) {
+    throw new Error("No active account.");
+  }
+  const { data } = await agent.com.atproto.repo.createRecord({
+    repo,
+    collection: "app.bsky.graph.listblock",
+    record: {
+      $type: "app.bsky.graph.listblock",
+      subject: listUri,
+      createdAt: new Date().toISOString(),
+    },
+  });
+  return data.uri;
+}
+
+// Unsubscribe from a block list by deleting its listblock record (uri from
+// list viewer.blocked or a prior subscribeBlockList call). Throws if signed out.
+export async function unsubscribeBlockList(listblockUri: string): Promise<void> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to manage list subscriptions.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const repo = agent.did;
+  const rkey = listblockUri.split("/").pop();
+  if (!repo || !rkey) {
+    throw new Error("Invalid list subscription.");
+  }
+  await agent.com.atproto.repo.deleteRecord({ repo, collection: "app.bsky.graph.listblock", rkey });
+}
+
 export async function clearOAuthSessionStorage() {
   if (!("indexedDB" in window)) {
     return;
