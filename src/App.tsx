@@ -3427,7 +3427,7 @@ function SurfaceView({
               Clear local reader data
             </button>
           </article>
-          <article className="settings-panel">
+          <article className={auth.session ? "settings-panel" : "settings-panel settings-account-first"}>
             <span>{auth.session ? "Signed in" : "Signed out"}</span>
             <h3>Account</h3>
             {auth.session ? (
@@ -3508,6 +3508,24 @@ function SurfaceView({
         onOpenProfile={onOpenProfile}
         onSignOut={onSignOut}
       />
+    );
+  }
+
+  if (name === "profile") {
+    // Signed out: the Profile destination is where you sign in. (The right-rail
+    // Account panel is hidden on mobile, so this is the reachable sign-in entry.)
+    return (
+      <div className="timeline comfortable">
+        <section className="surface-placeholder">
+          <h2>Your profile</h2>
+          <p>Sign in with your Bluesky account to see your profile and use your follows, likes, lists, posting, and notifications. BigBSky signs in with AT Protocol OAuth in your browser — no BigBSky backend session is created.</p>
+        </section>
+        <section className="signed-out-signin" aria-label="Sign in">
+          <h3>Sign in to Bluesky</h3>
+          <SignInForm status={auth.status} onSignIn={onSignIn} />
+          {auth.message && <p className={auth.status === "error" ? "settings-warning" : "signed-out-signin-note"}>{auth.message}</p>}
+        </section>
+      </div>
     );
   }
 
