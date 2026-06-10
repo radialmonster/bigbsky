@@ -2432,6 +2432,15 @@ export function App() {
               />
             ) : profileTab === "lists" ? (
               <ProfileListsTab actor={route.actor} onOpenFeed={openFeedSource} />
+            ) : profile?.viewer?.blocking ? (
+              // You've blocked this account: the AppView returns an empty author
+              // feed, so the generic "No posts" empty-state would be misleading.
+              // Say plainly why there's nothing here and point at the Unblock
+              // control in the header above.
+              <EmptyState
+                title="You've blocked this account"
+                message={`You blocked @${profile.handle}. Their posts are hidden here — use “Blocking” in the header above to unblock.`}
+              />
             ) : (
               <>
                 {feedState.status === "loading" && <LoadingState label="Loading public profile posts" />}
