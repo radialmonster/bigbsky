@@ -340,6 +340,50 @@ export async function unfollowFeed(feedUri: string): Promise<void> {
   }
 }
 
+// Authenticated profile read so viewer-relative state (viewer.following etc.)
+// is populated. The public AppView omits viewer state, so write buttons need
+// this when signed in. Falls back to the public read when signed out.
+export async function getProfileAuthed(actor: string, signal?: AbortSignal): Promise<Profile> {
+  const session = await ensureSession();
+  if (!session) {
+    const { getProfile } = await import("./api");
+    return getProfile(actor, signal);
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const response = await agent.app.bsky.actor.getProfile(
+    { actor },
+    signal ? { signal } : undefined,
+  );
+  return response.data as unknown as Profile;
+}
+
+// Follow an account: creates an app.bsky.graph.follow record in the user's
+// repo (scope repo:app.bsky.graph.follow). Returns the follow record URI so the
+// caller can unfollow later. Throws if signed out.
+export async function followAccount(did: string): Promise<string> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to follow accounts.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const { uri } = await agent.follow(did);
+  return uri;
+}
+
+// Unfollow an account by deleting the follow record (uri from viewer.following
+// or a prior followAccount call). Throws if signed out.
+export async function unfollowAccount(followUri: string): Promise<void> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to manage follows.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  await agent.deleteFollow(followUri);
+}
+
 export async function clearOAuthSessionStorage() {
   if (!("indexedDB" in window)) {
     return;

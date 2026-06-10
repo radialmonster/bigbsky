@@ -20,6 +20,15 @@ export type Profile = {
   followsCount?: number;
   postsCount?: number;
   labels?: Array<{ val?: string; src?: string; uri?: string }>;
+  // Viewer-relative state, only present on authenticated reads (the public
+  // AppView omits it). `following`/`blocking` hold the record URIs when set.
+  viewer?: {
+    following?: string;
+    followedBy?: string;
+    muted?: boolean;
+    blockedBy?: boolean;
+    blocking?: string;
+  };
 };
 
 export type FeedGeneratorView = {

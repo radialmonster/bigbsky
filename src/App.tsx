@@ -72,11 +72,14 @@ import {
   type AuthSnapshot,
   type SubscribedFeed,
   clearOAuthSessionStorage,
+  followAccount,
   followFeed,
   getFeedAuthed,
   getFollowingTimeline,
+  getProfileAuthed,
   getSubscribedFeeds,
   initAuthSession,
+  unfollowAccount,
   unfollowFeed,
   looksLikeOAuthCallback,
   signOut,
@@ -1069,7 +1072,7 @@ export function App() {
 
     try {
       const [profileResponse, feedResponse] = await Promise.all([
-        cursor ? Promise.resolve(null) : getProfile(actor, signal),
+        cursor ? Promise.resolve(null) : getProfileAuthed(actor, signal),
         getAuthorFeed(actor, cursor, signal),
       ]);
 
@@ -2245,6 +2248,9 @@ export function App() {
               actor={route.actor}
               profile={profile}
               isPinned={!!profile && pinnedProfiles.some((item) => item.did === profile.did || item.handle === profile.handle)}
+              canFollow={!!signedInDid && !!profile && profile.did !== signedInDid}
+              onFollow={followAccount}
+              onUnfollow={unfollowAccount}
               selectedTab={profileTab}
               onSelectTab={setProfileTab}
               onTogglePinned={togglePinnedProfile}
@@ -2264,7 +2270,14 @@ export function App() {
                 {feedState.status === "error" && <ErrorState message={feedState.error || "Profile feed failed to load."} />}
                 {feedState.status === "rate-limit" && <RateLimitState message={feedState.error} />}
                 {feedState.status === "ready" && visibleProfileItems.length === 0 && (
-                  <EmptyState title="No posts in this tab" message="This public profile has no loaded posts matching the selected view." />
+                  profileTab === "posts" && feedState.items.length > 0 ? (
+                    <EmptyState
+                      title="No standalone posts"
+                      message="This account's loaded activity is all replies. Open the Replies tab to see them."
+                    />
+                  ) : (
+                    <EmptyState title="No posts in this tab" message="This public profile has no loaded posts matching the selected view." />
+                  )
                 )}
                 {feedState.status === "ready" && visibleProfileItems.length > 0 && (
                   <VirtualPostList
@@ -3938,6 +3951,9 @@ function ProfileDetailHeader({
   selectedTab,
   onSelectTab,
   onTogglePinned,
+  canFollow,
+  onFollow,
+  onUnfollow,
 }: {
   actor: string;
   isPinned: boolean;
@@ -3945,8 +3961,41 @@ function ProfileDetailHeader({
   selectedTab: (typeof profileTabs)[number];
   onSelectTab: (tab: (typeof profileTabs)[number]) => void;
   onTogglePinned: (profile: Profile | null | undefined) => void;
+  canFollow: boolean;
+  onFollow: (did: string) => Promise<string>;
+  onUnfollow: (followUri: string) => Promise<void>;
 }) {
   const [copied, setCopied] = useState(false);
+  // Follow state is seeded from the authenticated profile's viewer.following
+  // record URI and re-synced when the viewed profile changes.
+  const [followUri, setFollowUri] = useState<string | undefined>(profile?.viewer?.following);
+  const [followBusy, setFollowBusy] = useState(false);
+  useEffect(() => {
+    setFollowUri(profile?.viewer?.following);
+  }, [profile?.did, profile?.viewer?.following]);
+
+  async function handleToggleFollow() {
+    if (!profile || followBusy) {
+      return;
+    }
+    const previous = followUri;
+    setFollowBusy(true);
+    try {
+      if (previous) {
+        setFollowUri(undefined); // optimistic
+        await onUnfollow(previous);
+      } else {
+        setFollowUri("pending"); // optimistic placeholder
+        const uri = await onFollow(profile.did);
+        setFollowUri(uri);
+      }
+    } catch {
+      setFollowUri(previous); // revert on error
+    } finally {
+      setFollowBusy(false);
+    }
+  }
+
   const bskyUrl = `https://bsky.app/profile/${encodeURIComponent(profile?.handle || actor)}`;
 
   return (
@@ -3960,9 +4009,17 @@ function ProfileDetailHeader({
           <p>@{profile?.handle || actor}</p>
         </div>
         <div className="profile-detail-actions">
-          <button type="button" disabled title="Follow after OAuth is added">
-            Follow
-          </button>
+          {canFollow && (
+            <button
+              type="button"
+              className={followUri ? "following" : "follow"}
+              onClick={handleToggleFollow}
+              disabled={followBusy || !profile}
+              title={followUri ? "Unfollow this account" : "Follow this account"}
+            >
+              {followBusy ? "…" : followUri ? "Following" : "Follow"}
+            </button>
+          )}
           <button type="button" onClick={() => onTogglePinned(profile)} disabled={!profile}>
             {isPinned ? "Unpin profile" : "Pin locally"}
           </button>
@@ -4107,7 +4164,7 @@ function Composer({
                 )}
               </div>
               <textarea
-                placeholder={index === 0 ? "What should BigBSky post after OAuth is added?" : "Continue the thread"}
+                placeholder={index === 0 ? "Draft a post (posting from BigBSky is coming soon)" : "Continue the thread"}
                 value={draft}
                 onChange={(event) => updateDraft(index, event.target.value)}
               />
@@ -5237,7 +5294,7 @@ function ThreadView({
       )}
       <section className="reply-composer" aria-label="Reply composer">
         <textarea
-          placeholder="Write your reply after OAuth is added."
+          placeholder="Draft a reply (replying from BigBSky is coming soon)."
           value={replyText}
           onChange={(event) => setReplyText(event.currentTarget.value)}
         />
