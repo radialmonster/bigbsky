@@ -81,6 +81,7 @@ import {
   getSubscribedFeeds,
   initAuthSession,
   likePost,
+  MAX_POST_IMAGES,
   publishPost,
   publishThread,
   searchPostsAuthed,
@@ -4377,6 +4378,10 @@ function ProfileDetailHeader({
   );
 }
 
+// One in-progress composer image: the File to upload plus a preview object-URL,
+// stable id, and editable alt text. Session-only (not persisted).
+type ComposerImageState = { id: string; file: File; url: string; alt: string };
+
 function Composer({
   draft,
   onDraftChange,
@@ -4387,28 +4392,45 @@ function Composer({
   onPosted?: () => void;
 }) {
   const drafts = draft.posts.length > 0 ? draft.posts : [""];
-  const mediaSlots = draft.mediaSlots;
+  // Real attached images live in component state (not the persisted draft):
+  // File objects and object-URLs can't be JSON-serialized to localStorage, so
+  // they are session-only — text drafts persist across reloads, images don't.
+  const [images, setImages] = useState<Record<number, ComposerImageState[]>>({});
   const overLimit = drafts.some((postDraft) => postDraft.length > 300);
-  const hasContent = drafts.some((postDraft) => postDraft.trim().length > 0) || Object.values(mediaSlots).some((count) => count > 0);
-  const hasMediaPlaceholders = Object.values(mediaSlots).some((count) => count > 0);
+  const hasImages = Object.values(images).some((list) => list.length > 0);
+  const hasContent = drafts.some((postDraft) => postDraft.trim().length > 0) || hasImages;
   // Collapsed by default to keep the top of the feed clean; expand on click.
   // Start expanded if a local draft is already in progress so it isn't hidden.
   const [expanded, setExpanded] = useState(hasContent);
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
+  // Hidden file input shared across posts; attachTarget records which post the
+  // picked files belong to.
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const attachTarget = useRef<number>(0);
 
   useEffect(() => {
-    if (hasContent) {
-      localStorage.setItem(composerDraftStorageKey, JSON.stringify({ posts: drafts, mediaSlots }));
+    if (drafts.some((postDraft) => postDraft.trim().length > 0)) {
+      localStorage.setItem(composerDraftStorageKey, JSON.stringify({ posts: drafts, mediaSlots: {} }));
     } else {
       localStorage.removeItem(composerDraftStorageKey);
     }
-  }, [drafts, hasContent, mediaSlots]);
+  }, [drafts]);
 
-  function setDrafts(nextPosts: string[], nextMediaSlots = mediaSlots) {
+  // Revoke any outstanding object URLs when the composer unmounts.
+  useEffect(() => {
+    return () => {
+      Object.values(images)
+        .flat()
+        .forEach((image) => URL.revokeObjectURL(image.url));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function setDrafts(nextPosts: string[]) {
     onDraftChange({
       posts: nextPosts.length > 0 ? nextPosts : [""],
-      mediaSlots: nextMediaSlots,
+      mediaSlots: {},
     });
   }
 
@@ -4417,26 +4439,75 @@ function Composer({
   }
 
   function removeDraft(index: number) {
-    const nextMediaSlots: Record<string, number> = {};
-    Object.entries(mediaSlots).forEach(([key, value]) => {
-      const numericKey = Number(key);
-      if (numericKey < index) {
-        nextMediaSlots[numericKey] = value;
-      } else if (numericKey > index) {
-        nextMediaSlots[numericKey - 1] = value;
-      }
+    // Drop this post's images and re-key the rest so they stay aligned to the
+    // remaining post indexes.
+    setImages((current) => {
+      const next: Record<number, ComposerImageState[]> = {};
+      Object.entries(current).forEach(([key, list]) => {
+        const numericKey = Number(key);
+        if (numericKey < index) {
+          next[numericKey] = list;
+        } else if (numericKey > index) {
+          next[numericKey - 1] = list;
+        } else {
+          list.forEach((image) => URL.revokeObjectURL(image.url));
+        }
+      });
+      return next;
     });
-    setDrafts(drafts.filter((_, draftIndex) => draftIndex !== index), nextMediaSlots);
+    setDrafts(drafts.filter((_, draftIndex) => draftIndex !== index));
   }
 
   function attachImage(index: number) {
-    onDraftChange({
-      posts: drafts,
-      mediaSlots: { ...mediaSlots, [index]: Math.min((mediaSlots[index] ?? 0) + 1, maxPostImages) },
+    attachTarget.current = index;
+    fileInputRef.current?.click();
+  }
+
+  function onFilesSelected(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) {
+      return;
+    }
+    const index = attachTarget.current;
+    const picked = Array.from(fileList).filter((file) => file.type.startsWith("image/"));
+    setImages((current) => {
+      const existing = current[index] ?? [];
+      const room = MAX_POST_IMAGES - existing.length;
+      const added = picked.slice(0, Math.max(0, room)).map((file) => ({
+        id: `${file.name}-${file.size}-${file.lastModified}-${existing.length}`,
+        file,
+        url: URL.createObjectURL(file),
+        alt: "",
+      }));
+      return { ...current, [index]: [...existing, ...added] };
+    });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }
+
+  function removeImage(index: number, id: string) {
+    setImages((current) => {
+      const list = current[index] ?? [];
+      const target = list.find((image) => image.id === id);
+      if (target) {
+        URL.revokeObjectURL(target.url);
+      }
+      return { ...current, [index]: list.filter((image) => image.id !== id) };
     });
   }
 
+  function setImageAlt(index: number, id: string, alt: string) {
+    setImages((current) => ({
+      ...current,
+      [index]: (current[index] ?? []).map((image) => (image.id === id ? { ...image, alt } : image)),
+    }));
+  }
+
   function clearDraft() {
+    Object.values(images)
+      .flat()
+      .forEach((image) => URL.revokeObjectURL(image.url));
+    setImages({});
     const emptyDraft = { posts: [""], mediaSlots: {} };
     localStorage.removeItem(composerDraftStorageKey);
     onDraftChange(emptyDraft);
@@ -4449,8 +4520,17 @@ function Composer({
     setPosting(true);
     setPostError(null);
     try {
-      await publishThread(drafts);
-      // Posted: clear the draft, collapse, and refresh the feed so it appears.
+      await publishThread(
+        drafts.map((text, index) => ({
+          text,
+          images: (images[index] ?? []).map((image) => ({ file: image.file, alt: image.alt })),
+        })),
+      );
+      // Posted: clear the draft + images, collapse, and refresh the feed.
+      Object.values(images)
+        .flat()
+        .forEach((image) => URL.revokeObjectURL(image.url));
+      setImages({});
       const emptyDraft = { posts: [""], mediaSlots: {} };
       localStorage.removeItem(composerDraftStorageKey);
       onDraftChange(emptyDraft);
@@ -4507,17 +4587,39 @@ function Composer({
                 value={draft}
                 onChange={(event) => updateDraft(index, event.target.value)}
               />
-              {mediaSlots[index] > 0 && (
-                <div className="composer-media-row" aria-label={`Post ${index + 1} attached media placeholders`}>
-                  {Array.from({ length: mediaSlots[index] }).map((_, mediaIndex) => (
-                    <span key={mediaIndex}>
-                      <Image size={14} /> Image {mediaIndex + 1}
-                    </span>
+              {(images[index]?.length ?? 0) > 0 && (
+                <div className="composer-media-grid" aria-label={`Post ${index + 1} attached images`}>
+                  {(images[index] ?? []).map((image) => (
+                    <div className="composer-media-item" key={image.id}>
+                      <img src={image.url} alt={image.alt || "Attached image preview"} />
+                      <button
+                        type="button"
+                        className="composer-media-remove"
+                        title="Remove image"
+                        aria-label="Remove image"
+                        onClick={() => removeImage(index, image.id)}
+                      >
+                        <X size={14} />
+                      </button>
+                      <input
+                        className="composer-media-alt"
+                        type="text"
+                        placeholder="Alt text (describe the image)"
+                        value={image.alt}
+                        maxLength={2000}
+                        onChange={(event) => setImageAlt(index, image.id, event.target.value)}
+                      />
+                    </div>
                   ))}
                 </div>
               )}
               <div className="composer-actions">
-                <button type="button" title="Attach image" onClick={() => attachImage(index)} disabled={(mediaSlots[index] ?? 0) >= maxPostImages}>
+                <button
+                  type="button"
+                  title="Attach image"
+                  onClick={() => attachImage(index)}
+                  disabled={(images[index]?.length ?? 0) >= MAX_POST_IMAGES}
+                >
                   <Image size={18} />
                 </button>
                 <span className={remainingChars < 0 ? "over-limit" : ""}>{remainingChars}</span>
@@ -4526,11 +4628,14 @@ function Composer({
           );
         })}
       </div>
-      {hasMediaPlaceholders && (
-        <p className="composer-media-note">
-          Image attachments don't publish from BigBSky yet — only the text of each post will be posted.
-        </p>
-      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={(event) => onFilesSelected(event.target.files)}
+      />
       {postError && <p className="composer-error" role="alert">{postError}</p>}
       <div className="composer-footer">
         <span>{posting ? "Publishing…" : hasContent ? "Draft autosaved locally" : "No local draft"}</span>

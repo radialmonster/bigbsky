@@ -466,12 +466,38 @@ export async function getMissingScopes(): Promise<string[]> {
 
 export type PostRef = { uri: string; cid: string };
 export type ReplyRef = { root: PostRef; parent: PostRef };
+// One composer image: the raw blob to upload plus its alt text (empty allowed).
+export type ComposerImage = { file: Blob; alt: string };
+export type ComposerPostInput = { text: string; images?: ComposerImage[] };
 
-// Publish a single post (optionally a reply). Detects rich-text facets (links,
-// @mentions, #hashtags) so they render/click correctly, the same way the reader
-// renders incoming posts. Writes an app.bsky.feed.post record (scope
-// repo:app.bsky.feed.post). Returns the new post's uri+cid. Throws if signed out.
-export async function publishPost(opts: { text: string; reply?: ReplyRef; langs?: string[] }): Promise<PostRef> {
+// Bluesky's app.bsky.embed.images lexicon caps a post at 4 images.
+export const MAX_POST_IMAGES = 4;
+
+// Upload composer images as blobs (scope blob:image/*) and build the
+// app.bsky.embed.images embed. Returns undefined when there are no images.
+async function buildImageEmbed(
+  agent: { uploadBlob: (data: Blob, opts?: { encoding?: string }) => Promise<{ data: { blob: unknown } }> },
+  images: ComposerImage[],
+): Promise<unknown> {
+  if (images.length === 0) {
+    return undefined;
+  }
+  const uploaded: Array<{ alt: string; image: unknown }> = [];
+  for (const image of images.slice(0, MAX_POST_IMAGES)) {
+    const response = await agent.uploadBlob(image.file, {
+      encoding: (image.file as File).type || "image/jpeg",
+    });
+    uploaded.push({ alt: image.alt || "", image: response.data.blob });
+  }
+  return { $type: "app.bsky.embed.images", images: uploaded };
+}
+
+// Publish a single post (optionally a reply, optionally with images). Detects
+// rich-text facets (links, @mentions, #hashtags) so they render/click correctly,
+// the same way the reader renders incoming posts. Uploads any images as blobs
+// first. Writes an app.bsky.feed.post record (scope repo:app.bsky.feed.post).
+// Returns the new post's uri+cid. Throws if signed out.
+export async function publishPost(opts: { text: string; reply?: ReplyRef; langs?: string[]; images?: ComposerImage[] }): Promise<PostRef> {
   const session = await ensureSession();
   if (!session) {
     throw new Error("Sign in to post.");
@@ -480,29 +506,33 @@ export async function publishPost(opts: { text: string; reply?: ReplyRef; langs?
   const agent = new Agent(session);
   const richText = new RichText({ text: opts.text });
   await richText.detectFacets(agent);
+  const embed = await buildImageEmbed(agent as never, opts.images ?? []);
   const result = await agent.post({
     text: richText.text,
     ...(richText.facets ? { facets: richText.facets } : {}),
     ...(opts.reply ? { reply: opts.reply } : {}),
     ...(opts.langs && opts.langs.length > 0 ? { langs: opts.langs } : {}),
+    ...(embed ? { embed: embed as never } : {}),
   });
   return { uri: result.uri, cid: result.cid };
 }
 
 // Publish an ordered thread: each post after the first replies to the previous
 // one and shares the first post as the thread root, matching how bsky.app
-// composes a multi-post thread. Blank entries are skipped. Returns the root
-// post's ref. Throws if signed out or nothing to post.
-export async function publishThread(texts: string[]): Promise<PostRef> {
-  const clean = texts.map((text) => text.trim()).filter((text) => text.length > 0);
+// composes a multi-post thread. Entries with neither text nor images are
+// skipped. Returns the root post's ref. Throws if signed out or nothing to post.
+export async function publishThread(posts: ComposerPostInput[]): Promise<PostRef> {
+  const clean = posts
+    .map((post) => ({ text: post.text.trim(), images: post.images ?? [] }))
+    .filter((post) => post.text.length > 0 || post.images.length > 0);
   if (clean.length === 0) {
     throw new Error("Nothing to post.");
   }
   let root: PostRef | null = null;
   let parent: PostRef | null = null;
-  for (const text of clean) {
+  for (const post of clean) {
     const reply: ReplyRef | undefined = root && parent ? { root, parent } : undefined;
-    const ref = await publishPost({ text, reply });
+    const ref = await publishPost({ text: post.text, images: post.images, reply });
     if (!root) {
       root = ref;
     }
