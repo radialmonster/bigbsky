@@ -2442,10 +2442,6 @@ export function App() {
             navigate(item.route, item.path);
           }}
         />
-        <section className="context-panel">
-          <h2>Build Posture</h2>
-          <p>Static SPA. No Pages Functions, Workers, bindings, KV, D1, R2, or backend sessions for v1.</p>
-        </section>
         {import.meta.env.DEV && (
           <DevInspector
             activeSource={activeSource}
