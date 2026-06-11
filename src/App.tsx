@@ -620,6 +620,80 @@ function countThreadRows(node?: ThreadNode): number {
   return 1 + (node.replies ?? []).reduce((total, reply) => total + countThreadRows(reply), 0);
 }
 
+function postReplyRootUri(post: FeedPost) {
+  return post.record.reply?.root?.uri;
+}
+
+function isSelfThreadReply(item: FeedItem, rootPost?: FeedPost) {
+  const rootUri = postReplyRootUri(item.post);
+  if (!rootUri) {
+    return false;
+  }
+  const rootAuthorDid = rootPost?.author.did || item.reply?.root?.author.did;
+  return !!rootAuthorDid && item.post.author.did === rootAuthorDid;
+}
+
+function postSortTime(post: FeedPost) {
+  return new Date(post.record.createdAt || post.indexedAt || 0).getTime();
+}
+
+type ThreadedFeedItem = {
+  root: FeedItem;
+  replies: FeedItem[];
+};
+
+type FeedRow = FeedItem | ThreadedFeedItem;
+
+function isThreadedFeedItem(row: FeedRow): row is ThreadedFeedItem {
+  return "root" in row && "replies" in row;
+}
+
+function feedRowKey(row: FeedRow) {
+  return isThreadedFeedItem(row) ? `thread:${row.root.post.uri}` : row.post.uri;
+}
+
+function feedRowPost(row: FeedRow) {
+  return isThreadedFeedItem(row) ? row.root.post : row.post;
+}
+
+function buildThreadedFeedRows(items: FeedItem[]): FeedRow[] {
+  const byUri = new Map(items.map((item) => [item.post.uri, item]));
+  const repliesByRoot = new Map<string, FeedItem[]>();
+  const groupedReplyUris = new Set<string>();
+
+  for (const item of items) {
+    const rootUri = postReplyRootUri(item.post);
+    if (!rootUri) {
+      continue;
+    }
+    const rootItem = byUri.get(rootUri);
+    if (!rootItem || !isSelfThreadReply(item, rootItem.post)) {
+      continue;
+    }
+    repliesByRoot.set(rootUri, [...(repliesByRoot.get(rootUri) ?? []), item]);
+    groupedReplyUris.add(item.post.uri);
+  }
+
+  const rows: FeedRow[] = [];
+  for (const item of items) {
+    if (groupedReplyUris.has(item.post.uri)) {
+      continue;
+    }
+
+    const replies = repliesByRoot.get(item.post.uri);
+    if (!replies?.length) {
+      rows.push(item);
+      continue;
+    }
+
+    rows.push({
+      root: item,
+      replies: replies.slice().sort((first, second) => postSortTime(first.post) - postSortTime(second.post)),
+    });
+  }
+  return rows;
+}
+
 function replaceThreadBranch(node: ThreadNode, uri: string, replacement: ThreadNode): ThreadNode {
   if (!("post" in node)) {
     return node;
@@ -1380,7 +1454,15 @@ export function App() {
       return feedState.items.filter((item) => hasPostVideo(item.post));
     }
 
-    return feedState.items.filter((item) => !item.post.record.reply && !item.reply?.parent);
+    const byUri = new Map(feedState.items.map((item) => [item.post.uri, item]));
+    return feedState.items.filter((item) => {
+      if (!item.post.record.reply && !item.reply?.parent) {
+        return true;
+      }
+
+      const rootUri = postReplyRootUri(item.post);
+      return !!rootUri && byUri.has(rootUri) && isSelfThreadReply(item, byUri.get(rootUri)?.post);
+    });
   }, [feedState.items, profileTab, route.kind]);
 
   const loadFeed = useCallback(async (source: FeedSource, cursor?: string, signal?: AbortSignal) => {
@@ -2947,6 +3029,7 @@ function VirtualPostList({
     () => (showNsfw ? incomingItems : incomingItems.filter((item) => !isAdultPost(item.post))),
     [incomingItems, showNsfw],
   );
+  const rows = useMemo(() => buildThreadedFeedRows(items), [items]);
   const defaultRowHeight = density === "compact" ? 190 : density === "media" ? 360 : 260;
   const overscanPixels = defaultRowHeight * 3;
   const [scrollTop, setScrollTop] = useState(0);
@@ -2954,20 +3037,20 @@ function VirtualPostList({
   const [rowHeights, setRowHeights] = useState<Record<string, number>>({});
   const rowOffsets = useMemo(() => {
     let offset = 0;
-    return items.map((item) => {
+    return rows.map((row) => {
       const top = offset;
-      offset += rowHeights[item.post.uri] ?? defaultRowHeight;
+      offset += rowHeights[feedRowKey(row)] ?? defaultRowHeight;
       return top;
     });
-  }, [defaultRowHeight, items, rowHeights]);
+  }, [defaultRowHeight, rowHeights, rows]);
   const totalHeight = useMemo(
-    () => items.reduce((total, item) => total + (rowHeights[item.post.uri] ?? defaultRowHeight), 0),
-    [defaultRowHeight, items, rowHeights],
+    () => rows.reduce((total, row) => total + (rowHeights[feedRowKey(row)] ?? defaultRowHeight), 0),
+    [defaultRowHeight, rowHeights, rows],
   );
   const findRowIndex = useCallback(
     (targetOffset: number) => {
       let low = 0;
-      let high = items.length - 1;
+      let high = rows.length - 1;
       let match = 0;
 
       while (low <= high) {
@@ -2982,22 +3065,22 @@ function VirtualPostList({
 
       return match;
     },
-    [items.length, rowOffsets],
+    [rowOffsets, rows.length],
   );
-  const startIndex = items.length > 0 ? findRowIndex(Math.max(0, scrollTop - overscanPixels)) : 0;
+  const startIndex = rows.length > 0 ? findRowIndex(Math.max(0, scrollTop - overscanPixels)) : 0;
   const endIndex =
-    items.length > 0 ? Math.min(items.length - 1, findRowIndex(scrollTop + viewportHeight + overscanPixels) + 1) : -1;
-  const visibleItems = endIndex >= startIndex ? items.slice(startIndex, endIndex + 1) : [];
+    rows.length > 0 ? Math.min(rows.length - 1, findRowIndex(scrollTop + viewportHeight + overscanPixels) + 1) : -1;
+  const visibleItems = endIndex >= startIndex ? rows.slice(startIndex, endIndex + 1) : [];
   const topSpacerHeight = rowOffsets[startIndex] ?? 0;
-  const renderedHeight = visibleItems.reduce((total, item) => total + (rowHeights[item.post.uri] ?? defaultRowHeight), 0);
+  const renderedHeight = visibleItems.reduce((total, row) => total + (rowHeights[feedRowKey(row)] ?? defaultRowHeight), 0);
   const bottomSpacerHeight = Math.max(0, totalHeight - topSpacerHeight - renderedHeight);
 
   useEffect(() => {
     setRowHeights((current) => {
-      const next = Object.fromEntries(items.map((item) => [item.post.uri, current[item.post.uri]]).filter(([, height]) => !!height));
+      const next = Object.fromEntries(rows.map((row) => [feedRowKey(row), current[feedRowKey(row)]]).filter(([, height]) => !!height));
       return Object.keys(next).length === Object.keys(current).length ? current : (next as Record<string, number>);
     });
-  }, [items]);
+  }, [rows]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -3032,38 +3115,43 @@ function VirtualPostList({
       data-rendered-rows={visibleItems.length}
     >
       {topSpacerHeight > 0 && <div className="virtual-spacer" style={{ height: topSpacerHeight }} />}
-      {visibleItems.map((item) => (
+      {visibleItems.map((row) => (
         <MeasuredPostRow
-          item={item}
-          key={item.post.uri}
+          post={feedRowPost(row)}
+          key={feedRowKey(row)}
           onMeasured={(height) => {
             setRowHeights((current) => {
-              const previousHeight = current[item.post.uri] ?? defaultRowHeight;
+              const rowKey = feedRowKey(row);
+              const previousHeight = current[rowKey] ?? defaultRowHeight;
               if (previousHeight === height) {
                 return current;
               }
 
-              const rowIndex = items.findIndex((candidate) => candidate.post.uri === item.post.uri);
+              const rowIndex = rows.findIndex((candidate) => feedRowKey(candidate) === rowKey);
               const rowTop = rowIndex >= 0 ? rowOffsets[rowIndex] ?? 0 : 0;
               const container = containerRef.current;
               if (container && rowTop + previousHeight <= container.scrollTop) {
                 container.scrollTop += height - previousHeight;
               }
 
-              return { ...current, [item.post.uri]: height };
+              return { ...current, [rowKey]: height };
             });
           }}
         >
-          <PostCard
-            item={item}
-            currentDid={currentDid}
-            onOpenImage={onOpenImage}
-            onOpenLinkPreview={onOpenLinkPreview}
-            onOpenPost={onOpenPost}
-            onOpenProfile={onOpenProfile}
-            localLists={localLists}
-            onToggleListPost={onToggleListPost}
-          />
+          {isThreadedFeedItem(row) ? (
+            <ThreadedPostCard thread={row} onOpenPost={onOpenPost} onOpenProfile={onOpenProfile} />
+          ) : (
+            <PostCard
+              item={row}
+              currentDid={currentDid}
+              onOpenImage={onOpenImage}
+              onOpenLinkPreview={onOpenLinkPreview}
+              onOpenPost={onOpenPost}
+              onOpenProfile={onOpenProfile}
+              localLists={localLists}
+              onToggleListPost={onToggleListPost}
+            />
+          )}
         </MeasuredPostRow>
       ))}
       {bottomSpacerHeight > 0 && <div className="virtual-spacer" style={{ height: bottomSpacerHeight }} />}
@@ -3142,11 +3230,11 @@ function AutoLoadMoreButton({ label, onLoadMore, error }: { label: string; onLoa
 
 function MeasuredPostRow({
   children,
-  item,
+  post,
   onMeasured,
 }: {
   children: React.ReactNode;
-  item: FeedItem;
+  post: FeedPost;
   onMeasured: (height: number) => void;
 }) {
   const rowRef = useRef<HTMLDivElement | null>(null);
@@ -3163,7 +3251,7 @@ function MeasuredPostRow({
     observer?.observe(row);
 
     return () => observer?.disconnect();
-  }, [item.post.uri, onMeasured]);
+  }, [post.uri, onMeasured]);
 
   return (
     <div className="virtual-row" ref={rowRef}>
@@ -6216,6 +6304,86 @@ function MediaHiddenButton({ kind, onReveal }: { kind: "image" | "video"; onReve
       <span>{label}</span>
       <span className="media-hidden-show">Show</span>
     </button>
+  );
+}
+
+function ThreadedPostCard({
+  thread,
+  onOpenPost,
+  onOpenProfile,
+}: {
+  thread: ThreadedFeedItem;
+  onOpenPost?: (post: FeedPost) => void;
+  onOpenProfile?: (profile: Profile) => void;
+}) {
+  const onOpenTag = useContext(TagSearchContext);
+  const posts = [thread.root.post, ...thread.replies.map((item) => item.post)];
+  const rootPost = thread.root.post;
+  const postTimeLabel = formatPostTime(rootPost.record.createdAt || rootPost.indexedAt);
+
+  return (
+    <article className="post-card thread-combined-card text-only">
+      <header className="post-header">
+        <Avatar profile={rootPost.author} />
+        <div className="post-author-block">
+          <button className="author-button" type="button" onClick={() => onOpenProfile?.(rootPost.author)}>
+            <strong>{displayName(rootPost.author)}</strong>
+          </button>
+          <div className="post-byline">
+            <span>@{rootPost.author.handle}</span>
+            <span aria-hidden="true">·</span>
+            <button
+              className="post-timestamp"
+              type="button"
+              onClick={() => onOpenPost?.(rootPost)}
+              title={`Open thread posted ${postTimeLabel}`}
+              aria-label={`Open thread posted ${postTimeLabel}`}
+            >
+              {postTimeLabel}
+            </button>
+          </div>
+        </div>
+      </header>
+      <div className="post-badges" aria-label="Thread context">
+        <span>{posts.length.toLocaleString()} post thread</span>
+      </div>
+      <div className="thread-combined-body">
+        {posts.map((post, index) => {
+          const text = post.record.text?.trim() || "";
+          const preservesLineBreaks = text.includes("\n");
+          return (
+            <section className="thread-combined-part" key={post.uri}>
+              {text ? (
+                <p className={preservesLineBreaks ? "post-text has-line-breaks" : "post-text"}>
+                  {renderRichText(post.record.facets?.length ? post.record.text || "" : text, post.record.facets, onOpenProfile, onOpenTag)}
+                </p>
+              ) : (
+                <p className="post-text muted">Post {index + 1} has no plain text.</p>
+              )}
+              <div className="thread-combined-meta">
+                <button type="button" onClick={() => onOpenPost?.(post)}>
+                  {formatPostTime(post.record.createdAt || post.indexedAt)}
+                </button>
+                <span>
+                  <MessageCircle size={14} /> {post.replyCount ?? 0}
+                </span>
+                <span>
+                  <Repeat2 size={14} /> {post.repostCount ?? 0}
+                </span>
+                <span>
+                  <Heart size={14} /> {post.likeCount ?? 0}
+                </span>
+              </div>
+            </section>
+          );
+        })}
+      </div>
+      <footer className="post-actions">
+        <button type="button" onClick={() => onOpenPost?.(rootPost)} title="Open full thread">
+          <MessageCircle size={16} /> Open thread
+        </button>
+      </footer>
+    </article>
   );
 }
 
