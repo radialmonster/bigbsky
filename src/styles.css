@@ -2896,7 +2896,6 @@ button.surface-action {
   font-weight: 700;
 }
 
-/* Inside a link card the reveal control sits next to the Preview button. */
 .link-media-hidden {
   margin: 0 10px;
   align-self: center;

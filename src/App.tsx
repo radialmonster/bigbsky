@@ -7093,7 +7093,6 @@ function PostCard({
   item,
   localLists = [],
   onOpenImage,
-  onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
   onReply,
@@ -7242,13 +7241,6 @@ function PostCard({
               <span className="media-hidden-show">Show image</span>
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => onOpenLinkPreview?.({ ...external, sourcePost: post, uri: external.uri || "" })}
-            title="Preview link context"
-          >
-            <LinkIcon size={15} /> Preview
-          </button>
         </div>
       )}
       {recordEmbed && (
