@@ -6673,7 +6673,7 @@ function ThreadedPostCard({
                   ? renderRichText(text, post.record.facets, onOpenProfile, onOpenTag)
                   : `Post ${index + 1} has no plain text.`}
               </p>
-              <CombinedThreadPostMedia post={post} onOpenImage={onOpenImage} />
+              <PostImageVideoMedia post={post} onOpenImage={onOpenImage} />
             </section>
           );
         })}
@@ -6725,7 +6725,7 @@ function ThreadedPostCard({
   );
 }
 
-function CombinedThreadPostMedia({ post, onOpenImage }: { post: FeedPost; onOpenImage?: (image: ImageViewerState) => void }) {
+function PostImageVideoMedia({ post, onOpenImage }: { post: FeedPost; onOpenImage?: (image: ImageViewerState) => void }) {
   const showNsfw = useContext(ShowNsfwContext);
   const showMedia = useContext(ShowMediaContext);
   const [mediaRevealed, setMediaRevealed] = useState(false);
@@ -6749,7 +6749,7 @@ function CombinedThreadPostMedia({ post, onOpenImage }: { post: FeedPost; onOpen
   }
 
   return (
-    <div className="combined-thread-media">
+    <div className="post-image-video-media">
       {images.length > 0 && (
         <div className={`image-grid count-${Math.min(images.length, 4)}`}>
           {images.slice(0, maxPostImages).map((image, imageIndex) => (
@@ -6898,16 +6898,19 @@ function CombinedThreadViewCard({
         {parts.map((part, index) => {
           const post = part.node.post;
           const text = combinedThreadText(post, hideThreadMarkers);
-          if (!text) {
+          const hasMedia = getEmbedImages(post.embed).length > 0 || !!getVideoEmbed(post.embed);
+          if (!text && !hasMedia) {
             return null;
           }
           return (
             <section className="combined-thread-segment" key={post.uri}>
               <p className={text.includes("\n") ? "post-text has-line-breaks" : "post-text"}>
                 {index > 0 && <span className="combined-thread-break" aria-hidden="true" />}
-                {renderRichText(text, post.record.facets, onOpenProfile, onOpenTag)}
+                {text
+                  ? renderRichText(text, post.record.facets, onOpenProfile, onOpenTag)
+                  : `Post ${index + 1} has no plain text.`}
               </p>
-              <CombinedThreadPostMedia post={post} onOpenImage={onOpenImage} />
+              <PostImageVideoMedia post={post} onOpenImage={onOpenImage} />
             </section>
           );
         })}
@@ -6997,7 +7000,6 @@ function PostCard({
 }) {
   const post = item.post;
   const onOpenTag = useContext(TagSearchContext);
-  const showNsfw = useContext(ShowNsfwContext);
   const showMedia = useContext(ShowMediaContext);
   const likeCtx = useContext(LikeContext);
   const likeView = likeCtx?.getState(post);
@@ -7008,7 +7010,7 @@ function PostCard({
   const deletePostCtx = useContext(DeletePostContext);
   const canBlockAuthor = !!blockCtx?.canBlock && post.author.did !== blockCtx?.selfDid;
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
-  const [mediaRevealed, setMediaRevealed] = useState(false);
+  const [linkMediaRevealed, setLinkMediaRevealed] = useState(false);
   const images = getEmbedImages(post.embed);
   const external = getExternalEmbed(post.embed);
   const recordEmbed = getRecordEmbed(post.embed);
@@ -7025,14 +7027,7 @@ function PostCard({
   // Adult content is often labeled at the account level, not the post, so check
   // the author's labels too when deciding whether to hide media.
   const sensitiveLabels = [...labels, ...(post.author.labels ?? [])].filter(isSensitiveLabel);
-  // Gate adult/graphic media behind a click-to-reveal warning (spam labels are
-  // not about media, so they don't hide images/video).
-  const mediaWarningValues = sensitiveMediaValues([...labels, ...(post.author.labels ?? [])]);
-  const gateMedia = !showNsfw && mediaWarningValues.length > 0 && (images.length > 0 || !!video) && !mediaRevealed;
-  // "Show Media" off: hide images/video/link-thumb behind a per-card reveal,
-  // unless already gated as sensitive (that gate wins) or revealed for this card.
-  const hideMediaForSetting = !showMedia && !mediaRevealed && !gateMedia;
-  const linkMediaHidden = hideMediaForSetting && !!external?.thumb;
+  const linkMediaHidden = !showMedia && !linkMediaRevealed && !!external?.thumb;
   const moderationNotes = [
     ...(post.viewer?.threadMuted ? ["Thread muted"] : []),
     ...(post.viewer?.replyDisabled ? ["Replies limited"] : []),
@@ -7114,67 +7109,7 @@ function PostCard({
       ) : (
         !hasRichContent && <p className="post-text muted">Post has no plain text.</p>
       )}
-      {gateMedia ? (
-        <SensitiveMediaGate values={mediaWarningValues} onReveal={() => setMediaRevealed(true)} />
-      ) : hideMediaForSetting && (images.length > 0 || !!video) ? (
-        <MediaHiddenButton kind={images.length > 0 ? "image" : "video"} onReveal={() => setMediaRevealed(true)} />
-      ) : (
-        <>
-          {images.length > 0 && (
-            <div className={`image-grid count-${Math.min(images.length, 4)}`}>
-              {images.slice(0, maxPostImages).map((image, imageIndex) => (
-                <button
-                  className="image-button"
-                  key={image.thumb || image.fullsize}
-                  type="button"
-                  onClick={() => {
-                    const viewerImages = images
-                      .slice(0, maxPostImages)
-                      .map((viewerImage) => ({
-                        src: viewerImage.fullsize || viewerImage.thumb || "",
-                        alt: viewerImage.alt || "",
-                      }))
-                      .filter((viewerImage) => viewerImage.src);
-                    if (viewerImages.length === 0) {
-                      return;
-                    }
-                    const selectedIndex = Math.max(0, viewerImages.findIndex((viewerImage) => viewerImage.src === (image.fullsize || image.thumb)));
-                    onOpenImage?.({ images: viewerImages, index: selectedIndex });
-                  }}
-                  aria-label={image.alt ? "Open image" : "Open full size image"}
-                >
-                  <img
-                    alt={image.alt || ""}
-                    src={image.thumb || image.fullsize}
-                    loading="lazy"
-                    decoding="async"
-                    style={
-                      image.aspectRatio?.width && image.aspectRatio?.height
-                        ? { aspectRatio: `${image.aspectRatio.width} / ${image.aspectRatio.height}` }
-                        : undefined
-                    }
-                  />
-                  {image.alt && <span className="alt-badge">ALT</span>}
-                  {images.length > maxPostImages && imageIndex === maxPostImages - 1 && (
-                    <span className="more-media-badge">+{images.length - maxPostImages}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-          {video && <VideoEmbedCard video={video} />}
-          {mediaRevealed && mediaWarningValues.length > 0 && (
-            <button type="button" className="sensitive-media-hide" onClick={() => setMediaRevealed(false)}>
-              <EyeOff size={13} /> Hide sensitive media
-            </button>
-          )}
-          {mediaRevealed && mediaWarningValues.length === 0 && !showMedia && (images.length > 0 || !!video) && (
-            <button type="button" className="sensitive-media-hide" onClick={() => setMediaRevealed(false)}>
-              <EyeOff size={13} /> Hide media
-            </button>
-          )}
-        </>
-      )}
+      <PostImageVideoMedia post={post} onOpenImage={onOpenImage} />
       {external && (
         <div className={linkMediaHidden ? "link-card no-media" : "link-card"}>
           <a href={external.uri} target="_blank" rel="noreferrer">
@@ -7185,7 +7120,7 @@ function PostCard({
             </span>
           </a>
           {linkMediaHidden && (
-            <button type="button" className="media-hidden-button link-media-hidden" onClick={() => setMediaRevealed(true)}>
+            <button type="button" className="media-hidden-button link-media-hidden" onClick={() => setLinkMediaRevealed(true)}>
               <Image size={15} />
               <span className="media-hidden-show">Show image</span>
             </button>

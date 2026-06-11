@@ -3659,7 +3659,7 @@ button.surface-action {
 
 .combined-thread-text .post-text {
   margin-top: 0;
-  margin-bottom: 14px;
+  margin-bottom: 0;
 }
 
 .combined-thread-text .post-text:last-child {
@@ -3668,17 +3668,21 @@ button.surface-action {
 
 .combined-thread-segment {
   display: grid;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 6px;
+  margin-bottom: 12px;
 }
 
 .combined-thread-segment:last-child {
   margin-bottom: 0;
 }
 
-.combined-thread-media {
+.post-image-video-media {
   display: grid;
   gap: 8px;
+}
+
+.post-image-video-media .image-grid {
+  margin: 4px 0 0;
 }
 
 .combined-thread-break {
