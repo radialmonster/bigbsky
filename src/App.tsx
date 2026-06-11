@@ -4761,11 +4761,8 @@ function SelfProfileSurface({
           </div>
         </dl>
         <div className="self-profile-actions">
-          <button type="button" onClick={() => onOpenProfile(auth as Profile)}>
-            Open public profile
-          </button>
-          <a className="self-profile-action-link" href={bskyProfileUrl} target="_blank" rel="noreferrer" title="Edit your profile on Bluesky">
-            Edit profile on Bluesky
+          <a className="self-profile-action-link" href={bskyProfileUrl} target="_blank" rel="noreferrer" title="Open your profile on Bluesky">
+            Open Profile on Bluesky
           </a>
           <button type="button" className="self-profile-signout" onClick={onSignOut}>
             <LogOut size={16} /> Sign out
