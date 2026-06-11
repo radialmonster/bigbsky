@@ -774,21 +774,6 @@ function buildThreadedFeedRows(items: FeedItem[]): FeedRow[] {
   return rows;
 }
 
-function isProfilePostsTabItem(item: FeedItem, byUri: Map<string, FeedItem>) {
-  if (!item.post.record.reply && !item.reply?.parent) {
-    return true;
-  }
-
-  const rootUri = postReplyRootUri(item.post);
-  const rootItem = rootUri ? byUri.get(rootUri) : undefined;
-  if (!rootItem || !isSelfThreadReply(item, rootItem.post)) {
-    return false;
-  }
-  const replyTime = postSortTime(item.post);
-  const rootTime = postSortTime(rootItem.post);
-  return Number.isFinite(replyTime) && Number.isFinite(rootTime) && replyTime - rootTime >= 0 && replyTime - rootTime <= CONTINUATION_REPLY_WINDOW_MS;
-}
-
 function replaceThreadBranch(node: ThreadNode, uri: string, replacement: ThreadNode): ThreadNode {
   if (!("post" in node)) {
     return node;
@@ -1591,8 +1576,7 @@ export function App() {
     }
 
     if (profileTab === "posts") {
-      const byUri = new Map(feedState.items.map((item) => [item.post.uri, item]));
-      return feedState.items.filter((item) => isProfilePostsTabItem(item, byUri));
+      return feedState.items;
     }
 
     const byUri = new Map(feedState.items.map((item) => [item.post.uri, item]));
@@ -3046,14 +3030,7 @@ export function App() {
                 {feedState.status === "error" && <ErrorState message={feedState.error || "Profile feed failed to load."} />}
                 {feedState.status === "rate-limit" && <RateLimitState message={feedState.error} />}
                 {feedState.status === "ready" && visibleProfileItems.length === 0 && (
-                  profileTab === "posts" && feedState.items.length > 0 ? (
-                    <EmptyState
-                      title="No posts loaded"
-                      message="Bluesky did not return standalone posts for this page yet. Try loading more, or open the Replies tab."
-                    />
-                  ) : (
-                    <EmptyState title="No posts in this tab" message="This public profile has no loaded posts matching the selected view." />
-                  )
+                  <EmptyState title="No posts in this tab" message="This public profile has no loaded posts matching the selected view." />
                 )}
                 {feedState.status === "ready" && visibleProfileItems.length > 0 && (
                   <VirtualPostList
