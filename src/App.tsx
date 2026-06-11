@@ -7361,17 +7361,17 @@ function LongThreadCard({
           const expanded = !!expandedReplies[`part-replies:${post.uri}`];
           return (
             <section className="long-thread-part" key={post.uri}>
-              <div className="long-thread-part-label">Part {part.partNumber} of {parts.length}</div>
+              <div className="long-thread-part-label">Thread post {part.partNumber} of {parts.length}</div>
               {text ? (
                 <p className={text.includes("\n") ? "post-text has-line-breaks" : "post-text"}>
                   {renderRichText(post.record.facets?.length ? post.record.text || "" : text, post.record.facets, handlers.onOpenProfile, onOpenTag)}
                 </p>
               ) : (
-                <p className="post-text muted">Part {part.partNumber} has no plain text.</p>
+                <p className="post-text muted">Thread post {part.partNumber} has no plain text.</p>
               )}
               <div className="long-thread-part-actions">
                 <button type="button" onClick={() => onToggleReplies(post.uri)} disabled={replyCount === 0}>
-                  {replyCount === 1 ? "1 reply to this part" : `${replyCount.toLocaleString()} replies to this part`}
+                  {replyCount === 1 ? "1 reply to this thread post" : `${replyCount.toLocaleString()} replies to this thread post`}
                 </button>
                 <button
                   type="button"
@@ -7394,7 +7394,7 @@ function LongThreadCard({
               {expanded && part.replies.length > 0 && (
                 <div className="long-thread-replies">
                   <div className="thread-replies-divider">
-                    <span>Replies to part {part.partNumber}</span>
+                    <span>Replies to thread post {part.partNumber}</span>
                   </div>
                   {part.replies.map((reply) =>
                     renderThreadNode(
