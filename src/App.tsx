@@ -649,6 +649,7 @@ type ThreadedFeedItem = {
 
 type FeedRow = FeedItem | ThreadedFeedItem;
 type PostRefValue = { uri: string; cid: string };
+const CONTINUATION_REPLY_WINDOW_MS = 10 * 60 * 1000;
 
 function isThreadedFeedItem(row: FeedRow): row is ThreadedFeedItem {
   return "root" in row && "replies" in row;
@@ -672,9 +673,16 @@ function isThreadPostNode(node: ThreadNode): node is ThreadPostNode {
 }
 
 function getContinuationReply(parent: FeedPost, replies: ThreadNode[]) {
+  const parentTime = postSortTime(parent);
   const candidates = replies
     .filter(isThreadPostNode)
-    .filter((reply) => reply.post.author.did === parent.author.did && postReplyParentUri(reply.post) === parent.uri)
+    .filter((reply) => {
+      if (reply.post.author.did !== parent.author.did || postReplyParentUri(reply.post) !== parent.uri) {
+        return false;
+      }
+      const replyTime = postSortTime(reply.post);
+      return Number.isFinite(parentTime) && Number.isFinite(replyTime) && replyTime - parentTime >= 0 && replyTime - parentTime <= CONTINUATION_REPLY_WINDOW_MS;
+    })
     .sort((first, second) => postSortTime(first.post) - postSortTime(second.post));
   return candidates[0] ?? null;
 }
