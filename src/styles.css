@@ -93,6 +93,7 @@ button {
   flex: 1;
   flex-direction: column;
   gap: 8px;
+  padding-bottom: 70px;
 }
 
 .rail-button {
@@ -293,6 +294,9 @@ button {
 }
 
 .compose-button {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
   background: var(--bsky-blue);
   color: #fff;
 }
@@ -4513,9 +4517,19 @@ button.surface-action {
     height: 40px;
   }
 
-  .rail-button span,
-  .compose-button {
+  .rail-button span {
     display: none;
+  }
+
+  .compose-button {
+    position: fixed;
+    right: 14px;
+    bottom: 14px;
+    z-index: 80;
+    display: grid;
+    width: 52px;
+    height: 52px;
+    box-shadow: 0 12px 34px rgba(5, 96, 255, 0.35);
   }
 
   .workspace {

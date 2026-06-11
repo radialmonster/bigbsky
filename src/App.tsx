@@ -2792,6 +2792,9 @@ export function App() {
           >
             <Menu size={20} />
           </button>
+          <button className="mobile-compose-button" type="button" title="New post" aria-label="New post" onClick={openNewPostComposer}>
+            <Send size={20} />
+          </button>
         </header>
 
         {missingScopes.length > 0 && (
@@ -4540,6 +4543,7 @@ function SelfProfileSurface({
   // Each shortcut navigates somewhere real — own-profile tabs, app surfaces, or
   // out to Bluesky for things BigBSky delegates rather than builds.
   const shortcuts: Array<{ title: string; detail: string; cta: string; onClick?: () => void; href?: string }> = [
+    { title: "New post", detail: "Open the profile composer.", cta: "Compose", onClick: () => onOpenSelfTab("new-post") },
     { title: "Posts", detail: "Your posts in the profile reader.", cta: "Open", onClick: () => onOpenSelfTab("posts") },
     { title: "Replies", detail: "Your replies tab.", cta: "Open", onClick: () => onOpenSelfTab("replies") },
     { title: "Media", detail: "Just your image and video posts.", cta: "Open", onClick: () => onOpenSelfTab("media") },
