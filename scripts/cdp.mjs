@@ -1,18 +1,24 @@
 // Minimal Chrome DevTools Protocol client (no deps; uses Node's global WebSocket).
 // Usage:
 //   node scripts/cdp.mjs eval "document.title"
+//   node scripts/cdp.mjs resize 390x844
 //   node scripts/cdp.mjs screenshot out.png
+//   node scripts/cdp.mjs screenshot out.png 390x844
 //   node scripts/cdp.mjs console 8        # capture console+errors for 8 seconds
 //   node scripts/cdp.mjs html             # outerHTML of <body>
-const HOST = "http://127.0.0.1:9222";
+const HOST = process.env.CDP_HOST || "http://127.0.0.1:9222";
+const TARGET_URL = process.env.CDP_TARGET_URL || "";
 
 async function pickPageTarget() {
   const list = await (await fetch(`${HOST}/json`)).json();
   const pages = list.filter(
     (t) => t.type === "page" && t.webSocketDebuggerUrl && /^https?:\/\//.test(t.url)
   );
-  // Prefer the app tab if present, else first real http page.
-  const page = pages.find((t) => t.url.includes("127.0.0.1:5174")) || pages[0];
+  // Prefer the requested target, then a local Vite app tab, else first real http page.
+  const page =
+    (TARGET_URL ? pages.find((t) => t.url.includes(TARGET_URL)) : null) ||
+    pages.find((t) => /https?:\/\/(127\.0\.0\.1|localhost):517\d\b/.test(t.url)) ||
+    pages[0];
   if (!page) throw new Error("No http page target found. Is the app tab open?");
   return page;
 }
@@ -49,7 +55,42 @@ function connect(wsUrl) {
   });
 }
 
-const [, , cmd, arg] = process.argv;
+function parseSize(first, second) {
+  const raw = second ? `${first}x${second}` : first;
+  const match = String(raw || "").trim().match(/^(\d{2,5})\s*[x,]\s*(\d{2,5})$/i);
+  if (!match) {
+    throw new Error("Size must look like 390x844, or pass width height.");
+  }
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 320 || height < 320) {
+    throw new Error("Size must be at least 320x320.");
+  }
+  return { width, height };
+}
+
+async function setViewport(c, target, width, height) {
+  await c.send("Page.enable");
+  await c.send("Page.bringToFront");
+  try {
+    const { windowId } = await c.send("Browser.getWindowForTarget", { targetId: target.id });
+    await c.send("Browser.setWindowBounds", {
+      windowId,
+      bounds: { windowState: "normal", width, height },
+    });
+  } catch {
+    // Headless or embedded targets may not expose Browser window bounds; the
+    // emulated viewport still makes screenshots and layout inspection useful.
+  }
+  await c.send("Emulation.setDeviceMetricsOverride", {
+    width,
+    height,
+    deviceScaleFactor: 1,
+    mobile: width <= 720,
+  });
+}
+
+const [, , cmd, arg, arg2] = process.argv;
 const target = await pickPageTarget();
 const c = await connect(target.webSocketDebuggerUrl);
 
@@ -64,7 +105,16 @@ if (cmd === "eval") {
     console.log("ERROR:", r.exceptionDetails.exception?.description || r.exceptionDetails.text);
   else console.log(JSON.stringify(r.result.value ?? r.result, null, 2));
   c.close();
+} else if (cmd === "resize") {
+  const { width, height } = parseSize(arg, arg2);
+  await setViewport(c, target, width, height);
+  console.log(`resized ${target.url} to ${width}x${height}`);
+  c.close();
 } else if (cmd === "screenshot") {
+  if (arg2) {
+    const { width, height } = parseSize(arg2);
+    await setViewport(c, target, width, height);
+  }
   await c.send("Page.enable");
   const r = await c.send("Page.captureScreenshot", { format: "png" });
   const { writeFileSync } = await import("node:fs");
@@ -100,6 +150,6 @@ if (cmd === "eval") {
   await new Promise((r) => setTimeout(r, secs * 1000));
   c.close();
 } else {
-  console.log("commands: eval <expr> | screenshot <path> | html | console <secs>");
+  console.log("commands: eval <expr> | resize <WxH> | screenshot <path> [WxH] | html | console <secs>");
   c.close();
 }

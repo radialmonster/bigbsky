@@ -107,6 +107,23 @@ button {
   color: var(--app-text);
 }
 
+.rail-button.has-notifications {
+  background: rgba(5, 96, 255, 0.26);
+  color: #fff;
+}
+
+.rail-button.has-notifications::after {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--app-bg-raised);
+  border-radius: 999px;
+  background: var(--bsky-blue-soft);
+  content: "";
+}
+
 .rail-button span {
   position: absolute;
   left: 54px;
@@ -127,6 +144,11 @@ button {
 .rail-button:hover span {
   opacity: 1;
   transform: translateX(0);
+}
+
+.profile-notifications {
+  display: grid;
+  gap: 14px;
 }
 
 .rail-account {
@@ -507,6 +529,8 @@ button {
 }
 
 .workspace-header h1 {
+  min-width: 0;
+  flex: 1 1 auto;
   margin: 0;
   font-size: 17px;
   font-weight: 700;
@@ -525,6 +549,17 @@ button {
   border-radius: 8px;
   background: transparent;
   color: var(--app-text-muted);
+}
+
+.mobile-compose-button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: var(--bsky-blue);
+  color: #fff;
 }
 
 .nav-toggle:hover {
@@ -3765,7 +3800,7 @@ button.surface-action {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 10px 0 8px;
+  margin: 10px 0 8px calc(var(--thread-depth, 0) * 22px);
   color: var(--app-text-soft);
   font-size: 11px;
   font-weight: 900;
@@ -4183,6 +4218,7 @@ button.surface-action {
 }
 
 .thread-alert {
+  margin-left: calc(var(--thread-depth, 0) * 22px);
   justify-content: flex-start;
   min-height: 92px;
   padding: 14px 16px;
@@ -4411,6 +4447,7 @@ button.surface-action {
 }
 
 .thread-node {
+  margin-left: calc(var(--thread-depth, 0) * 22px);
   border-left: 2px solid var(--app-border);
   padding-left: 14px;
 }
@@ -4477,7 +4514,7 @@ button.surface-action {
   }
 
   .workspace-header {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     height: auto;
   }
 }
@@ -4492,14 +4529,48 @@ button.surface-action {
   }
 
   .left-rail {
-    position: sticky;
-    z-index: 2;
+    position: fixed;
+    z-index: 5;
     top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
     flex-direction: row;
     gap: 0;
-    height: 64px;
-    padding: 8px 6px;
+    height: 55px;
+    padding: 7px 58px 7px 6px;
     border-bottom: 1px solid var(--app-border);
+  }
+
+  .workspace-header {
+    position: relative;
+    z-index: 6;
+    height: 55px;
+  }
+
+  .nav-toggle {
+    order: 3;
+  }
+
+  .mobile-compose-button {
+    order: 2;
+  }
+
+  .app-shell.nav-open .workspace-header {
+    border-bottom-color: transparent;
+    background: transparent;
+    backdrop-filter: none;
+    pointer-events: none;
+  }
+
+  .app-shell.nav-open .workspace-header h1,
+  .app-shell.nav-open .mobile-compose-button {
+    display: none;
+  }
+
+  .app-shell.nav-open .nav-toggle {
+    margin-left: auto;
+    pointer-events: auto;
   }
 
   .rail-nav {
@@ -4507,13 +4578,16 @@ button.surface-action {
     /* All nav icons must be visible without horizontal scroll (the off-screen
        Profile/Settings icons were hidden behind an auto-scroll). Distribute
        them across the full bar width instead. */
+    align-items: center;
     justify-content: space-around;
     gap: 0;
+    height: 100%;
+    padding-bottom: 0;
     overflow: visible;
   }
 
   .rail-button {
-    width: 38px;
+    width: 32px;
     height: 40px;
   }
 
@@ -4548,6 +4622,20 @@ button.surface-action {
   .timeline,
   .thread-view {
     padding: 14px;
+  }
+
+  .thread-node,
+  .thread-alert {
+    margin-left: 0;
+  }
+
+  .thread-continuation,
+  .thread-replies-divider {
+    margin-left: 0;
+  }
+
+  .thread-node {
+    padding-left: 6px;
   }
 
   .link-card,

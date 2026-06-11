@@ -1,5 +1,4 @@
 import {
-  Bell,
   Bookmark,
   Check,
   Compass,
@@ -31,7 +30,7 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { createContext, type FormEvent, type ReactNode, type RefObject, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, type CSSProperties, type FormEvent, type ReactNode, type RefObject, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   type ActorSearchResponse,
@@ -87,6 +86,7 @@ import {
   getMissingScopes,
   getMyLists,
   getNotifications,
+  getUnreadNotificationCount,
   getProfileAuthed,
   getSubscribedFeeds,
   markNotificationsSeen,
@@ -114,7 +114,7 @@ import {
 import { getRouteState, type RouteState } from "./router";
 import { displayName, feedSources, navigationItems, type FeedSource } from "./sources";
 
-const navIcons = [Home, Compass, Bell, MessageCircle, Hash, List, Bookmark, User, Settings];
+const navIcons = [Home, Compass, Hash, List, Bookmark, User, Settings];
 
 // Lets deeply-nested post cards open an in-app hashtag search without threading
 // a callback through every PostCard/VirtualPostList call site.
@@ -983,6 +983,7 @@ export function App() {
   const [pinnedSearches, setPinnedSearches] = useState<string[]>(() => readPinnedSearches());
   const [pinnedProfiles, setPinnedProfiles] = useState<Profile[]>(() => readPinnedProfiles());
   const [pinnedNotificationIds, setPinnedNotificationIds] = useState<string[]>(() => readPinnedNotifications());
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [collapsedFeedGroups, setCollapsedFeedGroups] = useState<Record<string, boolean>>(() => readCollapsedFeedGroups());
   const [recentItems, setRecentItems] = useState<RecentItem[]>(() => readRecentItems());
   const [devMetrics, setDevMetrics] = useState<DevMetrics>(initialDevMetrics);
@@ -1261,6 +1262,35 @@ export function App() {
     };
   }, [signedInDid]);
 
+  useEffect(() => {
+    if (!signedInDid) {
+      setUnreadNotificationCount(0);
+      return;
+    }
+
+    let cancelled = false;
+    const refreshUnreadNotifications = () => {
+      getUnreadNotificationCount()
+        .then((count) => {
+          if (!cancelled) {
+            setUnreadNotificationCount(count);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setUnreadNotificationCount(0);
+          }
+        });
+    };
+
+    refreshUnreadNotifications();
+    const interval = window.setInterval(refreshUnreadNotifications, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [signedInDid]);
+
   // Load the user's real Bluesky lists when they visit /lists while signed in.
   const onListsRoute = route.kind === "surface" && route.name === "lists";
   // The Settings Home-page picker also offers the user's lists, so load them
@@ -1459,7 +1489,18 @@ export function App() {
       }
     }
 
-    const groupRank = (group: string) => (group === "Pinned" ? 0 : group === "My Feeds" ? 1 : 2);
+    const groupRank = (group: string) => {
+      if (group === "Pinned") {
+        return 0;
+      }
+      if (group === "Core") {
+        return 1;
+      }
+      if (group === "My Feeds") {
+        return 2;
+      }
+      return 3;
+    };
     return Object.fromEntries(
       Object.entries(groups).sort(([groupA], [groupB]) => {
         const rankDelta = groupRank(groupA) - groupRank(groupB);
@@ -2680,12 +2721,19 @@ export function App() {
             // as the rest of the rail so it matches; when signed in the tooltip
             // carries the account handle.
             const signedInProfile = item === "Profile" && !!authState.session;
+            const hasUnreadProfileNotifications = item === "Profile" && unreadNotificationCount > 0;
             return (
               <button
                 key={item}
-                className="rail-button"
+                className={hasUnreadProfileNotifications ? "rail-button has-notifications" : "rail-button"}
                 type="button"
-                title={signedInProfile ? `Profile · @${authState.session!.handle}` : item}
+                title={
+                  hasUnreadProfileNotifications
+                    ? `Profile · ${unreadNotificationCount.toLocaleString()} unread notification${unreadNotificationCount === 1 ? "" : "s"}`
+                    : signedInProfile
+                      ? `Profile · @${authState.session!.handle}`
+                      : item
+                }
                 onClick={() => openNavigation(item)}
               >
                 <Icon size={20} />
@@ -2865,6 +2913,7 @@ export function App() {
             onOpenFeed={openFeedSource}
             onOpenProfile={openProfile}
             onOpenPostByUri={openPostByUri}
+            onNotificationsSeen={() => setUnreadNotificationCount(0)}
             onReauthorize={handleReauthorize}
             homeSourceId={homeSourceId}
             homeOptions={homeOptions}
@@ -3580,6 +3629,7 @@ function SurfaceView({
   onOpenFeed,
   onOpenProfile,
   onOpenPostByUri,
+  onNotificationsSeen,
   onOpenSelfTab,
   onOpenSurfaceNav,
   onReauthorize,
@@ -3631,6 +3681,7 @@ function SurfaceView({
   onOpenFeed: (source: FeedSource) => void;
   onOpenProfile: (profile: Profile) => void;
   onOpenPostByUri: (uri: string, actor: string) => void;
+  onNotificationsSeen: () => void;
   onOpenSelfTab: (tab: ProfileTab) => void;
   onOpenSurfaceNav: (item: string) => void;
   onReauthorize: () => void;
@@ -3904,24 +3955,8 @@ function SurfaceView({
   }
 
   if (name === "notifications") {
-    return (
-      <NotificationsSurface
-        auth={auth}
-        pinnedFeedCount={pinnedFeedCount}
-        pinnedNotificationIds={pinnedNotificationIds}
-        pinnedProfileCount={pinnedProfileCount}
-        pinnedSearchCount={pinnedSearchCount}
-        localListCount={localLists.length}
-        onOpenSearch={onOpenSearch}
-        onTogglePinnedNotification={onTogglePinnedNotification}
-        onOpenPostByUri={onOpenPostByUri}
-        onOpenProfile={onOpenProfile}
-        onReauthorize={onReauthorize}
-      />
-    );
-  }
-
-  if (name === "lists") {
+    // Legacy route compatibility: Notifications now lives under Profile.
+  } else if (name === "lists") {
     return (
       <ListsSurface
         containerRef={containerRef}
@@ -3941,19 +3976,29 @@ function SurfaceView({
     );
   }
 
-  if (name === "profile" && auth.session) {
+  if ((name === "profile" || name === "notifications") && auth.session) {
     return (
       <SelfProfileSurface
         auth={auth.session}
+        pinnedFeedCount={pinnedFeedCount}
+        pinnedNotificationIds={pinnedNotificationIds}
+        pinnedProfileCount={pinnedProfileCount}
+        pinnedSearchCount={pinnedSearchCount}
+        localListCount={localLists.length}
         onOpenProfile={onOpenProfile}
+        onOpenPostByUri={onOpenPostByUri}
+        onOpenSearch={onOpenSearch}
         onOpenSelfTab={onOpenSelfTab}
         onOpenSurfaceNav={onOpenSurfaceNav}
+        onNotificationsSeen={onNotificationsSeen}
+        onReauthorize={onReauthorize}
         onSignOut={onSignOut}
+        onTogglePinnedNotification={onTogglePinnedNotification}
       />
     );
   }
 
-  if (name === "profile") {
+  if (name === "profile" || name === "notifications") {
     // Signed out: the Profile destination is where you sign in. (The right-rail
     // Account panel is hidden on mobile, so this is the reachable sign-in entry.)
     return (
@@ -3967,6 +4012,20 @@ function SurfaceView({
           <SignInForm status={auth.status} onSignIn={onSignIn} />
           {auth.message && <p className={auth.status === "error" ? "settings-warning" : "signed-out-signin-note"}>{auth.message}</p>}
         </section>
+        <NotificationsSurface
+          auth={auth}
+          pinnedFeedCount={pinnedFeedCount}
+          pinnedNotificationIds={pinnedNotificationIds}
+          pinnedProfileCount={pinnedProfileCount}
+          pinnedSearchCount={pinnedSearchCount}
+          localListCount={localLists.length}
+          onOpenSearch={onOpenSearch}
+          onTogglePinnedNotification={onTogglePinnedNotification}
+          onOpenPostByUri={onOpenPostByUri}
+          onOpenProfile={onOpenProfile}
+          onNotificationsSeen={() => {}}
+          onReauthorize={onReauthorize}
+        />
       </div>
     );
   }
@@ -4516,16 +4575,36 @@ function ProfileListsTab({ actor, onOpenFeed }: { actor: string; onOpenFeed: (so
 
 function SelfProfileSurface({
   auth,
+  pinnedFeedCount,
+  pinnedNotificationIds,
+  pinnedProfileCount,
+  pinnedSearchCount,
+  localListCount,
   onOpenProfile,
+  onOpenPostByUri,
+  onOpenSearch,
   onOpenSelfTab,
   onOpenSurfaceNav,
+  onNotificationsSeen,
+  onReauthorize,
   onSignOut,
+  onTogglePinnedNotification,
 }: {
   auth: AuthSnapshot;
+  pinnedFeedCount: number;
+  pinnedNotificationIds: string[];
+  pinnedProfileCount: number;
+  pinnedSearchCount: number;
+  localListCount: number;
   onOpenProfile: (profile: Profile) => void;
+  onOpenPostByUri: (uri: string, actor: string) => void;
+  onOpenSearch: () => void;
   onOpenSelfTab: (tab: ProfileTab) => void;
   onOpenSurfaceNav: (item: string) => void;
+  onNotificationsSeen: () => void;
+  onReauthorize: () => void;
   onSignOut: () => void | Promise<void>;
+  onTogglePinnedNotification: (id: string) => void;
 }) {
   const bskyProfileUrl = `https://bsky.app/profile/${encodeURIComponent(auth.handle || "")}`;
   // Each shortcut navigates somewhere real — own-profile tabs, app surfaces, or
@@ -4538,7 +4617,6 @@ function SelfProfileSurface({
     { title: "Feeds", detail: "Your saved and pinned feeds.", cta: "Open", onClick: () => onOpenSelfTab("feeds") },
     { title: "Lists", detail: "Lists you created and subscribe to.", cta: "Open Lists", onClick: () => onOpenSurfaceNav("Lists") },
     { title: "Bookmarks", detail: "Posts you bookmarked on Bluesky, synced with your account.", cta: "Open Bookmarks", onClick: () => onOpenSurfaceNav("Bookmarks") },
-    { title: "Notifications", detail: "Likes, replies, follows, and mentions.", cta: "Open", onClick: () => onOpenSurfaceNav("Notifications") },
     { title: "Likes", detail: "Your liked posts (opens on Bluesky).", cta: "Open on Bluesky", href: `${bskyProfileUrl}/likes` },
   ];
 
@@ -4595,6 +4673,20 @@ function SelfProfileSurface({
           ),
         )}
       </section>
+      <NotificationsSurface
+        auth={{ status: "signed-in", session: auth }}
+        pinnedFeedCount={pinnedFeedCount}
+        pinnedNotificationIds={pinnedNotificationIds}
+        pinnedProfileCount={pinnedProfileCount}
+        pinnedSearchCount={pinnedSearchCount}
+        localListCount={localListCount}
+        onOpenSearch={onOpenSearch}
+        onTogglePinnedNotification={onTogglePinnedNotification}
+        onOpenPostByUri={onOpenPostByUri}
+        onOpenProfile={onOpenProfile}
+        onNotificationsSeen={onNotificationsSeen}
+        onReauthorize={onReauthorize}
+      />
     </div>
   );
 }
@@ -4613,11 +4705,13 @@ function AuthedNotifications({
   selfHandle,
   onOpenPostByUri,
   onOpenProfile,
+  onNotificationsSeen,
   onReauthorize,
 }: {
   selfHandle: string;
   onOpenPostByUri: (uri: string, actor: string) => void;
   onOpenProfile: (profile: Profile) => void;
+  onNotificationsSeen: () => void;
   onReauthorize: () => void;
 }) {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -4638,7 +4732,9 @@ function AuthedNotifications({
         setCursor(page.cursor);
         setStatus("ready");
         // Mark seen so the unread count resets; non-fatal if it fails.
-        void markNotificationsSeen().catch(() => {});
+        markNotificationsSeen()
+          .then(onNotificationsSeen)
+          .catch(() => {});
       })
       .catch(() => {
         setStatus("error");
@@ -4767,6 +4863,7 @@ function NotificationsSurface({
   onTogglePinnedNotification,
   onOpenPostByUri,
   onOpenProfile,
+  onNotificationsSeen,
   onReauthorize,
 }: {
   auth: AuthState;
@@ -4779,6 +4876,7 @@ function NotificationsSurface({
   onTogglePinnedNotification: (id: string) => void;
   onOpenPostByUri: (uri: string, actor: string) => void;
   onOpenProfile: (profile: Profile) => void;
+  onNotificationsSeen: () => void;
   onReauthorize: () => void;
 }) {
   const events = [
@@ -4827,7 +4925,7 @@ function NotificationsSurface({
   ];
 
   return (
-    <div className="timeline comfortable">
+    <section className="profile-notifications">
       <section className="surface-placeholder">
         <h2>Notifications</h2>
         <p>
@@ -4838,7 +4936,13 @@ function NotificationsSurface({
       </section>
 
       {auth.session ? (
-        <AuthedNotifications selfHandle={auth.session.handle} onOpenPostByUri={onOpenPostByUri} onOpenProfile={onOpenProfile} onReauthorize={onReauthorize} />
+        <AuthedNotifications
+          selfHandle={auth.session.handle}
+          onOpenPostByUri={onOpenPostByUri}
+          onOpenProfile={onOpenProfile}
+          onNotificationsSeen={onNotificationsSeen}
+          onReauthorize={onReauthorize}
+        />
       ) : (
         <button className="surface-action" type="button" onClick={onOpenSearch}>
           Open mention search
@@ -4865,7 +4969,7 @@ function NotificationsSurface({
           })}
         </section>
       </details>
-    </div>
+    </section>
   );
 }
 
@@ -7715,6 +7819,10 @@ function ImageViewer({
   );
 }
 
+function threadDepthStyle(depth: number): CSSProperties {
+  return { "--thread-depth": depth } as CSSProperties;
+}
+
 function renderThreadNode(
   node: ThreadNode,
   depth: number,
@@ -7745,7 +7853,7 @@ function renderThreadNode(
     const state = threadUnavailableState(node);
 
     return (
-      <div className={`thread-alert ${state.tone}`} style={{ marginLeft: depth * 22 }}>
+      <div className={`thread-alert ${state.tone}`} style={threadDepthStyle(depth)}>
         <ShieldAlert size={16} />
         <span>
           <strong>{state.title}</strong>
@@ -7766,7 +7874,7 @@ function renderThreadNode(
   const isLoadingBranch = !!handlers.loadingBranches[node.post.uri];
 
   return (
-    <div className="thread-node" key={node.post.uri} style={{ marginLeft: depth * 22 }}>
+    <div className="thread-node" key={node.post.uri} style={threadDepthStyle(depth)}>
       <PostCard
         item={{ post: node.post }}
         currentDid={savedState.currentDid}
@@ -7790,14 +7898,14 @@ function renderThreadNode(
       )}
       {continuationReply && (
         <>
-          <div className="thread-continuation" style={{ marginLeft: (depth + 1) * 22 }}>
+          <div className="thread-continuation" style={threadDepthStyle(depth + 1)}>
             <span>Post continues</span>
           </div>
           {renderThreadNode(continuationReply, depth + 1, expandedBranches, onToggleBranch, handlers, onOpenLinkPreview, savedState, (opPartIndex ?? 1) + 1)}
         </>
       )}
       {visibleReplies.length > 0 && (
-        <div className="thread-replies-divider" style={{ marginLeft: (depth + 1) * 22 }}>
+        <div className="thread-replies-divider" style={threadDepthStyle(depth + 1)}>
           <span>{opPartIndex ? `Replies to post ${opPartIndex}` : "Replies"}</span>
         </div>
       )}
