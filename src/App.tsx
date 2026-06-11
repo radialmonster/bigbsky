@@ -7950,6 +7950,7 @@ function LongThreadCard({
               ) : (
                 <p className="post-text muted">Thread post {part.partNumber} has no plain text.</p>
               )}
+              <PostImageVideoMedia post={post} onOpenImage={handlers.onOpenImage} />
               <div className="long-thread-part-actions">
                 <button type="button" onClick={() => onToggleReplies(post.uri)} disabled={replyCount === 0}>
                   {replyCount === 1 ? "1 reply to this thread post" : `${replyCount.toLocaleString()} replies to this thread post`}
