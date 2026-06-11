@@ -2943,6 +2943,7 @@ export function App() {
                 draft={composerDraft}
                 onDraftChange={setComposerDraft}
                 onPosted={reloadCurrentProfile}
+                defaultExpanded
               />
             ) : profileTab === "feeds" ? (
               <ProfileFeedsTab
@@ -5678,10 +5679,12 @@ function Composer({
   draft,
   onDraftChange,
   onPosted,
+  defaultExpanded = false,
 }: {
   draft: { posts: string[] };
   onDraftChange: (draft: { posts: string[] }) => void;
   onPosted?: () => void;
+  defaultExpanded?: boolean;
 }) {
   const drafts = draft.posts.length > 0 ? draft.posts : [""];
   const draftText = drafts.join("\n\n");
@@ -5695,7 +5698,7 @@ function Composer({
   const hasContent = draftText.trim().length > 0 || hasImages;
   // Collapsed by default to keep the top of the feed clean; expand on click.
   // Start expanded if a local draft is already in progress so it isn't hidden.
-  const [expanded, setExpanded] = useState(hasContent);
+  const [expanded, setExpanded] = useState(defaultExpanded || hasContent);
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
   // Hidden file input shared across posts; attachTarget records which post the
