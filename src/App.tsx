@@ -331,6 +331,7 @@ type HomeOption = { id: string; label: string; needsAuth: boolean; group: "Follo
 const widthModes = ["balanced", "wide", "focus"] as const;
 const searchTabs = ["posts", "people", "feeds"] as const;
 const profileTabs = ["posts", "replies", "media", "videos", "feeds", "lists"] as const;
+type ProfileTab = (typeof profileTabs)[number] | "new-post";
 const searchLanguages = [
   { label: "Any language", value: "" },
   { label: "English", value: "en" },
@@ -948,7 +949,7 @@ export function App() {
   const [searchSort, setSearchSort] = useState<"top" | "latest">("top");
   const [searchTab, setSearchTab] = useState<(typeof searchTabs)[number]>("posts");
   const [searchLanguage, setSearchLanguage] = useState("");
-  const [profileTab, setProfileTab] = useState<(typeof profileTabs)[number]>("posts");
+  const [profileTab, setProfileTab] = useState<ProfileTab>("posts");
   const [feedState, setFeedState] = useState<FeedState>(emptyFeedState);
   const [searchState, setSearchState] = useState<SearchState>(emptySearchState);
   const [actorSearchState, setActorSearchState] = useState<ActorSearchState>(emptyActorSearchState);
@@ -2440,6 +2441,15 @@ export function App() {
     navigate(routeState, path);
   }
 
+  function openNewPostComposer() {
+    if (!authState.session) {
+      navigate({ kind: "surface", name: "profile" }, "/profile");
+      return;
+    }
+
+    openSelfTab("new-post");
+  }
+
   const isProfileRoute = route.kind === "profile";
   const workspaceTitle =
     route.kind === "post"
@@ -2539,6 +2549,13 @@ export function App() {
     delete feedCacheRef.current[`feed:${activeSource.id}`];
     void loadFeed(activeSource);
   }, [activeSource, loadFeed]);
+  const reloadCurrentProfile = useCallback(() => {
+    if (route.kind !== "profile") {
+      return;
+    }
+    delete profileCacheRef.current[route.actor];
+    void loadProfileFeed(route.actor);
+  }, [loadProfileFeed, route]);
   const openPost = (post: FeedPost) => {
     const path = postPath(post);
     if (!path) {
@@ -2580,7 +2597,7 @@ export function App() {
   // Open the signed-in user's own profile on a specific tab (used by the
   // self-profile shortcuts). profileTab isn't reset on navigation, so setting it
   // before opening lands the reader on the right tab.
-  const openSelfTab = (tab: (typeof profileTabs)[number]) => {
+  const openSelfTab = (tab: ProfileTab) => {
     if (!authState.session) {
       return;
     }
@@ -2646,6 +2663,11 @@ export function App() {
   const openLinkPreview = (link: NonNullable<LinkPreviewState>) => {
     setLinkPreview(link);
   };
+  const isViewingSelfProfile =
+    route.kind === "profile" &&
+    !!authState.session &&
+    !!signedInDid &&
+    (profile?.did === signedInDid || route.actor === authState.session.handle || route.actor === signedInDid);
 
   return (
     <TagSearchContext.Provider value={openTag}>
@@ -2678,7 +2700,7 @@ export function App() {
             );
           })}
         </nav>
-        <button className="compose-button" type="button" title="New post">
+        <button className="compose-button" type="button" title="New post" aria-label="New post" onClick={openNewPostComposer}>
           <Send size={20} />
         </button>
       </aside>
@@ -2908,11 +2930,18 @@ export function App() {
               onUnfollow={unfollowAccount}
               onBlock={blockAccount}
               onUnblock={unblockAccount}
+              canPost={isViewingSelfProfile}
               selectedTab={profileTab}
               onSelectTab={setProfileTab}
               onTogglePinned={togglePinnedProfile}
             />
-            {profileTab === "feeds" ? (
+            {profileTab === "new-post" && isViewingSelfProfile ? (
+              <Composer
+                draft={composerDraft}
+                onDraftChange={setComposerDraft}
+                onPosted={reloadCurrentProfile}
+              />
+            ) : profileTab === "feeds" ? (
               <ProfileFeedsTab
                 actor={route.actor}
                 pinnedFeedIds={pinnedFeedIds}
@@ -3611,7 +3640,7 @@ function SurfaceView({
   onOpenFeed: (source: FeedSource) => void;
   onOpenProfile: (profile: Profile) => void;
   onOpenPostByUri: (uri: string, actor: string) => void;
-  onOpenSelfTab: (tab: (typeof profileTabs)[number]) => void;
+  onOpenSelfTab: (tab: ProfileTab) => void;
   onOpenSurfaceNav: (item: string) => void;
   onReauthorize: () => void;
   homeSourceId: string;
@@ -4503,7 +4532,7 @@ function SelfProfileSurface({
 }: {
   auth: AuthSnapshot;
   onOpenProfile: (profile: Profile) => void;
-  onOpenSelfTab: (tab: (typeof profileTabs)[number]) => void;
+  onOpenSelfTab: (tab: ProfileTab) => void;
   onOpenSurfaceNav: (item: string) => void;
   onSignOut: () => void | Promise<void>;
 }) {
@@ -5403,18 +5432,20 @@ function ProfileDetailHeader({
   onUnfollow,
   onBlock,
   onUnblock,
+  canPost,
 }: {
   actor: string;
   isPinned: boolean;
   profile: Profile | null;
-  selectedTab: (typeof profileTabs)[number];
-  onSelectTab: (tab: (typeof profileTabs)[number]) => void;
+  selectedTab: ProfileTab;
+  onSelectTab: (tab: ProfileTab) => void;
   onTogglePinned: (profile: Profile | null | undefined) => void;
   canFollow: boolean;
   onFollow: (did: string) => Promise<string>;
   onUnfollow: (followUri: string) => Promise<void>;
   onBlock: (did: string) => Promise<string>;
   onUnblock: (blockUri: string) => Promise<void>;
+  canPost: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   // Follow state is seeded from the authenticated profile's viewer.following
@@ -5482,6 +5513,7 @@ function ProfileDetailHeader({
   }
 
   const bskyUrl = `https://bsky.app/profile/${encodeURIComponent(profile?.handle || actor)}`;
+  const visibleTabs: ProfileTab[] = canPost ? ["new-post", ...profileTabs] : [...profileTabs];
 
   return (
     <section className="profile-detail-header">
@@ -5550,9 +5582,9 @@ function ProfileDetailHeader({
         </div>
       </dl>
       <div className="profile-tabs" aria-label="Profile tabs">
-        {profileTabs.map((tab) => (
+        {visibleTabs.map((tab) => (
           <button className={selectedTab === tab ? "selected" : ""} key={tab} type="button" onClick={() => onSelectTab(tab)}>
-            {tab}
+            {tab === "new-post" ? "New post" : tab}
           </button>
         ))}
       </div>
