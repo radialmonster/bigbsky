@@ -6613,9 +6613,6 @@ function ThreadedPostCard({
           </div>
         </div>
       </header>
-      <div className="post-badges" aria-label="Thread context">
-        <span>{posts.length.toLocaleString()} posts combined</span>
-      </div>
       <div className="combined-thread-text">
         {posts.map((post, index) => {
           const text = post.record.text?.trim() || "";
@@ -6766,9 +6763,6 @@ function CombinedThreadViewCard({
           </div>
         </div>
       </header>
-      <div className="post-badges" aria-label="Thread context">
-        <span>{posts.length.toLocaleString()} posts combined</span>
-      </div>
       <div className="combined-thread-text">
         {parts.map((part, index) => {
           const post = part.node.post;
