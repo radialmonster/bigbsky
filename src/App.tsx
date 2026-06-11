@@ -643,6 +643,7 @@ type ThreadedFeedItem = {
 };
 
 type FeedRow = FeedItem | ThreadedFeedItem;
+type PostRefValue = { uri: string; cid: string };
 
 function isThreadedFeedItem(row: FeedRow): row is ThreadedFeedItem {
   return "root" in row && "replies" in row;
@@ -654,6 +655,11 @@ function feedRowKey(row: FeedRow) {
 
 function feedRowPost(row: FeedRow) {
   return isThreadedFeedItem(row) ? row.root.post : row.post;
+}
+
+function replyRootRefForPost(post: FeedPost): PostRefValue {
+  const rootRef = post.record.reply?.root;
+  return rootRef?.uri && rootRef?.cid ? { uri: rootRef.uri, cid: rootRef.cid } : { uri: post.uri, cid: post.cid };
 }
 
 function buildThreadedFeedRows(items: FeedItem[]): FeedRow[] {
@@ -3035,6 +3041,8 @@ function VirtualPostList({
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(720);
   const [rowHeights, setRowHeights] = useState<Record<string, number>>({});
+  const [activeReplyParentUri, setActiveReplyParentUri] = useState<string | null>(null);
+  const canReply = !!currentDid;
   const rowOffsets = useMemo(() => {
     let offset = 0;
     return rows.map((row) => {
@@ -3138,20 +3146,43 @@ function VirtualPostList({
             });
           }}
         >
-          {isThreadedFeedItem(row) ? (
-            <ThreadedPostCard thread={row} onOpenPost={onOpenPost} onOpenProfile={onOpenProfile} />
-          ) : (
-            <PostCard
-              item={row}
-              currentDid={currentDid}
-              onOpenImage={onOpenImage}
-              onOpenLinkPreview={onOpenLinkPreview}
-              onOpenPost={onOpenPost}
-              onOpenProfile={onOpenProfile}
-              localLists={localLists}
-              onToggleListPost={onToggleListPost}
-            />
-          )}
+          {(() => {
+            const rowPost = feedRowPost(row);
+            return (
+              <>
+                {isThreadedFeedItem(row) ? (
+                  <ThreadedPostCard
+                    thread={row}
+                    onOpenPost={onOpenPost}
+                    onOpenProfile={onOpenProfile}
+                    onReply={canReply ? (post) => setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)) : undefined}
+                    replyActive={activeReplyParentUri === rowPost.uri}
+                  />
+                ) : (
+                  <PostCard
+                    item={row}
+                    currentDid={currentDid}
+                    onOpenImage={onOpenImage}
+                    onOpenLinkPreview={onOpenLinkPreview}
+                    onOpenPost={onOpenPost}
+                    onOpenProfile={onOpenProfile}
+                    onReply={canReply ? (post) => setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)) : undefined}
+                    replyActive={activeReplyParentUri === rowPost.uri}
+                    localLists={localLists}
+                    onToggleListPost={onToggleListPost}
+                  />
+                )}
+                {activeReplyParentUri === rowPost.uri && (
+                  <ReplyComposer
+                    parent={rowPost}
+                    root={replyRootRefForPost(rowPost)}
+                    canReply={canReply}
+                    onClose={() => setActiveReplyParentUri(null)}
+                  />
+                )}
+              </>
+            );
+          })()}
         </MeasuredPostRow>
       ))}
       {bottomSpacerHeight > 0 && <div className="virtual-spacer" style={{ height: bottomSpacerHeight }} />}
@@ -6311,10 +6342,14 @@ function ThreadedPostCard({
   thread,
   onOpenPost,
   onOpenProfile,
+  onReply,
+  replyActive = false,
 }: {
   thread: ThreadedFeedItem;
   onOpenPost?: (post: FeedPost) => void;
   onOpenProfile?: (profile: Profile) => void;
+  onReply?: (post: FeedPost) => void;
+  replyActive?: boolean;
 }) {
   const onOpenTag = useContext(TagSearchContext);
   const bookmarkCtx = useContext(BookmarkContext);
@@ -6392,6 +6427,11 @@ function ThreadedPostCard({
         <button type="button" onClick={() => onOpenPost?.(rootPost)} title="Open full thread">
           Open thread
         </button>
+        {onReply && (
+          <button type="button" className={replyActive ? "active" : ""} onClick={() => onReply(rootPost)} title="Reply to this thread">
+            <MessageCircle size={16} /> Reply
+          </button>
+        )}
       </footer>
     </article>
   );
@@ -6405,6 +6445,8 @@ function PostCard({
   onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
+  onReply,
+  replyActive = false,
   onToggleListPost,
 }: {
   currentDid?: string;
@@ -6414,6 +6456,8 @@ function PostCard({
   onOpenLinkPreview?: (link: NonNullable<LinkPreviewState>) => void;
   onOpenPost?: (post: FeedPost) => void;
   onOpenProfile?: (profile: Profile) => void;
+  onReply?: (post: FeedPost) => void;
+  replyActive?: boolean;
   onToggleListPost?: (listId: string, post: FeedPost) => void;
 }) {
   const post = item.post;
@@ -6661,6 +6705,11 @@ function PostCard({
         <button type="button" onClick={handleShare} title="Share post">
           <Share2 size={16} /> {shareState === "copied" ? "Copied" : shareState === "shared" ? "Shared" : shareState === "error" ? "Copy failed" : "Share"}
         </button>
+        {onReply && (
+          <button type="button" className={replyActive ? "active" : ""} onClick={() => onReply(post)} title="Reply to this post">
+            <MessageCircle size={16} /> Reply
+          </button>
+        )}
         {localLists.length > 0 && (
           <details className="post-list-menu">
             <summary title="Add post to local lists">
@@ -6996,11 +7045,7 @@ function ThreadView({
   const [activeReplyParentUri, setActiveReplyParentUri] = useState<string | null>(null);
   const rootPost = findFirstThreadPost(thread.node);
   const parentNodes = collectThreadParents(thread.node);
-  const threadRootRef = rootPost
-    ? rootPost.record.reply?.root?.uri && rootPost.record.reply?.root?.cid
-      ? { uri: rootPost.record.reply.root.uri, cid: rootPost.record.reply.root.cid }
-      : { uri: rootPost.uri, cid: rootPost.cid }
-    : null;
+  const threadRootRef = rootPost ? replyRootRefForPost(rootPost) : null;
 
   if (thread.status === "loading") {
     return <LoadingState label="Loading thread" />;
@@ -7171,7 +7216,7 @@ function ReplyComposer({
   onReplied,
 }: {
   parent: FeedPost;
-  root: { uri: string; cid: string };
+  root: PostRefValue;
   canReply: boolean;
   onClose: () => void;
   onReplied?: () => void;
@@ -7440,7 +7485,7 @@ function renderThreadNode(
     onOpenReply: (post: FeedPost) => void;
     onCloseReply: () => void;
     onReplied?: () => void;
-    threadRootRef: { uri: string; cid: string } | null;
+    threadRootRef: PostRefValue | null;
   },
   onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void,
   savedState: {
@@ -7480,14 +7525,11 @@ function renderThreadNode(
         onOpenLinkPreview={onOpenLinkPreview}
         onOpenPost={handlers.onOpenPost}
         onOpenProfile={handlers.onOpenProfile}
+        onReply={handlers.canReply ? handlers.onOpenReply : undefined}
+        replyActive={handlers.activeReplyParentUri === node.post.uri}
         localLists={savedState.localLists}
         onToggleListPost={savedState.onToggleListPost}
       />
-      <div className="thread-node-reply-actions">
-        <button type="button" onClick={() => handlers.onOpenReply(node.post)} disabled={!handlers.canReply}>
-          <MessageCircle size={15} /> Reply
-        </button>
-      </div>
       {handlers.activeReplyParentUri === node.post.uri && handlers.threadRootRef && (
         <ReplyComposer
           parent={node.post}

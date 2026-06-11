@@ -3287,6 +3287,10 @@ button.surface-action {
   color: var(--bsky-blue-soft);
 }
 
+.post-actions button.active {
+  color: var(--bsky-blue-soft);
+}
+
 .post-actions button.bookmarked {
   color: var(--bsky-blue-soft);
 }
@@ -3444,36 +3448,6 @@ button.surface-action {
 .reply-composer.inline {
   margin: -2px 0 14px;
   background: rgba(255, 255, 255, 0.035);
-}
-
-.thread-node-reply-actions {
-  display: flex;
-  justify-content: flex-start;
-  margin: -8px 0 14px;
-  padding-left: 14px;
-}
-
-.thread-node-reply-actions button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 30px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--app-text-muted);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.thread-node-reply-actions button:hover:not(:disabled) {
-  background: rgba(5, 96, 255, 0.12);
-  color: var(--bsky-blue-soft);
-}
-
-.thread-node-reply-actions button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 
 .thread-detail-header {
