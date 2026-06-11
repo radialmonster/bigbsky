@@ -6516,6 +6516,32 @@ function renderRichText(
   return nodes;
 }
 
+function threadMarkerMatch(text: string) {
+  const match = text.match(/(?:^|\s)(\d{1,3})\s*\/\s*(\d{1,3})[\s\u200e\u200f\u202a-\u202e\u2066-\u2069]*$/u);
+  if (!match) {
+    return null;
+  }
+  return { index: Number(match[1]), total: Number(match[2]) };
+}
+
+function canHideCombinedThreadMarkers(posts: FeedPost[]) {
+  const total = posts.length;
+  if (total <= 1) {
+    return false;
+  }
+  return posts.every((post, index) => {
+    const marker = threadMarkerMatch(post.record.text || "");
+    return marker?.index === index + 1 && marker.total === total;
+  });
+}
+
+function combinedThreadText(post: FeedPost, hideThreadMarker: boolean) {
+  const text = post.record.text || "";
+  return hideThreadMarker
+    ? text.replace(/(?:^|\s)\d{1,3}\s*\/\s*\d{1,3}[\s\u200e\u200f\u202a-\u202e\u2066-\u2069]*$/u, "").trimEnd()
+    : text.trim();
+}
+
 function sensitiveMediaValues(labels: Array<{ val?: string }>) {
   return Array.from(
     new Set(
@@ -6577,6 +6603,7 @@ function ThreadedPostCard({
   const repostCount = posts.reduce((total, post) => total + (post.repostCount ?? 0), 0);
   const quoteCount = posts.reduce((total, post) => total + (post.quoteCount ?? 0), 0);
   const likeCount = posts.reduce((total, post) => total + (post.likeCount ?? 0), 0);
+  const hideThreadMarkers = canHideCombinedThreadMarkers(posts);
   const handleShare = async () => {
     const url = postBskyUrl(rootPost);
     const title = `${displayName(rootPost.author)} on Bluesky`;
@@ -6633,7 +6660,7 @@ function ThreadedPostCard({
       </header>
       <div className="combined-thread-text">
         {posts.map((post, index) => {
-          const text = post.record.text?.trim() || "";
+          const text = combinedThreadText(post, hideThreadMarkers);
           const preservesLineBreaks = text.includes("\n");
           return (
             <p className={preservesLineBreaks ? "post-text has-line-breaks" : "post-text"} key={post.uri}>
@@ -6726,6 +6753,7 @@ function CombinedThreadViewCard({
   const repostCount = posts.reduce((total, post) => total + (post.repostCount ?? 0), 0);
   const quoteCount = posts.reduce((total, post) => total + (post.quoteCount ?? 0), 0);
   const likeCount = posts.reduce((total, post) => total + (post.likeCount ?? 0), 0);
+  const hideThreadMarkers = canHideCombinedThreadMarkers(posts);
 
   const handleShare = async () => {
     const url = postBskyUrl(rootPost);
@@ -6784,7 +6812,7 @@ function CombinedThreadViewCard({
       <div className="combined-thread-text">
         {parts.map((part, index) => {
           const post = part.node.post;
-          const text = post.record.text?.trim() || "";
+          const text = combinedThreadText(post, hideThreadMarkers);
           if (!text) {
             return null;
           }
