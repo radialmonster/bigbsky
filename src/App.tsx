@@ -340,7 +340,6 @@ const searchLanguages = [
 ];
 const recentStorageKey = "bigbsky:recent";
 const composerDraftStorageKey = "bigbsky:composer-draft";
-const MAX_THREAD_POSTS = 5;
 const localListsStorageKey = "bigbsky:local-lists";
 const workspaceWidthStorageKey = "bigbsky:workspace-width";
 const widthByContextStorageKey = "bigbsky:width-by-context";
@@ -420,8 +419,9 @@ function readComposerDraft() {
     const draft = JSON.parse(localStorage.getItem(composerDraftStorageKey) || "{}") as {
       posts?: string[];
     };
+    const posts = Array.isArray(draft.posts) ? draft.posts.filter((post) => typeof post === "string") : [];
     return {
-      posts: Array.isArray(draft.posts) && draft.posts.length > 0 ? draft.posts.slice(0, MAX_THREAD_POSTS) : [""],
+      posts: posts.length > 0 ? [posts.join("\n\n")] : [""],
     };
   } catch {
     return { posts: [""] };
@@ -5380,6 +5380,80 @@ function ProfileDetailHeader({
 // stable id, and editable alt text. Session-only (not persisted).
 type ComposerImageState = { id: string; file: File; url: string; alt: string };
 
+const POST_GRAPHEME_LIMIT = 300;
+
+type GraphemeSegmenter = {
+  segment(input: string): Iterable<{ segment: string; index: number }>;
+};
+
+function graphemeSegments(text: string): Array<{ segment: string; index: number }> {
+  const Segmenter = (
+    Intl as typeof Intl & {
+      Segmenter?: new (locales: string | undefined, options: { granularity: "grapheme" }) => GraphemeSegmenter;
+    }
+  ).Segmenter;
+  if (Segmenter) {
+    return Array.from(new Segmenter(undefined, { granularity: "grapheme" }).segment(text));
+  }
+  let index = 0;
+  return Array.from(text).map((segment) => {
+    const current = { segment, index };
+    index += segment.length;
+    return current;
+  });
+}
+
+function graphemeLength(text: string) {
+  return graphemeSegments(text).length;
+}
+
+function codeUnitIndexAfterGraphemes(text: string, count: number) {
+  const segments = graphemeSegments(text);
+  if (segments.length <= count) {
+    return text.length;
+  }
+  const segment = segments[count - 1];
+  return segment.index + segment.segment.length;
+}
+
+function lastMatchEnd(text: string, pattern: RegExp, minimumEnd: number) {
+  let fallback = -1;
+  let preferred = -1;
+  for (const match of text.matchAll(pattern)) {
+    const end = (match.index ?? 0) + match[0].length;
+    fallback = end;
+    if (end >= minimumEnd) {
+      preferred = end;
+    }
+  }
+  return preferred >= 0 ? preferred : Math.max(0, fallback);
+}
+
+function splitTextForThread(text: string, limit = POST_GRAPHEME_LIMIT) {
+  const posts: string[] = [];
+  let remaining = text.replace(/\r\n/g, "\n").trim();
+  while (remaining && graphemeLength(remaining) > limit) {
+    const hardEnd = codeUnitIndexAfterGraphemes(remaining, limit);
+    const windowText = remaining.slice(0, hardEnd);
+    const minimumEnd = Math.floor(hardEnd * 0.66);
+    const splitAt =
+      lastMatchEnd(windowText, /\n\s*\n/g, minimumEnd) ||
+      lastMatchEnd(windowText, /[.!?…]["')\]]?\s+/g, minimumEnd) ||
+      lastMatchEnd(windowText, /[,;:]\s+/g, minimumEnd) ||
+      lastMatchEnd(windowText, /\s+/g, minimumEnd) ||
+      hardEnd;
+    const chunk = remaining.slice(0, splitAt).trim();
+    if (chunk) {
+      posts.push(chunk);
+    }
+    remaining = remaining.slice(splitAt).trimStart();
+  }
+  if (remaining) {
+    posts.push(remaining);
+  }
+  return posts;
+}
+
 function Composer({
   draft,
   onDraftChange,
@@ -5390,13 +5464,15 @@ function Composer({
   onPosted?: () => void;
 }) {
   const drafts = draft.posts.length > 0 ? draft.posts : [""];
+  const draftText = drafts.join("\n\n");
+  const generatedPosts = splitTextForThread(draftText);
+  const generatedPostCount = Math.max(generatedPosts.length, 1);
   // Real attached images live in component state (not the persisted draft):
   // File objects and object-URLs can't be JSON-serialized to localStorage, so
   // they are session-only — text drafts persist across reloads, images don't.
   const [images, setImages] = useState<Record<number, ComposerImageState[]>>({});
-  const overLimit = drafts.some((postDraft) => postDraft.length > 300);
   const hasImages = Object.values(images).some((list) => list.length > 0);
-  const hasContent = drafts.some((postDraft) => postDraft.trim().length > 0) || hasImages;
+  const hasContent = draftText.trim().length > 0 || hasImages;
   // Collapsed by default to keep the top of the feed clean; expand on click.
   // Start expanded if a local draft is already in progress so it isn't hidden.
   const [expanded, setExpanded] = useState(hasContent);
@@ -5408,12 +5484,12 @@ function Composer({
   const attachTarget = useRef<number>(0);
 
   useEffect(() => {
-    if (drafts.some((postDraft) => postDraft.trim().length > 0)) {
-      localStorage.setItem(composerDraftStorageKey, JSON.stringify({ posts: drafts }));
+    if (draftText.trim().length > 0) {
+      localStorage.setItem(composerDraftStorageKey, JSON.stringify({ posts: [draftText] }));
     } else {
       localStorage.removeItem(composerDraftStorageKey);
     }
-  }, [drafts]);
+  }, [draftText]);
 
   // Revoke any outstanding object URLs when the composer unmounts.
   useEffect(() => {
@@ -5425,35 +5501,8 @@ function Composer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function setDrafts(nextPosts: string[]) {
-    const limitedPosts = nextPosts.slice(0, MAX_THREAD_POSTS);
-    onDraftChange({
-      posts: limitedPosts.length > 0 ? limitedPosts : [""],
-    });
-  }
-
-  function updateDraft(index: number, value: string) {
-    setDrafts(drafts.map((postDraft, draftIndex) => (draftIndex === index ? value : postDraft)));
-  }
-
-  function removeDraft(index: number) {
-    // Drop this post's images and re-key the rest so they stay aligned to the
-    // remaining post indexes.
-    setImages((current) => {
-      const next: Record<number, ComposerImageState[]> = {};
-      Object.entries(current).forEach(([key, list]) => {
-        const numericKey = Number(key);
-        if (numericKey < index) {
-          next[numericKey] = list;
-        } else if (numericKey > index) {
-          next[numericKey - 1] = list;
-        } else {
-          list.forEach((image) => URL.revokeObjectURL(image.url));
-        }
-      });
-      return next;
-    });
-    setDrafts(drafts.filter((_, draftIndex) => draftIndex !== index));
+  function setDraftText(value: string) {
+    onDraftChange({ posts: [value] });
   }
 
   function attachImage(index: number) {
@@ -5512,17 +5561,23 @@ function Composer({
   }
 
   async function handlePostAll() {
-    if (posting || overLimit || !hasContent) {
+    if (posting || !hasContent) {
       return;
     }
     setPosting(true);
     setPostError(null);
     try {
+      const postTexts = splitTextForThread(draftText);
+      const composerImages = (images[0] ?? []).map((image) => ({ file: image.file, alt: image.alt }));
+      const postsToPublish =
+        postTexts.length > 0
+          ? postTexts.map((text, index) => ({
+              text,
+              images: index === 0 ? composerImages : [],
+            }))
+          : [{ text: "", images: composerImages }];
       await publishThread(
-        drafts.map((text, index) => ({
-          text,
-          images: (images[index] ?? []).map((image) => ({ file: image.file, alt: image.alt })),
-        })),
+        postsToPublish,
       );
       // Posted: clear the draft + images, collapse, and refresh the feed.
       Object.values(images)
@@ -5568,63 +5623,53 @@ function Composer({
         </button>
       </div>
       <div className="composer-thread">
-        {drafts.map((draft, index) => {
-          const remainingChars = 300 - draft.length;
-          return (
-            <div className="composer-draft" key={index}>
-              <div className="composer-draft-header">
-                <span>Post {index + 1}</span>
-                {index > 0 && (
-                  <button type="button" title="Remove post from thread" onClick={() => removeDraft(index)}>
-                    <X size={15} />
+        <div className="composer-draft">
+          <textarea
+            placeholder="What's on your mind?"
+            value={draftText}
+            onChange={(event) => setDraftText(event.target.value)}
+          />
+          {(images[0]?.length ?? 0) > 0 && (
+            <div className="composer-media-grid" aria-label="Attached images">
+              {(images[0] ?? []).map((image) => (
+                <div className="composer-media-item" key={image.id}>
+                  <img src={image.url} alt={image.alt || "Attached image preview"} />
+                  <button
+                    type="button"
+                    className="composer-media-remove"
+                    title="Remove image"
+                    aria-label="Remove image"
+                    onClick={() => removeImage(0, image.id)}
+                  >
+                    <X size={14} />
                   </button>
-                )}
-              </div>
-              <textarea
-                placeholder={index === 0 ? "What's on your mind?" : "Continue the thread"}
-                value={draft}
-                onChange={(event) => updateDraft(index, event.target.value)}
-              />
-              {(images[index]?.length ?? 0) > 0 && (
-                <div className="composer-media-grid" aria-label={`Post ${index + 1} attached images`}>
-                  {(images[index] ?? []).map((image) => (
-                    <div className="composer-media-item" key={image.id}>
-                      <img src={image.url} alt={image.alt || "Attached image preview"} />
-                      <button
-                        type="button"
-                        className="composer-media-remove"
-                        title="Remove image"
-                        aria-label="Remove image"
-                        onClick={() => removeImage(index, image.id)}
-                      >
-                        <X size={14} />
-                      </button>
-                      <input
-                        className="composer-media-alt"
-                        type="text"
-                        placeholder="Alt text (describe the image)"
-                        value={image.alt}
-                        maxLength={2000}
-                        onChange={(event) => setImageAlt(index, image.id, event.target.value)}
-                      />
-                    </div>
-                  ))}
+                  <input
+                    className="composer-media-alt"
+                    type="text"
+                    placeholder="Alt text (describe the image)"
+                    value={image.alt}
+                    maxLength={2000}
+                    onChange={(event) => setImageAlt(0, image.id, event.target.value)}
+                  />
                 </div>
-              )}
-              <div className="composer-actions">
-                <button
-                  type="button"
-                  title="Attach image"
-                  onClick={() => attachImage(index)}
-                  disabled={(images[index]?.length ?? 0) >= MAX_POST_IMAGES}
-                >
-                  <Image size={18} />
-                </button>
-                <span className={remainingChars < 0 ? "over-limit" : ""}>{remainingChars}</span>
-              </div>
+              ))}
             </div>
-          );
-        })}
+          )}
+          <div className="composer-actions">
+            <button
+              type="button"
+              title="Attach image"
+              onClick={() => attachImage(0)}
+              disabled={(images[0]?.length ?? 0) >= MAX_POST_IMAGES}
+            >
+              <Image size={18} />
+            </button>
+            <span>
+              {graphemeLength(draftText)} chars
+              {draftText.trim() && generatedPostCount > 1 ? ` / ${generatedPostCount} posts` : ""}
+            </span>
+          </div>
+        </div>
       </div>
       <input
         ref={fileInputRef}
@@ -5637,19 +5682,11 @@ function Composer({
       {postError && <p className="composer-error" role="alert">{postError}</p>}
       <div className="composer-footer">
         <span>{posting ? "Publishing…" : hasContent ? "Draft autosaved locally" : "No local draft"}</span>
-        <button
-          type="button"
-          onClick={() => setDrafts([...drafts, ""])}
-          title={drafts.length >= MAX_THREAD_POSTS ? "Thread composer limit reached" : "Add post to thread"}
-          disabled={posting || drafts.length >= MAX_THREAD_POSTS}
-        >
-          <Plus size={17} /> Add post
-        </button>
         <button type="button" onClick={clearDraft} disabled={!hasContent || posting}>
           Clear draft
         </button>
-        <button type="button" onClick={handlePostAll} disabled={overLimit || !hasContent || posting}>
-          {posting ? "Posting…" : drafts.filter((d) => d.trim()).length > 1 ? "Post All" : "Post"}
+        <button type="button" onClick={handlePostAll} disabled={!hasContent || posting}>
+          {posting ? "Posting…" : draftText.trim() && generatedPostCount > 1 ? "Post thread" : "Post"}
         </button>
       </div>
     </section>
