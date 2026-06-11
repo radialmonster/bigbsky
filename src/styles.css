@@ -3692,6 +3692,10 @@ button.surface-action {
   margin: 4px 0 0;
 }
 
+.post-image-video-media + .post-actions {
+  margin-top: 12px;
+}
+
 .combined-thread-break {
   display: block;
   height: 0;
@@ -3734,37 +3738,6 @@ button.surface-action {
 
 .long-thread-part .post-text {
   margin-top: 0;
-}
-
-.long-thread-part-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.long-thread-part-actions button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 30px;
-  padding: 0;
-  background: transparent;
-  color: var(--app-text-muted);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.long-thread-part-actions button:hover:not(:disabled),
-.long-thread-part-actions button.active {
-  color: var(--bsky-blue-soft);
-  text-decoration: underline;
-}
-
-.long-thread-part-actions button:disabled {
-  cursor: default;
-  opacity: 0.62;
 }
 
 .long-thread-replies {
