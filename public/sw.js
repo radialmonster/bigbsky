@@ -1,4 +1,4 @@
-const CACHE_NAME = "bigbsky-shell-v2";
+const CACHE_NAME = "bigbsky-shell-v3";
 const SHELL_URLS = ["/", "/index.html"];
 
 async function cacheShellResponse(request) {
@@ -44,22 +44,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (request.mode === "navigate") {
-    if (url.pathname === "/oauth/callback") {
-      event.respondWith(cacheShellResponse(request));
-      return;
-    }
-
-    event.respondWith(
-      caches.open(CACHE_NAME).then(async (cache) => {
-        const cachedShell = await cache.match("/index.html");
-        const freshShell = cacheShellResponse(request);
-        if (cachedShell) {
-          event.waitUntil(freshShell.catch(() => undefined));
-          return cachedShell;
-        }
-        return freshShell;
-      }),
-    );
+    event.respondWith(cacheShellResponse(request));
     return;
   }
 
