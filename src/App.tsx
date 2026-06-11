@@ -6913,6 +6913,7 @@ function CombinedThreadViewCard({
   onOpenImage,
   onOpenPost,
   onOpenProfile,
+  onShowReplies,
   onOpenReply,
   onCloseReply,
   onReplied,
@@ -6924,6 +6925,7 @@ function CombinedThreadViewCard({
   onOpenImage: (image: ImageViewerState) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
+  onShowReplies?: () => void;
   onOpenReply: (post: FeedPost) => void;
   onCloseReply: () => void;
   onReplied?: () => void;
@@ -7033,7 +7035,7 @@ function CombinedThreadViewCard({
         />
       )}
       <footer className="post-actions combined-thread-actions">
-        <button type="button" onClick={() => onOpenPost(rootPost)} title="Open full thread replies">
+        <button type="button" onClick={() => (onShowReplies ? onShowReplies() : onOpenPost(rootPost))} title="Show full thread replies">
           <MessageCircle size={16} /> {replyCount}
         </button>
         <span title="Total reposts across combined posts">
@@ -7753,6 +7755,7 @@ function ThreadView({
           onOpenImage={onOpenImage}
           onOpenPost={onOpenPost}
           onOpenProfile={onOpenProfile}
+          onShowReplies={() => setThreadDisplayMode("separated")}
           onOpenReply={(post) => setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri))}
           onCloseReply={() => setActiveReplyParentUri(null)}
           onReplied={onReplied}
