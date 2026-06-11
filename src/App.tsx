@@ -744,6 +744,45 @@ function buildThreadParts(root: ThreadNode): ThreadPart[] {
   return parts;
 }
 
+function expectedThreadMarkerTotal(parts: ThreadPart[]) {
+  const marker = threadMarkerMatch(parts[0]?.node.post.record.text || "");
+  return marker?.index === 1 && marker.total > parts.length ? marker.total : null;
+}
+
+async function hydrateThreadContinuations(root: ThreadNode, signal?: AbortSignal) {
+  let hydrated = root;
+  let previousLastUri: string | null = null;
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const parts = buildThreadParts(hydrated);
+    const expectedTotal = expectedThreadMarkerTotal(parts);
+    if (!expectedTotal || parts.length >= expectedTotal || parts.length === 0) {
+      return hydrated;
+    }
+
+    const lastPart = parts[parts.length - 1];
+    const lastUri = lastPart.node.post.uri;
+    if (lastUri === previousLastUri) {
+      return hydrated;
+    }
+    previousLastUri = lastUri;
+
+    const branchResponse = await getPostThreadByUriAuthed(lastUri, signal);
+    if (signal?.aborted) {
+      return hydrated;
+    }
+
+    const branchParts = buildThreadParts(branchResponse.thread);
+    if (branchParts.length <= 1) {
+      return hydrated;
+    }
+
+    hydrated = replaceThreadBranch(hydrated, lastUri, branchResponse.thread);
+  }
+
+  return hydrated;
+}
+
 function buildThreadedFeedRows(items: FeedItem[]): FeedRow[] {
   const byUri = new Map(items.map((item) => [item.post.uri, item]));
   const repliesByRoot = new Map<string, FeedItem[]>();
@@ -800,9 +839,10 @@ async function hydrateProfileSelfThreads(items: FeedItem[], signal?: AbortSignal
   const threadResults = await Promise.allSettled(
     threadRoots.map(async (item) => {
       const response = await getPostThreadByUriAuthed(item.post.uri, signal);
+      const thread = await hydrateThreadContinuations(response.thread, signal);
       return {
         uri: item.post.uri,
-        parts: buildThreadParts(response.thread).map((part) => part.node.post),
+        parts: buildThreadParts(thread).map((part) => part.node.post),
       };
     }),
   );
@@ -2070,9 +2110,13 @@ export function App() {
     const controller = new AbortController();
     setThread({ status: "loading" });
     getPostThreadAuthed(route.actor, route.rkey, controller.signal)
-      .then((response) => {
-        threadCacheRef.current[cacheKey] = response.thread;
-        setThread({ status: "ready", node: response.thread });
+      .then(async (response) => {
+        const thread = await hydrateThreadContinuations(response.thread, controller.signal);
+        if (controller.signal.aborted) {
+          return;
+        }
+        threadCacheRef.current[cacheKey] = thread;
+        setThread({ status: "ready", node: thread });
       })
       .catch((error) => {
         if (!controller.signal.aborted) {
@@ -2095,9 +2139,10 @@ export function App() {
     delete threadCacheRef.current[cacheKey];
     setThread({ status: "loading" });
     getPostThreadAuthed(route.actor, route.rkey)
-      .then((response) => {
-        threadCacheRef.current[cacheKey] = response.thread;
-        setThread({ status: "ready", node: response.thread });
+      .then(async (response) => {
+        const thread = await hydrateThreadContinuations(response.thread);
+        threadCacheRef.current[cacheKey] = thread;
+        setThread({ status: "ready", node: thread });
       })
       .catch((error) => {
         setThread({ status: "error", error: error instanceof Error ? error.message : String(error) });
@@ -6771,6 +6816,9 @@ function ThreadedPostCard({
         <button type="button" onClick={handleShare} title="Share first post">
           <Share2 size={16} /> {shareState === "copied" ? "Copied" : shareState === "shared" ? "Shared" : shareState === "error" ? "Copy failed" : "Share"}
         </button>
+        <a href={postBskyUrl(rootPost)} target="_blank" rel="noreferrer" title="Open first post on Bluesky">
+          <LinkIcon size={16} /> Open on Bluesky
+        </a>
         {onReply && (
           <button type="button" className={replyActive ? "active" : ""} onClick={() => onReply(rootPost)} title="Reply to the first post in this thread">
             <MessageCircle size={16} /> Reply
@@ -7021,6 +7069,9 @@ function CombinedThreadViewCard({
         <button type="button" onClick={handleShare} title="Share first post">
           <Share2 size={16} /> {shareState === "copied" ? "Copied" : shareState === "shared" ? "Shared" : shareState === "error" ? "Copy failed" : "Share"}
         </button>
+        <a href={postBskyUrl(rootPost)} target="_blank" rel="noreferrer" title="Open first post on Bluesky">
+          <LinkIcon size={16} /> Open on Bluesky
+        </a>
         <button
           type="button"
           className={activeReplyParentUri === rootPost.uri ? "active" : ""}

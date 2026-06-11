@@ -3313,19 +3313,23 @@ button.surface-action {
 }
 
 .post-actions span,
-.post-actions button {
+.post-actions button,
+.post-actions a {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
-.post-actions button {
+.post-actions button,
+.post-actions a {
   padding: 0;
   background: transparent;
   color: inherit;
+  text-decoration: none;
 }
 
-.post-actions button:hover {
+.post-actions button:hover,
+.post-actions a:hover {
   color: var(--bsky-blue-soft);
 }
 
