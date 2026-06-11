@@ -77,7 +77,7 @@ button {
 .compose-button,
 .rail-button,
 .feed-map-header button,
-.post-header button:not(.author-button),
+.post-header button:not(.author-button):not(.post-timestamp),
 .composer-actions button:first-child {
   display: grid;
   place-items: center;
@@ -2674,12 +2674,14 @@ button.surface-action {
 }
 
 .author-button {
+  display: block;
   min-width: 0;
   max-width: 100%;
   padding: 0;
   background: transparent;
   color: inherit;
   text-align: left;
+  text-decoration: none;
 }
 
 .author-button:hover strong {
@@ -2720,14 +2722,14 @@ button.surface-action {
   font-size: 13px;
 }
 
-.post-header button:not(.author-button) {
+.post-header button:not(.author-button):not(.post-timestamp) {
   width: 34px;
   height: 34px;
   background: transparent;
   color: var(--app-text-muted);
 }
 
-.post-header button.post-timestamp {
+.post-header .post-timestamp {
   width: auto;
   height: auto;
   min-width: 0;
@@ -2736,6 +2738,7 @@ button.surface-action {
   color: var(--app-text-muted);
   font: inherit;
   text-align: left;
+  text-decoration: none;
 }
 
 .post-badges {
@@ -3513,6 +3516,7 @@ button.surface-action {
   background: transparent;
   color: inherit;
   text-align: left;
+  text-decoration: none;
 }
 
 .thread-author-link:hover h2 {

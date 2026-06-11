@@ -30,7 +30,7 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { createContext, type CSSProperties, type FormEvent, type ReactNode, type RefObject, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   type ActorSearchResponse,
@@ -567,6 +567,19 @@ function writeTimelineScrollCache(cache: Record<string, number>) {
 function postPath(post: FeedPost) {
   const rkey = post.uri.split("/").pop();
   return rkey ? `/profile/${encodeURIComponent(post.author.handle)}/post/${encodeURIComponent(rkey)}` : null;
+}
+
+function profilePath(profile: Profile) {
+  const actor = profile.handle || profile.did;
+  return `/profile/${encodeURIComponent(actor)}`;
+}
+
+function handleInternalLinkClick(event: ReactMouseEvent<HTMLAnchorElement>, navigate: () => void) {
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+    return;
+  }
+  event.preventDefault();
+  navigate();
 }
 
 function parsePostUrl(value: string) {
@@ -6682,21 +6695,25 @@ function ThreadedPostCard({
       <header className="post-header">
         <Avatar profile={rootPost.author} />
         <div className="post-author-block">
-          <button className="author-button" type="button" onClick={() => onOpenProfile?.(rootPost.author)}>
+          <a
+            className="author-button"
+            href={profilePath(rootPost.author)}
+            onClick={(event) => onOpenProfile && handleInternalLinkClick(event, () => onOpenProfile(rootPost.author))}
+          >
             <strong>{displayName(rootPost.author)}</strong>
-          </button>
+          </a>
           <div className="post-byline">
             <span>@{rootPost.author.handle}</span>
             <span aria-hidden="true">·</span>
-            <button
+            <a
               className="post-timestamp"
-              type="button"
-              onClick={() => onOpenPost?.(rootPost)}
+              href={postPath(rootPost) ?? postBskyUrl(rootPost)}
+              onClick={(event) => onOpenPost && handleInternalLinkClick(event, () => onOpenPost(rootPost))}
               title={`Open thread posted ${postTimeLabel}`}
               aria-label={`Open thread posted ${postTimeLabel}`}
             >
               {postTimeLabel}
-            </button>
+            </a>
           </div>
         </div>
       </header>
@@ -6915,21 +6932,25 @@ function CombinedThreadViewCard({
       <header className="post-header">
         <Avatar profile={rootPost.author} />
         <div className="post-author-block">
-          <button className="author-button" type="button" onClick={() => onOpenProfile(rootPost.author)}>
+          <a
+            className="author-button"
+            href={profilePath(rootPost.author)}
+            onClick={(event) => handleInternalLinkClick(event, () => onOpenProfile(rootPost.author))}
+          >
             <strong>{displayName(rootPost.author)}</strong>
-          </button>
+          </a>
           <div className="post-byline">
             <span>@{rootPost.author.handle}</span>
             <span aria-hidden="true">·</span>
-            <button
+            <a
               className="post-timestamp"
-              type="button"
-              onClick={() => onOpenPost(rootPost)}
+              href={postPath(rootPost) ?? postBskyUrl(rootPost)}
+              onClick={(event) => handleInternalLinkClick(event, () => onOpenPost(rootPost))}
               title={`Open thread posted ${postTimeLabel}`}
               aria-label={`Open thread posted ${postTimeLabel}`}
             >
               {postTimeLabel}
-            </button>
+            </a>
           </div>
         </div>
       </header>
@@ -7105,21 +7126,25 @@ function PostCard({
       <header className="post-header">
         <Avatar profile={post.author} />
         <div className="post-author-block">
-          <button className="author-button" type="button" onClick={() => onOpenProfile?.(post.author)}>
+          <a
+            className="author-button"
+            href={profilePath(post.author)}
+            onClick={(event) => onOpenProfile && handleInternalLinkClick(event, () => onOpenProfile(post.author))}
+          >
             <strong>{displayName(post.author)}</strong>
-          </button>
+          </a>
           <div className="post-byline">
             <span>@{post.author.handle}</span>
             <span aria-hidden="true">·</span>
-            <button
+            <a
               className="post-timestamp"
-              type="button"
-              onClick={() => onOpenPost?.(post)}
+              href={postPath(post) ?? postBskyUrl(post)}
+              onClick={(event) => onOpenPost && handleInternalLinkClick(event, () => onOpenPost(post))}
               title={`Open thread posted ${postTimeLabel}`}
               aria-label={`Open thread posted ${postTimeLabel}`}
             >
               {postTimeLabel}
-            </button>
+            </a>
           </div>
         </div>
       </header>
@@ -7321,10 +7346,14 @@ function QuotedPostCard({
       {record.author && (
         <header className="quote-header">
           <Avatar profile={record.author} />
-          <button className="author-button" type="button" onClick={() => onOpenProfile?.(record.author as Profile)}>
+          <a
+            className="author-button"
+            href={profilePath(record.author as Profile)}
+            onClick={(event) => onOpenProfile && handleInternalLinkClick(event, () => onOpenProfile(record.author as Profile))}
+          >
             <strong>{displayName(record.author)}</strong>
             <span>@{record.author.handle}</span>
-          </button>
+          </a>
         </header>
       )}
       {text ? (
@@ -7577,12 +7606,16 @@ function ThreadView({
         <section className="thread-detail-header">
           <div>
             <span>Conversation</span>
-            <button type="button" className="thread-author-link" onClick={() => onOpenProfile(rootPost.author)}>
+            <a
+              className="thread-author-link"
+              href={profilePath(rootPost.author)}
+              onClick={(event) => handleInternalLinkClick(event, () => onOpenProfile(rootPost.author))}
+            >
               <h2>{displayName(rootPost.author)}</h2>
               <p>
                 @{rootPost.author.handle} · {formatPostTime(rootPost.record.createdAt || rootPost.indexedAt)}
               </p>
-            </button>
+            </a>
           </div>
           <dl>
             <div>
@@ -7821,21 +7854,25 @@ function LongThreadCard({
       <header className="post-header">
         <Avatar profile={rootPost.author} />
         <div className="post-author-block">
-          <button className="author-button" type="button" onClick={() => handlers.onOpenProfile(rootPost.author)}>
+          <a
+            className="author-button"
+            href={profilePath(rootPost.author)}
+            onClick={(event) => handleInternalLinkClick(event, () => handlers.onOpenProfile(rootPost.author))}
+          >
             <strong>{displayName(rootPost.author)}</strong>
-          </button>
+          </a>
           <div className="post-byline">
             <span>@{rootPost.author.handle}</span>
             <span aria-hidden="true">·</span>
-            <button
+            <a
               className="post-timestamp"
-              type="button"
-              onClick={() => handlers.onOpenPost(rootPost)}
+              href={postPath(rootPost) ?? postBskyUrl(rootPost)}
+              onClick={(event) => handleInternalLinkClick(event, () => handlers.onOpenPost(rootPost))}
               title={`Open thread posted ${firstTimeLabel}`}
               aria-label={`Open thread posted ${firstTimeLabel}`}
             >
               {firstTimeLabel}
-            </button>
+            </a>
           </div>
         </div>
       </header>
