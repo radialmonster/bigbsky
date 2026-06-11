@@ -7171,6 +7171,7 @@ function ThreadView({
         },
         onOpenLinkPreview,
         { currentDid, localLists, onToggleListPost },
+        1,
       )}
     </div>
   );
@@ -7518,6 +7519,7 @@ function renderThreadNode(
     localLists: LocalList[];
     onToggleListPost: (listId: string, post: FeedPost) => void;
   },
+  opPartIndex?: number,
 ): React.ReactNode {
   if (!("post" in node)) {
     const state = threadUnavailableState(node);
@@ -7571,12 +7573,12 @@ function renderThreadNode(
           <div className="thread-continuation" style={{ marginLeft: (depth + 1) * 22 }}>
             <span>Post continues</span>
           </div>
-          {renderThreadNode(continuationReply, depth + 1, expandedBranches, onToggleBranch, handlers, onOpenLinkPreview, savedState)}
+          {renderThreadNode(continuationReply, depth + 1, expandedBranches, onToggleBranch, handlers, onOpenLinkPreview, savedState, (opPartIndex ?? 1) + 1)}
         </>
       )}
       {visibleReplies.length > 0 && (
         <div className="thread-replies-divider" style={{ marginLeft: (depth + 1) * 22 }}>
-          <span>Replies</span>
+          <span>{opPartIndex ? `Replies to post ${opPartIndex}` : "Replies"}</span>
         </div>
       )}
       {visibleReplies.map((reply) =>
