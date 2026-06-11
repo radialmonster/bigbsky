@@ -545,7 +545,7 @@ function readTimelineScrollCache() {
 
 function profileFeedFilterForTab(tab: ProfileTab): ProfileFeedFilter {
   if (tab === "posts") {
-    return "posts_with_replies";
+    return "posts_no_replies";
   }
   if (tab === "media") {
     return "posts_with_media";
@@ -772,6 +772,48 @@ function buildThreadedFeedRows(items: FeedItem[]): FeedRow[] {
     });
   }
   return rows;
+}
+
+async function hydrateProfileSelfThreads(items: FeedItem[], signal?: AbortSignal) {
+  const threadRoots = items.filter((item) => {
+    const marker = threadMarkerMatch(item.post.record.text || "");
+    return marker?.index === 1 && marker.total > 1;
+  });
+
+  if (threadRoots.length === 0) {
+    return items;
+  }
+
+  const threadResults = await Promise.allSettled(
+    threadRoots.map(async (item) => {
+      const response = await getPostThreadByUriAuthed(item.post.uri, signal);
+      return {
+        uri: item.post.uri,
+        parts: buildThreadParts(response.thread).map((part) => part.node.post),
+      };
+    }),
+  );
+
+  if (signal?.aborted) {
+    return items;
+  }
+
+  const continuationsByRoot = new Map<string, FeedItem[]>();
+  threadResults.forEach((result) => {
+    if (result.status !== "fulfilled" || result.value.parts.length <= 1) {
+      return;
+    }
+    continuationsByRoot.set(
+      result.value.uri,
+      result.value.parts.slice(1).map((post) => ({ post })),
+    );
+  });
+
+  if (continuationsByRoot.size === 0) {
+    return items;
+  }
+
+  return items.flatMap((item) => [item, ...(continuationsByRoot.get(item.post.uri) ?? [])]);
 }
 
 function replaceThreadBranch(node: ThreadNode, uri: string, replacement: ThreadNode): ThreadNode {
@@ -1689,9 +1731,13 @@ export function App() {
 
     if (feedResult.status === "fulfilled") {
       const feedResponse = feedResult.value;
+      const responseItems = filter === "posts_no_replies" ? await hydrateProfileSelfThreads(feedResponse.feed, signal) : feedResponse.feed;
+      if (signal?.aborted) {
+        return;
+      }
       setFeedState((current) => {
         const next = {
-          items: cursor ? [...current.items, ...feedResponse.feed] : feedResponse.feed,
+          items: cursor ? [...current.items, ...responseItems] : responseItems,
           cursor: feedResponse.cursor,
           status: "ready" as const,
         };
