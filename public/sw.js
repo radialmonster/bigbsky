@@ -52,12 +52,12 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       caches.open(CACHE_NAME).then(async (cache) => {
         const cached = await cache.match(request);
-        if (cached) {
+        if (cached && !cached.headers.get("content-type")?.includes("text/html")) {
           return cached;
         }
 
         const response = await fetch(request);
-        if (response.ok) {
+        if (response.ok && !response.headers.get("content-type")?.includes("text/html")) {
           cache.put(request, response.clone());
         }
         return response;
