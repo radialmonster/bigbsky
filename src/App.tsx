@@ -6993,54 +6993,14 @@ function ThreadView({
 }) {
   const [expandedBranches, setExpandedBranches] = useState<Record<string, boolean>>({});
   const [engagement, setEngagement] = useState<null | "reposts" | "quotes" | "likes">(null);
-  const [replyPosting, setReplyPosting] = useState(false);
-  const [replyError, setReplyError] = useState<string | null>(null);
+  const [activeReplyParentUri, setActiveReplyParentUri] = useState<string | null>(null);
   const rootPost = findFirstThreadPost(thread.node);
   const parentNodes = collectThreadParents(thread.node);
-  const replyDraftKey = rootPost ? `${replyDraftPrefix}${rootPost.uri}` : "";
-  const [replyText, setReplyText] = useState("");
-  const remainingReplyChars = 300 - replyText.length;
-
-  useEffect(() => {
-    setReplyText(replyDraftKey ? localStorage.getItem(replyDraftKey) || "" : "");
-  }, [replyDraftKey]);
-
-  useEffect(() => {
-    if (!replyDraftKey) {
-      return;
-    }
-
-    if (replyText.trim()) {
-      localStorage.setItem(replyDraftKey, replyText);
-    } else {
-      localStorage.removeItem(replyDraftKey);
-    }
-  }, [replyDraftKey, replyText]);
-
-  async function handleReply() {
-    if (!rootPost || replyPosting || !replyText.trim() || remainingReplyChars < 0) {
-      return;
-    }
-    // Reply to the post being viewed (the thread anchor). The thread root is the
-    // anchor's own reply.root when it is itself a reply, otherwise the anchor.
-    const parent = { uri: rootPost.uri, cid: rootPost.cid };
-    const rootRef = rootPost.record.reply?.root;
-    const root = rootRef?.uri && rootRef?.cid ? { uri: rootRef.uri, cid: rootRef.cid } : parent;
-    setReplyPosting(true);
-    setReplyError(null);
-    try {
-      await publishPost({ text: replyText.trim(), reply: { root, parent } });
-      setReplyText("");
-      if (replyDraftKey) {
-        localStorage.removeItem(replyDraftKey);
-      }
-      onReplied?.();
-    } catch (error) {
-      setReplyError(error instanceof Error ? error.message : "Could not publish reply. Try again.");
-    } finally {
-      setReplyPosting(false);
-    }
-  }
+  const threadRootRef = rootPost
+    ? rootPost.record.reply?.root?.uri && rootPost.record.reply?.root?.cid
+      ? { uri: rootPost.record.reply.root.uri, cid: rootPost.record.reply.root.cid }
+      : { uri: rootPost.uri, cid: rootPost.cid }
+    : null;
 
   if (thread.status === "loading") {
     return <LoadingState label="Loading thread" />;
@@ -7106,25 +7066,6 @@ function ThreadView({
           )}
         </section>
       )}
-      <section className="reply-composer" aria-label="Reply composer">
-        <textarea
-          placeholder={canReply ? "Write your reply" : "Sign in to reply."}
-          value={replyText}
-          onChange={(event) => setReplyText(event.currentTarget.value)}
-          disabled={!canReply || replyPosting}
-        />
-        {replyError && <p className="composer-error" role="alert">{replyError}</p>}
-        <div className="composer-actions">
-          <span className={remainingReplyChars < 0 ? "over-limit" : ""}>{remainingReplyChars}</span>
-          <button
-            type="button"
-            onClick={handleReply}
-            disabled={!canReply || replyPosting || remainingReplyChars < 0 || replyText.trim().length === 0}
-          >
-            {replyPosting ? "Replying…" : "Reply"}
-          </button>
-        </div>
-      </section>
       {parentNodes.length > 0 && (
         <section className="thread-parent-context" aria-label="Parent posts">
           <header>
@@ -7145,7 +7086,19 @@ function ThreadView({
       )}
       {renderThreadNode(thread.node, 0, expandedBranches, (uri) =>
         setExpandedBranches((current) => ({ ...current, [uri]: !current[uri] })),
-        { loadingBranches, onLoadBranch, onOpenImage, onOpenPost, onOpenProfile },
+        {
+          loadingBranches,
+          onLoadBranch,
+          onOpenImage,
+          onOpenPost,
+          onOpenProfile,
+          activeReplyParentUri,
+          canReply,
+          onOpenReply: (post) => setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)),
+          onCloseReply: () => setActiveReplyParentUri(null),
+          onReplied,
+          threadRootRef,
+        },
         onOpenLinkPreview,
         { currentDid, localLists, onToggleListPost },
       )}
@@ -7207,6 +7160,83 @@ function renderThreadContextNode(
         />
       </div>
     </div>
+  );
+}
+
+function ReplyComposer({
+  parent,
+  root,
+  canReply,
+  onClose,
+  onReplied,
+}: {
+  parent: FeedPost;
+  root: { uri: string; cid: string };
+  canReply: boolean;
+  onClose: () => void;
+  onReplied?: () => void;
+}) {
+  const [replyPosting, setReplyPosting] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
+  const replyDraftKey = `${replyDraftPrefix}${parent.uri}`;
+  const [replyText, setReplyText] = useState("");
+  const remainingReplyChars = 300 - replyText.length;
+
+  useEffect(() => {
+    setReplyText(localStorage.getItem(replyDraftKey) || "");
+  }, [replyDraftKey]);
+
+  useEffect(() => {
+    if (replyText.trim()) {
+      localStorage.setItem(replyDraftKey, replyText);
+    } else {
+      localStorage.removeItem(replyDraftKey);
+    }
+  }, [replyDraftKey, replyText]);
+
+  async function handleReply() {
+    if (replyPosting || !replyText.trim() || remainingReplyChars < 0) {
+      return;
+    }
+    setReplyPosting(true);
+    setReplyError(null);
+    try {
+      await publishPost({ text: replyText.trim(), reply: { root, parent: { uri: parent.uri, cid: parent.cid } } });
+      setReplyText("");
+      localStorage.removeItem(replyDraftKey);
+      onClose();
+      onReplied?.();
+    } catch (error) {
+      setReplyError(error instanceof Error ? error.message : "Could not publish reply. Try again.");
+    } finally {
+      setReplyPosting(false);
+    }
+  }
+
+  return (
+    <section className="reply-composer inline" aria-label={`Reply to ${displayName(parent.author)}`}>
+      <textarea
+        autoFocus
+        placeholder={canReply ? `Reply to @${parent.author.handle}` : "Sign in to reply."}
+        value={replyText}
+        onChange={(event) => setReplyText(event.currentTarget.value)}
+        disabled={!canReply || replyPosting}
+      />
+      {replyError && <p className="composer-error" role="alert">{replyError}</p>}
+      <div className="composer-actions">
+        <span className={remainingReplyChars < 0 ? "over-limit" : ""}>{remainingReplyChars}</span>
+        <button type="button" onClick={onClose} disabled={replyPosting}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleReply}
+          disabled={!canReply || replyPosting || remainingReplyChars < 0 || replyText.trim().length === 0}
+        >
+          {replyPosting ? "Replying..." : "Reply"}
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -7405,6 +7435,12 @@ function renderThreadNode(
     onOpenImage: (image: ImageViewerState) => void;
     onOpenPost: (post: FeedPost) => void;
     onOpenProfile: (profile: Profile) => void;
+    activeReplyParentUri: string | null;
+    canReply: boolean;
+    onOpenReply: (post: FeedPost) => void;
+    onCloseReply: () => void;
+    onReplied?: () => void;
+    threadRootRef: { uri: string; cid: string } | null;
   },
   onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void,
   savedState: {
@@ -7447,6 +7483,20 @@ function renderThreadNode(
         localLists={savedState.localLists}
         onToggleListPost={savedState.onToggleListPost}
       />
+      <div className="thread-node-reply-actions">
+        <button type="button" onClick={() => handlers.onOpenReply(node.post)} disabled={!handlers.canReply}>
+          <MessageCircle size={15} /> Reply
+        </button>
+      </div>
+      {handlers.activeReplyParentUri === node.post.uri && handlers.threadRootRef && (
+        <ReplyComposer
+          parent={node.post}
+          root={handlers.threadRootRef}
+          canReply={handlers.canReply}
+          onClose={handlers.onCloseReply}
+          onReplied={handlers.onReplied}
+        />
+      )}
       {visibleReplies.map((reply) =>
         renderThreadNode(reply, depth + 1, expandedBranches, onToggleBranch, handlers, onOpenLinkPreview, savedState),
       )}
