@@ -545,7 +545,7 @@ function readTimelineScrollCache() {
 
 function profileFeedFilterForTab(tab: ProfileTab): ProfileFeedFilter {
   if (tab === "posts") {
-    return "posts_no_replies";
+    return "posts_with_replies";
   }
   if (tab === "media") {
     return "posts_with_media";
@@ -772,6 +772,21 @@ function buildThreadedFeedRows(items: FeedItem[]): FeedRow[] {
     });
   }
   return rows;
+}
+
+function isProfilePostsTabItem(item: FeedItem, byUri: Map<string, FeedItem>) {
+  if (!item.post.record.reply && !item.reply?.parent) {
+    return true;
+  }
+
+  const rootUri = postReplyRootUri(item.post);
+  const rootItem = rootUri ? byUri.get(rootUri) : undefined;
+  if (!rootItem || !isSelfThreadReply(item, rootItem.post)) {
+    return false;
+  }
+  const replyTime = postSortTime(item.post);
+  const rootTime = postSortTime(rootItem.post);
+  return Number.isFinite(replyTime) && Number.isFinite(rootTime) && replyTime - rootTime >= 0 && replyTime - rootTime <= CONTINUATION_REPLY_WINDOW_MS;
 }
 
 function replaceThreadBranch(node: ThreadNode, uri: string, replacement: ThreadNode): ThreadNode {
@@ -1576,7 +1591,8 @@ export function App() {
     }
 
     if (profileTab === "posts") {
-      return feedState.items;
+      const byUri = new Map(feedState.items.map((item) => [item.post.uri, item]));
+      return feedState.items.filter((item) => isProfilePostsTabItem(item, byUri));
     }
 
     const byUri = new Map(feedState.items.map((item) => [item.post.uri, item]));
@@ -6518,7 +6534,7 @@ function renderRichText(
 }
 
 function threadMarkerMatch(text: string) {
-  const match = text.match(/(?:^|\s)(\d{1,3})\s*\/\s*(\d{1,3})[\s\u200e\u200f\u202a-\u202e\u2066-\u2069]*$/u);
+  const match = text.match(/(?:^|\n)[ \t\u200e\u200f\u202a-\u202e\u2066-\u2069]*(\d{1,3})\s*\/\s*(\d{1,3})[ \t\u200e\u200f\u202a-\u202e\u2066-\u2069]*(?=\n|$)/u);
   if (!match) {
     return null;
   }
@@ -6539,7 +6555,7 @@ function canHideCombinedThreadMarkers(posts: FeedPost[]) {
 function combinedThreadText(post: FeedPost, hideThreadMarker: boolean) {
   const text = post.record.text || "";
   return hideThreadMarker
-    ? text.replace(/(?:^|\s)\d{1,3}\s*\/\s*\d{1,3}[\s\u200e\u200f\u202a-\u202e\u2066-\u2069]*$/u, "").trimEnd()
+    ? text.replace(/(?:^|\n)[ \t\u200e\u200f\u202a-\u202e\u2066-\u2069]*\d{1,3}\s*\/\s*\d{1,3}[ \t\u200e\u200f\u202a-\u202e\u2066-\u2069]*(?=\n|$)/u, "").trim()
     : text.trim();
 }
 
