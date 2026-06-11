@@ -3673,6 +3673,36 @@ button.surface-action {
   margin: 8px 0 16px;
 }
 
+.thread-continuation,
+.thread-replies-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 8px;
+  color: var(--app-text-soft);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.thread-continuation::before,
+.thread-replies-divider::before {
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--app-border-strong);
+  content: "";
+}
+
+.thread-replies-divider {
+  margin-top: 16px;
+  color: var(--bsky-blue-soft);
+}
+
+.thread-replies-divider::before {
+  background: rgba(117, 175, 255, 0.6);
+}
+
 .right-rail {
   overflow: auto;
   padding: 18px 14px;

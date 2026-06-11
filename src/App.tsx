@@ -44,6 +44,7 @@ import {
   type RichTextFacet,
   type SearchPostsResponse,
   type ThreadNode,
+  type ThreadPostNode,
   type TrendingTopic,
   getActorFeeds,
   getActorLists,
@@ -624,6 +625,10 @@ function postReplyRootUri(post: FeedPost) {
   return post.record.reply?.root?.uri;
 }
 
+function postReplyParentUri(post: FeedPost) {
+  return post.record.reply?.parent?.uri;
+}
+
 function isSelfThreadReply(item: FeedItem, rootPost?: FeedPost) {
   const rootUri = postReplyRootUri(item.post);
   if (!rootUri) {
@@ -660,6 +665,18 @@ function feedRowPost(row: FeedRow) {
 function replyRootRefForPost(post: FeedPost): PostRefValue {
   const rootRef = post.record.reply?.root;
   return rootRef?.uri && rootRef?.cid ? { uri: rootRef.uri, cid: rootRef.cid } : { uri: post.uri, cid: post.cid };
+}
+
+function isThreadPostNode(node: ThreadNode): node is ThreadPostNode {
+  return "post" in node;
+}
+
+function getContinuationReply(parent: FeedPost, replies: ThreadNode[]) {
+  const candidates = replies
+    .filter(isThreadPostNode)
+    .filter((reply) => reply.post.author.did === parent.author.did && postReplyParentUri(reply.post) === parent.uri)
+    .sort((first, second) => postSortTime(first.post) - postSortTime(second.post));
+  return candidates[0] ?? null;
 }
 
 function buildThreadedFeedRows(items: FeedItem[]): FeedRow[] {
@@ -7510,8 +7527,10 @@ function renderThreadNode(
 
   const replies = node.replies ?? [];
   const isExpanded = !!expandedBranches[node.post.uri];
-  const visibleReplies = isExpanded ? replies : replies.slice(0, 8);
-  const hiddenReplyCount = Math.max(0, replies.length - visibleReplies.length);
+  const continuationReply = getContinuationReply(node.post, replies);
+  const discussionReplies = continuationReply ? replies.filter((reply) => reply !== continuationReply) : replies;
+  const visibleReplies = isExpanded ? discussionReplies : discussionReplies.slice(0, 8);
+  const hiddenReplyCount = Math.max(0, discussionReplies.length - visibleReplies.length);
   const knownReplyCount = node.post.replyCount ?? 0;
   const hasUnloadedReplies = knownReplyCount > replies.length;
   const isLoadingBranch = !!handlers.loadingBranches[node.post.uri];
@@ -7539,10 +7558,23 @@ function renderThreadNode(
           onReplied={handlers.onReplied}
         />
       )}
+      {continuationReply && (
+        <>
+          <div className="thread-continuation" style={{ marginLeft: (depth + 1) * 22 }}>
+            <span>Post continues</span>
+          </div>
+          {renderThreadNode(continuationReply, depth + 1, expandedBranches, onToggleBranch, handlers, onOpenLinkPreview, savedState)}
+        </>
+      )}
+      {visibleReplies.length > 0 && (
+        <div className="thread-replies-divider" style={{ marginLeft: (depth + 1) * 22 }}>
+          <span>Replies</span>
+        </div>
+      )}
       {visibleReplies.map((reply) =>
         renderThreadNode(reply, depth + 1, expandedBranches, onToggleBranch, handlers, onOpenLinkPreview, savedState),
       )}
-      {replies.length > 8 && (
+      {discussionReplies.length > 8 && (
         <button className="load-more branch-toggle" type="button" onClick={() => onToggleBranch(node.post.uri)}>
           {isExpanded ? "Show fewer replies" : `Show ${hiddenReplyCount} more replies`}
         </button>
