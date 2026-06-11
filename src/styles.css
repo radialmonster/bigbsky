@@ -3507,6 +3507,18 @@ button.surface-action {
   font-size: 20px;
 }
 
+.thread-author-link {
+  display: block;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.thread-author-link:hover h2 {
+  color: var(--bsky-blue-soft);
+}
+
 .thread-detail-header p {
   margin: 0;
   color: var(--app-text-muted);
@@ -3652,6 +3664,21 @@ button.surface-action {
 
 .combined-thread-text .post-text:last-child {
   margin-bottom: 0;
+}
+
+.combined-thread-segment {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.combined-thread-segment:last-child {
+  margin-bottom: 0;
+}
+
+.combined-thread-media {
+  display: grid;
+  gap: 8px;
 }
 
 .combined-thread-break {

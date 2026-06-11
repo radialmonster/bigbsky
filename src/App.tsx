@@ -3305,6 +3305,7 @@ function VirtualPostList({
                 {isThreadedFeedItem(row) ? (
                   <ThreadedPostCard
                     thread={row}
+                    onOpenImage={onOpenImage}
                     onOpenPost={onOpenPost}
                     onOpenProfile={onOpenProfile}
                     onReply={canReply ? (post) => setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)) : undefined}
@@ -6579,12 +6580,14 @@ function MediaHiddenButton({ kind, onReveal }: { kind: "image" | "video"; onReve
 
 function ThreadedPostCard({
   thread,
+  onOpenImage,
   onOpenPost,
   onOpenProfile,
   onReply,
   replyActive = false,
 }: {
   thread: ThreadedFeedItem;
+  onOpenImage?: (image: ImageViewerState) => void;
   onOpenPost?: (post: FeedPost) => void;
   onOpenProfile?: (profile: Profile) => void;
   onReply?: (post: FeedPost) => void;
@@ -6663,12 +6666,15 @@ function ThreadedPostCard({
           const text = combinedThreadText(post, hideThreadMarkers);
           const preservesLineBreaks = text.includes("\n");
           return (
-            <p className={preservesLineBreaks ? "post-text has-line-breaks" : "post-text"} key={post.uri}>
-              {index > 0 && <span className="combined-thread-break" aria-hidden="true" />}
-              {text
-                ? renderRichText(post.record.facets?.length ? post.record.text || "" : text, post.record.facets, onOpenProfile, onOpenTag)
-                : `Post ${index + 1} has no plain text.`}
-            </p>
+            <section className="combined-thread-segment" key={post.uri}>
+              <p className={preservesLineBreaks ? "post-text has-line-breaks" : "post-text"}>
+                {index > 0 && <span className="combined-thread-break" aria-hidden="true" />}
+                {text
+                  ? renderRichText(text, post.record.facets, onOpenProfile, onOpenTag)
+                  : `Post ${index + 1} has no plain text.`}
+              </p>
+              <CombinedThreadPostMedia post={post} onOpenImage={onOpenImage} />
+            </section>
           );
         })}
       </div>
@@ -6719,10 +6725,88 @@ function ThreadedPostCard({
   );
 }
 
+function CombinedThreadPostMedia({ post, onOpenImage }: { post: FeedPost; onOpenImage?: (image: ImageViewerState) => void }) {
+  const showNsfw = useContext(ShowNsfwContext);
+  const showMedia = useContext(ShowMediaContext);
+  const [mediaRevealed, setMediaRevealed] = useState(false);
+  const images = getEmbedImages(post.embed);
+  const video = getVideoEmbed(post.embed);
+  const labels = post.labels ?? [];
+  const mediaWarningValues = sensitiveMediaValues([...labels, ...(post.author.labels ?? [])]);
+  const gateMedia = !showNsfw && mediaWarningValues.length > 0 && (images.length > 0 || !!video) && !mediaRevealed;
+  const hideMediaForSetting = !showMedia && !mediaRevealed && !gateMedia;
+
+  if (images.length === 0 && !video) {
+    return null;
+  }
+
+  if (gateMedia) {
+    return <SensitiveMediaGate values={mediaWarningValues} onReveal={() => setMediaRevealed(true)} />;
+  }
+
+  if (hideMediaForSetting) {
+    return <MediaHiddenButton kind={images.length > 0 ? "image" : "video"} onReveal={() => setMediaRevealed(true)} />;
+  }
+
+  return (
+    <div className="combined-thread-media">
+      {images.length > 0 && (
+        <div className={`image-grid count-${Math.min(images.length, 4)}`}>
+          {images.slice(0, maxPostImages).map((image, imageIndex) => (
+            <button
+              className="image-button"
+              key={image.thumb || image.fullsize}
+              type="button"
+              onClick={() => {
+                const viewerImages = images
+                  .slice(0, maxPostImages)
+                  .map((viewerImage) => ({
+                    src: viewerImage.fullsize || viewerImage.thumb || "",
+                    alt: viewerImage.alt || "",
+                  }))
+                  .filter((viewerImage) => viewerImage.src);
+                if (viewerImages.length === 0) {
+                  return;
+                }
+                const selectedIndex = Math.max(0, viewerImages.findIndex((viewerImage) => viewerImage.src === (image.fullsize || image.thumb)));
+                onOpenImage?.({ images: viewerImages, index: selectedIndex });
+              }}
+              aria-label={image.alt ? "Open image" : "Open full size image"}
+            >
+              <img
+                alt={image.alt || ""}
+                src={image.thumb || image.fullsize}
+                loading="lazy"
+                decoding="async"
+                style={
+                  image.aspectRatio?.width && image.aspectRatio?.height
+                    ? { aspectRatio: `${image.aspectRatio.width} / ${image.aspectRatio.height}` }
+                    : undefined
+                }
+              />
+              {image.alt && <span className="alt-badge">ALT</span>}
+              {images.length > maxPostImages && imageIndex === maxPostImages - 1 && (
+                <span className="more-media-badge">+{images.length - maxPostImages}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+      {video && <VideoEmbedCard video={video} />}
+      {mediaRevealed && (mediaWarningValues.length > 0 || !showMedia) && (
+        <button type="button" className="sensitive-media-hide" onClick={() => setMediaRevealed(false)}>
+          <EyeOff size={13} /> Hide {mediaWarningValues.length > 0 ? "sensitive media" : "media"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function CombinedThreadViewCard({
   parts,
   activeReplyParentUri,
   canReply,
+  onOpenImage,
   onOpenPost,
   onOpenProfile,
   onOpenReply,
@@ -6733,6 +6817,7 @@ function CombinedThreadViewCard({
   parts: ThreadPart[];
   activeReplyParentUri: string | null;
   canReply: boolean;
+  onOpenImage: (image: ImageViewerState) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
   onOpenReply: (post: FeedPost) => void;
@@ -6817,10 +6902,13 @@ function CombinedThreadViewCard({
             return null;
           }
           return (
-            <p className={text.includes("\n") ? "post-text has-line-breaks" : "post-text"} key={post.uri}>
-              {index > 0 && <span className="combined-thread-break" aria-hidden="true" />}
-              {renderRichText(post.record.facets?.length ? post.record.text || "" : text, post.record.facets, onOpenProfile, onOpenTag)}
-            </p>
+            <section className="combined-thread-segment" key={post.uri}>
+              <p className={text.includes("\n") ? "post-text has-line-breaks" : "post-text"}>
+                {index > 0 && <span className="combined-thread-break" aria-hidden="true" />}
+                {renderRichText(text, post.record.facets, onOpenProfile, onOpenTag)}
+              </p>
+              <CombinedThreadPostMedia post={post} onOpenImage={onOpenImage} />
+            </section>
           );
         })}
       </div>
@@ -7515,10 +7603,12 @@ function ThreadView({
         <section className="thread-detail-header">
           <div>
             <span>Conversation</span>
-            <h2>{displayName(rootPost.author)}</h2>
-            <p>
-              @{rootPost.author.handle} · {formatPostTime(rootPost.record.createdAt || rootPost.indexedAt)}
-            </p>
+            <button type="button" className="thread-author-link" onClick={() => onOpenProfile(rootPost.author)}>
+              <h2>{displayName(rootPost.author)}</h2>
+              <p>
+                @{rootPost.author.handle} · {formatPostTime(rootPost.record.createdAt || rootPost.indexedAt)}
+              </p>
+            </button>
           </div>
           <dl>
             <div>
@@ -7602,6 +7692,7 @@ function ThreadView({
           parts={threadParts}
           activeReplyParentUri={activeReplyParentUri}
           canReply={canReply}
+          onOpenImage={onOpenImage}
           onOpenPost={onOpenPost}
           onOpenProfile={onOpenProfile}
           onOpenReply={(post) => setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri))}
