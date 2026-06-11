@@ -650,6 +650,11 @@ type ThreadedFeedItem = {
 type FeedRow = FeedItem | ThreadedFeedItem;
 type PostRefValue = { uri: string; cid: string };
 const CONTINUATION_REPLY_WINDOW_MS = 10 * 60 * 1000;
+type ThreadPart = {
+  node: ThreadPostNode;
+  partNumber: number;
+  replies: ThreadNode[];
+};
 
 function isThreadedFeedItem(row: FeedRow): row is ThreadedFeedItem {
   return "root" in row && "replies" in row;
@@ -685,6 +690,30 @@ function getContinuationReply(parent: FeedPost, replies: ThreadNode[]) {
     })
     .sort((first, second) => postSortTime(first.post) - postSortTime(second.post));
   return candidates[0] ?? null;
+}
+
+function buildThreadParts(root: ThreadNode): ThreadPart[] {
+  if (!isThreadPostNode(root)) {
+    return [];
+  }
+
+  const parts: ThreadPart[] = [];
+  let current: ThreadPostNode | null = root;
+  let partNumber = 1;
+
+  while (current) {
+    const replies = current.replies ?? [];
+    const continuation = getContinuationReply(current.post, replies);
+    parts.push({
+      node: current,
+      partNumber,
+      replies: continuation ? replies.filter((reply) => reply !== continuation) : replies,
+    });
+    current = continuation;
+    partNumber += 1;
+  }
+
+  return parts;
 }
 
 function buildThreadedFeedRows(items: FeedItem[]): FeedRow[] {
@@ -7071,6 +7100,7 @@ function ThreadView({
   const rootPost = findFirstThreadPost(thread.node);
   const parentNodes = collectThreadParents(thread.node);
   const threadRootRef = rootPost ? replyRootRefForPost(rootPost) : null;
+  const threadParts = thread.node ? buildThreadParts(thread.node) : [];
 
   if (thread.status === "loading") {
     return <LoadingState label="Loading thread" />;
@@ -7154,24 +7184,48 @@ function ThreadView({
           )}
         </section>
       )}
-      {renderThreadNode(thread.node, 0, expandedBranches, (uri) =>
-        setExpandedBranches((current) => ({ ...current, [uri]: !current[uri] })),
-        {
-          loadingBranches,
-          onLoadBranch,
-          onOpenImage,
-          onOpenPost,
-          onOpenProfile,
-          activeReplyParentUri,
-          canReply,
-          onOpenReply: (post) => setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)),
-          onCloseReply: () => setActiveReplyParentUri(null),
-          onReplied,
-          threadRootRef,
-        },
-        onOpenLinkPreview,
-        { currentDid, localLists, onToggleListPost },
-        1,
+      {threadParts.length > 1 && threadRootRef ? (
+        <LongThreadCard
+          parts={threadParts}
+          expandedReplies={expandedBranches}
+          onToggleReplies={(uri) => setExpandedBranches((current) => ({ ...current, [`part-replies:${uri}`]: !current[`part-replies:${uri}`] }))}
+          onToggleBranch={(uri) => setExpandedBranches((current) => ({ ...current, [uri]: !current[uri] }))}
+          handlers={{
+            loadingBranches,
+            onLoadBranch,
+            onOpenImage,
+            onOpenPost,
+            onOpenProfile,
+            activeReplyParentUri,
+            canReply,
+            onOpenReply: (post) => setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)),
+            onCloseReply: () => setActiveReplyParentUri(null),
+            onReplied,
+            threadRootRef,
+          }}
+          onOpenLinkPreview={onOpenLinkPreview}
+          savedState={{ currentDid, localLists, onToggleListPost }}
+        />
+      ) : (
+        renderThreadNode(thread.node, 0, expandedBranches, (uri) =>
+          setExpandedBranches((current) => ({ ...current, [uri]: !current[uri] })),
+          {
+            loadingBranches,
+            onLoadBranch,
+            onOpenImage,
+            onOpenPost,
+            onOpenProfile,
+            activeReplyParentUri,
+            canReply,
+            onOpenReply: (post) => setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)),
+            onCloseReply: () => setActiveReplyParentUri(null),
+            onReplied,
+            threadRootRef,
+          },
+          onOpenLinkPreview,
+          { currentDid, localLists, onToggleListPost },
+          1,
+        )
       )}
     </div>
   );
@@ -7231,6 +7285,135 @@ function renderThreadContextNode(
         />
       </div>
     </div>
+  );
+}
+
+function LongThreadCard({
+  parts,
+  expandedReplies,
+  onToggleReplies,
+  onToggleBranch,
+  handlers,
+  onOpenLinkPreview,
+  savedState,
+}: {
+  parts: ThreadPart[];
+  expandedReplies: Record<string, boolean>;
+  onToggleReplies: (uri: string) => void;
+  onToggleBranch: (uri: string) => void;
+  handlers: {
+    loadingBranches: Record<string, boolean>;
+    onLoadBranch: (uri: string) => void;
+    onOpenImage: (image: ImageViewerState) => void;
+    onOpenPost: (post: FeedPost) => void;
+    onOpenProfile: (profile: Profile) => void;
+    activeReplyParentUri: string | null;
+    canReply: boolean;
+    onOpenReply: (post: FeedPost) => void;
+    onCloseReply: () => void;
+    onReplied?: () => void;
+    threadRootRef: PostRefValue;
+  };
+  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
+  savedState: {
+    currentDid?: string;
+    localLists: LocalList[];
+    onToggleListPost: (listId: string, post: FeedPost) => void;
+  };
+}) {
+  const onOpenTag = useContext(TagSearchContext);
+  const rootPost = parts[0].node.post;
+  const firstTimeLabel = formatPostTime(rootPost.record.createdAt || rootPost.indexedAt);
+  const totalReplies = parts.reduce((total, part) => total + part.replies.length, 0);
+
+  return (
+    <article className="post-card long-thread-card text-only">
+      <header className="post-header">
+        <Avatar profile={rootPost.author} />
+        <div className="post-author-block">
+          <button className="author-button" type="button" onClick={() => handlers.onOpenProfile(rootPost.author)}>
+            <strong>{displayName(rootPost.author)}</strong>
+          </button>
+          <div className="post-byline">
+            <span>@{rootPost.author.handle}</span>
+            <span aria-hidden="true">·</span>
+            <button
+              className="post-timestamp"
+              type="button"
+              onClick={() => handlers.onOpenPost(rootPost)}
+              title={`Open thread posted ${firstTimeLabel}`}
+              aria-label={`Open thread posted ${firstTimeLabel}`}
+            >
+              {firstTimeLabel}
+            </button>
+          </div>
+        </div>
+      </header>
+      <div className="post-badges" aria-label="Thread context">
+        <span>{parts.length.toLocaleString()} part thread</span>
+        <span>{totalReplies === 1 ? "1 reply" : `${totalReplies.toLocaleString()} replies`}</span>
+      </div>
+      <div className="long-thread-parts">
+        {parts.map((part) => {
+          const post = part.node.post;
+          const text = post.record.text?.trim() || "";
+          const replyCount = part.replies.length;
+          const expanded = !!expandedReplies[`part-replies:${post.uri}`];
+          return (
+            <section className="long-thread-part" key={post.uri}>
+              <div className="long-thread-part-label">Part {part.partNumber} of {parts.length}</div>
+              {text ? (
+                <p className={text.includes("\n") ? "post-text has-line-breaks" : "post-text"}>
+                  {renderRichText(post.record.facets?.length ? post.record.text || "" : text, post.record.facets, handlers.onOpenProfile, onOpenTag)}
+                </p>
+              ) : (
+                <p className="post-text muted">Part {part.partNumber} has no plain text.</p>
+              )}
+              <div className="long-thread-part-actions">
+                <button type="button" onClick={() => onToggleReplies(post.uri)} disabled={replyCount === 0}>
+                  {replyCount === 1 ? "1 reply to this part" : `${replyCount.toLocaleString()} replies to this part`}
+                </button>
+                <button
+                  type="button"
+                  className={handlers.activeReplyParentUri === post.uri ? "active" : ""}
+                  onClick={() => handlers.onOpenReply(post)}
+                  disabled={!handlers.canReply}
+                >
+                  <MessageCircle size={15} /> Reply
+                </button>
+              </div>
+              {handlers.activeReplyParentUri === post.uri && (
+                <ReplyComposer
+                  parent={post}
+                  root={handlers.threadRootRef}
+                  canReply={handlers.canReply}
+                  onClose={handlers.onCloseReply}
+                  onReplied={handlers.onReplied}
+                />
+              )}
+              {expanded && part.replies.length > 0 && (
+                <div className="long-thread-replies">
+                  <div className="thread-replies-divider">
+                    <span>Replies to part {part.partNumber}</span>
+                  </div>
+                  {part.replies.map((reply) =>
+                    renderThreadNode(
+                      reply,
+                      0,
+                      expandedReplies,
+                      onToggleBranch,
+                      handlers,
+                      onOpenLinkPreview,
+                      savedState,
+                    ),
+                  )}
+                </div>
+              )}
+            </section>
+          );
+        })}
+      </div>
+    </article>
   );
 }
 

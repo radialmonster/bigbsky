@@ -3572,6 +3572,89 @@ button.surface-action {
   color: var(--app-text);
 }
 
+.long-thread-card {
+  border-color: rgba(117, 175, 255, 0.28);
+}
+
+.long-thread-parts {
+  display: grid;
+  gap: 0;
+  margin-top: 12px;
+}
+
+.long-thread-part {
+  padding: 0 0 16px;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.long-thread-part + .long-thread-part {
+  padding-top: 16px;
+}
+
+.long-thread-part:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.long-thread-part-label {
+  margin-bottom: 8px;
+  color: var(--app-text-soft);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.long-thread-part .post-text {
+  margin-top: 0;
+}
+
+.long-thread-part-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.long-thread-part-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0;
+  background: transparent;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.long-thread-part-actions button:hover:not(:disabled),
+.long-thread-part-actions button.active {
+  color: var(--bsky-blue-soft);
+  text-decoration: underline;
+}
+
+.long-thread-part-actions button:disabled {
+  cursor: default;
+  opacity: 0.62;
+}
+
+.long-thread-replies {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding-left: 18px;
+  border-left: 2px solid rgba(117, 175, 255, 0.34);
+}
+
+.long-thread-replies .thread-node {
+  margin-left: 0 !important;
+}
+
+.long-thread-replies .post-card {
+  background: rgba(255, 255, 255, 0.025);
+}
+
 .thread-parent-context {
   display: grid;
   gap: 10px;
