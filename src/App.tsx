@@ -2543,12 +2543,6 @@ export function App() {
 
     void loadFeed(activeSource, feedState.cursor);
   };
-  // Force a fresh load of the active feed (bypassing the in-memory cache) so a
-  // just-published post shows up without a manual refresh.
-  const reloadActiveFeed = useCallback(() => {
-    delete feedCacheRef.current[`feed:${activeSource.id}`];
-    void loadFeed(activeSource);
-  }, [activeSource, loadFeed]);
   const reloadCurrentProfile = useCallback(() => {
     if (route.kind !== "profile") {
       return;
@@ -3005,13 +2999,6 @@ export function App() {
             className={`timeline ${density}`}
             ref={timelineRef}
           >
-            {authState.session && (
-              <Composer
-                draft={composerDraft}
-                onDraftChange={setComposerDraft}
-                onPosted={reloadActiveFeed}
-              />
-            )}
             {feedState.status === "loading" && <LoadingState label="Loading public Bluesky posts" />}
             {feedState.status === "error" && <ErrorState message={feedState.error || "Feed failed to load."} />}
             {feedState.status === "rate-limit" && <RateLimitState message={feedState.error} />}
