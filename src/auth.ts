@@ -619,6 +619,7 @@ export async function publishPost(opts: { text: string; reply?: ReplyRef; langs?
   const embed = await buildImageEmbed(agent as never, opts.images ?? []);
   const result = await agent.post({
     text: richText.text,
+    createdAt: new Date().toISOString(),
     ...(richText.facets ? { facets: richText.facets } : {}),
     ...(opts.reply ? { reply: opts.reply } : {}),
     ...(opts.langs && opts.langs.length > 0 ? { langs: opts.langs } : {}),
