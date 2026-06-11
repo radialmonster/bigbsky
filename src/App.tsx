@@ -6213,6 +6213,8 @@ function PostCard({
   const recordEmbed = getRecordEmbed(post.embed);
   const video = getVideoEmbed(post.embed);
   const text = post.record.text?.trim() || "";
+  const postTimestamp = post.record.createdAt || post.indexedAt;
+  const postTimeLabel = formatPostTime(postTimestamp);
   const preservesLineBreaks = text.includes("\n");
   const hasRichContent = images.length > 0 || !!external || !!recordEmbed || !!video;
   const postVariant = images.length > 0 || !!video ? "has-media" : external ? "has-link" : recordEmbed ? "has-quote" : "text-only";
@@ -6267,10 +6269,24 @@ function PostCard({
     <article className={`post-card ${postVariant}`}>
       <header className="post-header">
         <Avatar profile={post.author} />
-        <button className="author-button" type="button" onClick={() => onOpenProfile?.(post.author)}>
-          <strong>{displayName(post.author)}</strong>
-          <span>@{post.author.handle}</span>
-        </button>
+        <div className="post-author-block">
+          <button className="author-button" type="button" onClick={() => onOpenProfile?.(post.author)}>
+            <strong>{displayName(post.author)}</strong>
+          </button>
+          <div className="post-byline">
+            <span>@{post.author.handle}</span>
+            <span aria-hidden="true">·</span>
+            <button
+              className="post-timestamp"
+              type="button"
+              onClick={() => onOpenPost?.(post)}
+              title={`Open thread posted ${postTimeLabel}`}
+              aria-label={`Open thread posted ${postTimeLabel}`}
+            >
+              {postTimeLabel}
+            </button>
+          </div>
+        </div>
       </header>
       {item.reason?.by && <p className="reason">Reposted by {displayName(item.reason.by)}</p>}
       {item.reply?.parent && <p className="reason">Replying in a thread from @{item.reply.parent.author.handle}</p>}

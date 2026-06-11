@@ -2647,6 +2647,34 @@ button.surface-action {
   text-decoration: underline;
 }
 
+.post-author-block {
+  min-width: 0;
+}
+
+.post-byline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--app-text-muted);
+  font-size: 13px;
+}
+
+.post-byline span {
+  display: inline;
+}
+
+.post-byline span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.post-timestamp:hover {
+  color: var(--bsky-blue-soft);
+  text-decoration: underline;
+}
+
 .post-header span,
 .reason {
   color: var(--app-text-muted);
@@ -2658,6 +2686,17 @@ button.surface-action {
   height: 34px;
   background: transparent;
   color: var(--app-text-muted);
+}
+
+.post-header button.post-timestamp {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--app-text-muted);
+  font: inherit;
+  text-align: left;
 }
 
 .post-badges {
