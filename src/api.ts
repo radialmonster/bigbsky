@@ -391,7 +391,7 @@ export function getPostThreadByUri(uri: string, signal?: AbortSignal) {
     "app.bsky.feed.getPostThread",
     {
       uri,
-      depth: "6",
+      depth: "100",
       parentHeight: "12",
     },
     signal,

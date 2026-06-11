@@ -464,7 +464,7 @@ export async function getPostThreadByUriAuthed(uri: string, signal?: AbortSignal
   const { Agent } = await import("@atproto/api");
   const agent = new Agent(session);
   const response = await agent.app.bsky.feed.getPostThread(
-    { uri, depth: 6, parentHeight: 12 },
+    { uri, depth: 100, parentHeight: 12 },
     signal ? { signal } : undefined,
   );
   return { thread: response.data.thread as unknown as ThreadNode };
