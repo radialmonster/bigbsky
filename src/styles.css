@@ -2756,34 +2756,6 @@ button.surface-action {
   margin-top: 0;
 }
 
-.thread-combined-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin-top: 8px;
-  color: var(--app-text-muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.thread-combined-meta button,
-.thread-combined-meta span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 24px;
-  padding: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-}
-
-.thread-combined-meta button:hover {
-  color: var(--bsky-blue-soft);
-  text-decoration: underline;
-}
-
 .moderation-notice {
   display: flex;
   align-items: center;

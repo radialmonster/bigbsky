@@ -6320,6 +6320,9 @@ function ThreadedPostCard({
   const posts = [thread.root.post, ...thread.replies.map((item) => item.post)];
   const rootPost = thread.root.post;
   const postTimeLabel = formatPostTime(rootPost.record.createdAt || rootPost.indexedAt);
+  const replyCount = posts.reduce((total, post) => total + (post.replyCount ?? 0), 0);
+  const repostCount = posts.reduce((total, post) => total + (post.repostCount ?? 0), 0);
+  const likeCount = posts.reduce((total, post) => total + (post.likeCount ?? 0), 0);
 
   return (
     <article className="post-card thread-combined-card text-only">
@@ -6345,7 +6348,7 @@ function ThreadedPostCard({
         </div>
       </header>
       <div className="post-badges" aria-label="Thread context">
-        <span>{posts.length.toLocaleString()} post thread</span>
+        <span>{posts.length.toLocaleString()} posts combined</span>
       </div>
       <div className="thread-combined-body">
         {posts.map((post, index) => {
@@ -6360,27 +6363,22 @@ function ThreadedPostCard({
               ) : (
                 <p className="post-text muted">Post {index + 1} has no plain text.</p>
               )}
-              <div className="thread-combined-meta">
-                <button type="button" onClick={() => onOpenPost?.(post)}>
-                  {formatPostTime(post.record.createdAt || post.indexedAt)}
-                </button>
-                <span>
-                  <MessageCircle size={14} /> {post.replyCount ?? 0}
-                </span>
-                <span>
-                  <Repeat2 size={14} /> {post.repostCount ?? 0}
-                </span>
-                <span>
-                  <Heart size={14} /> {post.likeCount ?? 0}
-                </span>
-              </div>
             </section>
           );
         })}
       </div>
       <footer className="post-actions">
+        <button type="button" onClick={() => onOpenPost?.(rootPost)} title="Open full thread replies">
+          <MessageCircle size={16} /> {replyCount}
+        </button>
+        <span title="Total reposts across combined posts">
+          <Repeat2 size={16} /> {repostCount}
+        </span>
+        <span title="Total likes across combined posts">
+          <Heart size={16} /> {likeCount}
+        </span>
         <button type="button" onClick={() => onOpenPost?.(rootPost)} title="Open full thread">
-          <MessageCircle size={16} /> Open thread
+          Open thread
         </button>
       </footer>
     </article>
