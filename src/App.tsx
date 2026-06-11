@@ -340,6 +340,7 @@ const searchLanguages = [
 ];
 const recentStorageKey = "bigbsky:recent";
 const composerDraftStorageKey = "bigbsky:composer-draft";
+const MAX_THREAD_POSTS = 5;
 const localListsStorageKey = "bigbsky:local-lists";
 const workspaceWidthStorageKey = "bigbsky:workspace-width";
 const widthByContextStorageKey = "bigbsky:width-by-context";
@@ -420,7 +421,7 @@ function readComposerDraft() {
       posts?: string[];
     };
     return {
-      posts: Array.isArray(draft.posts) && draft.posts.length > 0 ? draft.posts : [""],
+      posts: Array.isArray(draft.posts) && draft.posts.length > 0 ? draft.posts.slice(0, MAX_THREAD_POSTS) : [""],
     };
   } catch {
     return { posts: [""] };
@@ -5425,8 +5426,9 @@ function Composer({
   }, []);
 
   function setDrafts(nextPosts: string[]) {
+    const limitedPosts = nextPosts.slice(0, MAX_THREAD_POSTS);
     onDraftChange({
-      posts: nextPosts.length > 0 ? nextPosts : [""],
+      posts: limitedPosts.length > 0 ? limitedPosts : [""],
     });
   }
 
@@ -5635,7 +5637,12 @@ function Composer({
       {postError && <p className="composer-error" role="alert">{postError}</p>}
       <div className="composer-footer">
         <span>{posting ? "Publishing…" : hasContent ? "Draft autosaved locally" : "No local draft"}</span>
-        <button type="button" onClick={() => setDrafts([...drafts, ""])} title="Add post to thread" disabled={posting}>
+        <button
+          type="button"
+          onClick={() => setDrafts([...drafts, ""])}
+          title={drafts.length >= MAX_THREAD_POSTS ? "Thread composer limit reached" : "Add post to thread"}
+          disabled={posting || drafts.length >= MAX_THREAD_POSTS}
+        >
           <Plus size={17} /> Add post
         </button>
         <button type="button" onClick={clearDraft} disabled={!hasContent || posting}>
