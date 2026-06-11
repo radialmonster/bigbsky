@@ -3541,6 +3541,31 @@ button.surface-action {
   font-size: 13px;
 }
 
+.thread-view-mode {
+  display: inline-flex;
+  grid-column: 1 / -1;
+  width: max-content;
+  padding: 3px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: #0f1724;
+}
+
+.thread-view-mode button {
+  min-width: 96px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--app-text-muted);
+  font-weight: 800;
+}
+
+.thread-view-mode button.selected {
+  background: var(--bsky-blue);
+  color: #fff;
+}
+
 .thread-stat-button {
   padding: 0;
   background: transparent;
@@ -3611,8 +3636,34 @@ button.surface-action {
   color: var(--app-text);
 }
 
+.combined-thread-view-card,
 .long-thread-card {
   border-color: rgba(117, 175, 255, 0.28);
+}
+
+.combined-thread-text {
+  margin-top: 12px;
+}
+
+.combined-thread-text .post-text {
+  margin-top: 0;
+  margin-bottom: 14px;
+}
+
+.combined-thread-text .post-text:last-child {
+  margin-bottom: 0;
+}
+
+.combined-thread-break {
+  display: block;
+  height: 0;
+  margin-top: 14px;
+}
+
+.combined-thread-actions {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--app-border);
 }
 
 .long-thread-parts {

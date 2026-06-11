@@ -6547,14 +6547,48 @@ function ThreadedPostCard({
   replyActive?: boolean;
 }) {
   const onOpenTag = useContext(TagSearchContext);
+  const likeCtx = useContext(LikeContext);
   const bookmarkCtx = useContext(BookmarkContext);
+  const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
   const posts = [thread.root.post, ...thread.replies.map((item) => item.post)];
   const rootPost = thread.root.post;
+  const likeView = likeCtx?.getState(rootPost);
   const bookmarkView = bookmarkCtx?.getState(rootPost);
   const postTimeLabel = formatPostTime(rootPost.record.createdAt || rootPost.indexedAt);
   const replyCount = posts.reduce((total, post) => total + (post.replyCount ?? 0), 0);
   const repostCount = posts.reduce((total, post) => total + (post.repostCount ?? 0), 0);
+  const quoteCount = posts.reduce((total, post) => total + (post.quoteCount ?? 0), 0);
   const likeCount = posts.reduce((total, post) => total + (post.likeCount ?? 0), 0);
+  const handleShare = async () => {
+    const url = postBskyUrl(rootPost);
+    const title = `${displayName(rootPost.author)} on Bluesky`;
+    const text = posts
+      .map((post) => post.record.text?.trim())
+      .filter(Boolean)
+      .join("\n\n");
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, text: text || title, url });
+        setShareState("shared");
+      } else {
+        await navigator.clipboard?.writeText(url);
+        setShareState("copied");
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+      try {
+        await navigator.clipboard?.writeText(url);
+        setShareState("copied");
+      } catch {
+        setShareState("error");
+      }
+    }
+
+    window.setTimeout(() => setShareState("idle"), 1800);
+  };
 
   return (
     <article className="post-card thread-combined-card text-only">
@@ -6582,51 +6616,229 @@ function ThreadedPostCard({
       <div className="post-badges" aria-label="Thread context">
         <span>{posts.length.toLocaleString()} posts combined</span>
       </div>
-      <div className="thread-combined-body">
+      <div className="combined-thread-text">
         {posts.map((post, index) => {
           const text = post.record.text?.trim() || "";
           const preservesLineBreaks = text.includes("\n");
           return (
-            <section className="thread-combined-part" key={post.uri}>
-              {text ? (
-                <p className={preservesLineBreaks ? "post-text has-line-breaks" : "post-text"}>
-                  {renderRichText(post.record.facets?.length ? post.record.text || "" : text, post.record.facets, onOpenProfile, onOpenTag)}
-                </p>
-              ) : (
-                <p className="post-text muted">Post {index + 1} has no plain text.</p>
-              )}
-            </section>
+            <p className={preservesLineBreaks ? "post-text has-line-breaks" : "post-text"} key={post.uri}>
+              {index > 0 && <span className="combined-thread-break" aria-hidden="true" />}
+              {text
+                ? renderRichText(post.record.facets?.length ? post.record.text || "" : text, post.record.facets, onOpenProfile, onOpenTag)
+                : `Post ${index + 1} has no plain text.`}
+            </p>
           );
         })}
       </div>
-      <footer className="post-actions">
+      <footer className="post-actions combined-thread-actions">
         <button type="button" onClick={() => onOpenPost?.(rootPost)} title="Open full thread replies">
           <MessageCircle size={16} /> {replyCount}
         </button>
         <span title="Total reposts across combined posts">
           <Repeat2 size={16} /> {repostCount}
         </span>
-        <span title="Total likes across combined posts">
-          <Heart size={16} /> {likeCount}
+        <span title="Total quotes across combined posts">
+          <Share2 size={16} /> {quoteCount}
         </span>
+        {likeCtx?.canLike && likeView ? (
+          <button
+            type="button"
+            className={likeView.liked ? "liked" : ""}
+            onClick={() => likeCtx.toggle(rootPost)}
+            title={likeView.liked ? "Unlike first post" : "Like first post"}
+          >
+            <Heart size={16} /> {likeCount}
+          </button>
+        ) : (
+          <span title="Total likes across combined posts">
+            <Heart size={16} /> {likeCount}
+          </span>
+        )}
         {bookmarkCtx?.canBookmark && bookmarkView && (
           <button
             type="button"
             className={bookmarkView.bookmarked ? "bookmarked" : ""}
             onClick={() => bookmarkCtx.toggle(rootPost)}
-            title={bookmarkView.bookmarked ? "Remove thread bookmark" : "Bookmark thread"}
+            title={bookmarkView.bookmarked ? "Remove bookmark from first post" : "Bookmark first post"}
           >
             <Bookmark size={16} /> {bookmarkView.bookmarked ? "Bookmarked" : "Bookmark"}
           </button>
         )}
-        <button type="button" onClick={() => onOpenPost?.(rootPost)} title="Open full thread">
-          Open thread
+        <button type="button" onClick={handleShare} title="Share first post">
+          <Share2 size={16} /> {shareState === "copied" ? "Copied" : shareState === "shared" ? "Shared" : shareState === "error" ? "Copy failed" : "Share"}
         </button>
         {onReply && (
-          <button type="button" className={replyActive ? "active" : ""} onClick={() => onReply(rootPost)} title="Reply to this thread">
+          <button type="button" className={replyActive ? "active" : ""} onClick={() => onReply(rootPost)} title="Reply to the first post in this thread">
             <MessageCircle size={16} /> Reply
           </button>
         )}
+      </footer>
+    </article>
+  );
+}
+
+function CombinedThreadViewCard({
+  parts,
+  activeReplyParentUri,
+  canReply,
+  onOpenPost,
+  onOpenProfile,
+  onOpenReply,
+  onCloseReply,
+  onReplied,
+  threadRootRef,
+}: {
+  parts: ThreadPart[];
+  activeReplyParentUri: string | null;
+  canReply: boolean;
+  onOpenPost: (post: FeedPost) => void;
+  onOpenProfile: (profile: Profile) => void;
+  onOpenReply: (post: FeedPost) => void;
+  onCloseReply: () => void;
+  onReplied?: () => void;
+  threadRootRef: PostRefValue;
+}) {
+  const onOpenTag = useContext(TagSearchContext);
+  const likeCtx = useContext(LikeContext);
+  const bookmarkCtx = useContext(BookmarkContext);
+  const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
+  const rootPost = parts[0].node.post;
+  const posts = parts.map((part) => part.node.post);
+  const likeView = likeCtx?.getState(rootPost);
+  const bookmarkView = bookmarkCtx?.getState(rootPost);
+  const postTimeLabel = formatPostTime(rootPost.record.createdAt || rootPost.indexedAt);
+  const replyCount = posts.reduce((total, post) => total + (post.replyCount ?? 0), 0);
+  const repostCount = posts.reduce((total, post) => total + (post.repostCount ?? 0), 0);
+  const quoteCount = posts.reduce((total, post) => total + (post.quoteCount ?? 0), 0);
+  const likeCount = posts.reduce((total, post) => total + (post.likeCount ?? 0), 0);
+
+  const handleShare = async () => {
+    const url = postBskyUrl(rootPost);
+    const title = `${displayName(rootPost.author)} on Bluesky`;
+    const text = posts
+      .map((post) => post.record.text?.trim())
+      .filter(Boolean)
+      .join("\n\n");
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, text: text || title, url });
+        setShareState("shared");
+      } else {
+        await navigator.clipboard?.writeText(url);
+        setShareState("copied");
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+      try {
+        await navigator.clipboard?.writeText(url);
+        setShareState("copied");
+      } catch {
+        setShareState("error");
+      }
+    }
+
+    window.setTimeout(() => setShareState("idle"), 1800);
+  };
+
+  return (
+    <article className="post-card combined-thread-view-card text-only">
+      <header className="post-header">
+        <Avatar profile={rootPost.author} />
+        <div className="post-author-block">
+          <button className="author-button" type="button" onClick={() => onOpenProfile(rootPost.author)}>
+            <strong>{displayName(rootPost.author)}</strong>
+          </button>
+          <div className="post-byline">
+            <span>@{rootPost.author.handle}</span>
+            <span aria-hidden="true">·</span>
+            <button
+              className="post-timestamp"
+              type="button"
+              onClick={() => onOpenPost(rootPost)}
+              title={`Open thread posted ${postTimeLabel}`}
+              aria-label={`Open thread posted ${postTimeLabel}`}
+            >
+              {postTimeLabel}
+            </button>
+          </div>
+        </div>
+      </header>
+      <div className="post-badges" aria-label="Thread context">
+        <span>{posts.length.toLocaleString()} posts combined</span>
+      </div>
+      <div className="combined-thread-text">
+        {parts.map((part, index) => {
+          const post = part.node.post;
+          const text = post.record.text?.trim() || "";
+          if (!text) {
+            return null;
+          }
+          return (
+            <p className={text.includes("\n") ? "post-text has-line-breaks" : "post-text"} key={post.uri}>
+              {index > 0 && <span className="combined-thread-break" aria-hidden="true" />}
+              {renderRichText(post.record.facets?.length ? post.record.text || "" : text, post.record.facets, onOpenProfile, onOpenTag)}
+            </p>
+          );
+        })}
+      </div>
+      {activeReplyParentUri === rootPost.uri && (
+        <ReplyComposer
+          parent={rootPost}
+          root={threadRootRef}
+          canReply={canReply}
+          onClose={onCloseReply}
+          onReplied={onReplied}
+        />
+      )}
+      <footer className="post-actions combined-thread-actions">
+        <button type="button" onClick={() => onOpenPost(rootPost)} title="Open full thread replies">
+          <MessageCircle size={16} /> {replyCount}
+        </button>
+        <span title="Total reposts across combined posts">
+          <Repeat2 size={16} /> {repostCount}
+        </span>
+        <span title="Total quotes across combined posts">
+          <Share2 size={16} /> {quoteCount}
+        </span>
+        {likeCtx?.canLike && likeView ? (
+          <button
+            type="button"
+            className={likeView.liked ? "liked" : ""}
+            onClick={() => likeCtx.toggle(rootPost)}
+            title={likeView.liked ? "Unlike first post" : "Like first post"}
+          >
+            <Heart size={16} /> {likeCount}
+          </button>
+        ) : (
+          <span title="Total likes across combined posts">
+            <Heart size={16} /> {likeCount}
+          </span>
+        )}
+        {bookmarkCtx?.canBookmark && bookmarkView ? (
+          <button
+            type="button"
+            className={bookmarkView.bookmarked ? "bookmarked" : ""}
+            onClick={() => bookmarkCtx.toggle(rootPost)}
+            title={bookmarkView.bookmarked ? "Remove bookmark from first post" : "Bookmark first post"}
+          >
+            <Bookmark size={16} /> {bookmarkView.bookmarked ? "Bookmarked" : "Bookmark"}
+          </button>
+        ) : null}
+        <button type="button" onClick={handleShare} title="Share first post">
+          <Share2 size={16} /> {shareState === "copied" ? "Copied" : shareState === "shared" ? "Shared" : shareState === "error" ? "Copy failed" : "Share"}
+        </button>
+        <button
+          type="button"
+          className={activeReplyParentUri === rootPost.uri ? "active" : ""}
+          onClick={() => onOpenReply(rootPost)}
+          disabled={!canReply}
+          title="Reply to the first post in this thread"
+        >
+          <MessageCircle size={16} /> Reply
+        </button>
       </footer>
     </article>
   );
@@ -7238,10 +7450,12 @@ function ThreadView({
   const [expandedBranches, setExpandedBranches] = useState<Record<string, boolean>>({});
   const [engagement, setEngagement] = useState<null | "reposts" | "quotes" | "likes">(null);
   const [activeReplyParentUri, setActiveReplyParentUri] = useState<string | null>(null);
+  const [threadDisplayMode, setThreadDisplayMode] = useState<"combined" | "separated">("combined");
   const rootPost = findFirstThreadPost(thread.node);
   const parentNodes = collectThreadParents(thread.node);
   const threadRootRef = rootPost ? replyRootRefForPost(rootPost) : null;
   const threadParts = thread.node ? buildThreadParts(thread.node) : [];
+  const canCombineThread = threadParts.length > 1;
 
   if (thread.status === "loading") {
     return <LoadingState label="Loading thread" />;
@@ -7296,6 +7510,24 @@ function ThreadView({
             <Users size={15} />
             <span>{replyPermissionLabel(rootPost)}</span>
           </div>
+          {canCombineThread && (
+            <div className="thread-view-mode" role="group" aria-label="Thread display mode">
+              <button
+                type="button"
+                className={threadDisplayMode === "combined" ? "selected" : ""}
+                onClick={() => setThreadDisplayMode("combined")}
+              >
+                Combined
+              </button>
+              <button
+                type="button"
+                className={threadDisplayMode === "separated" ? "selected" : ""}
+                onClick={() => setThreadDisplayMode("separated")}
+              >
+                Separated
+              </button>
+            </div>
+          )}
           {engagement && (
             <ThreadEngagementPanel
               uri={rootPost.uri}
@@ -7325,7 +7557,19 @@ function ThreadView({
           )}
         </section>
       )}
-      {threadParts.length > 1 && threadRootRef ? (
+      {canCombineThread && threadDisplayMode === "combined" && threadRootRef ? (
+        <CombinedThreadViewCard
+          parts={threadParts}
+          activeReplyParentUri={activeReplyParentUri}
+          canReply={canReply}
+          onOpenPost={onOpenPost}
+          onOpenProfile={onOpenProfile}
+          onOpenReply={(post) => setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri))}
+          onCloseReply={() => setActiveReplyParentUri(null)}
+          onReplied={onReplied}
+          threadRootRef={threadRootRef}
+        />
+      ) : threadParts.length > 1 && threadRootRef ? (
         <LongThreadCard
           parts={threadParts}
           expandedReplies={expandedBranches}
