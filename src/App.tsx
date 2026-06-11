@@ -6672,6 +6672,33 @@ function MediaHiddenButton({ kind, onReveal }: { kind: "image" | "video"; onReve
   );
 }
 
+function ReplyLimitedNotice() {
+  return (
+    <p className="reply-limited-notice" role="status">
+      <ShieldAlert size={14} />
+      <span>Replies are limited for this post.</span>
+    </p>
+  );
+}
+
+function useReplyGate(post: FeedPost, onReply?: (post: FeedPost) => void) {
+  const [showReplyLimited, setShowReplyLimited] = useState(false);
+
+  useEffect(() => {
+    setShowReplyLimited(false);
+  }, [post.uri]);
+
+  const handleReplyClick = () => {
+    if (post.viewer?.replyDisabled) {
+      setShowReplyLimited(true);
+      return;
+    }
+    onReply?.(post);
+  };
+
+  return { showReplyLimited, handleReplyClick };
+}
+
 function ThreadedPostCard({
   thread,
   onOpenImage,
@@ -6701,6 +6728,7 @@ function ThreadedPostCard({
   const quoteCount = posts.reduce((total, post) => total + (post.quoteCount ?? 0), 0);
   const likeCount = posts.reduce((total, post) => total + (post.likeCount ?? 0), 0);
   const hideThreadMarkers = canHideCombinedThreadMarkers(posts);
+  const { showReplyLimited, handleReplyClick } = useReplyGate(rootPost, onReply);
   const handleShare = async () => {
     const url = postBskyUrl(rootPost);
     const title = `${displayName(rootPost.author)} on Bluesky`;
@@ -6817,11 +6845,12 @@ function ThreadedPostCard({
           <LinkIcon size={16} /> Open on Bluesky
         </a>
         {onReply && (
-          <button type="button" className={replyActive ? "active" : ""} onClick={() => onReply(rootPost)} title="Reply to the first post in this thread">
+          <button type="button" className={replyActive ? "active" : ""} onClick={handleReplyClick} title="Reply to the first post in this thread">
             <MessageCircle size={16} /> Reply
           </button>
         )}
       </footer>
+      {showReplyLimited && <ReplyLimitedNotice />}
     </article>
   );
 }
@@ -6936,6 +6965,7 @@ function PostActionBar({
   const blockView = blockCtx?.getState(post.author);
   const deletePostCtx = useContext(DeletePostContext);
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
+  const { showReplyLimited, handleReplyClick } = useReplyGate(post, onReply);
   const displayedCommentCount = commentCount ?? post.replyCount ?? 0;
 
   const handleShare = async () => {
@@ -6967,98 +6997,101 @@ function PostActionBar({
   };
 
   return (
-    <footer className="post-actions">
-      <button type="button" onClick={() => onOpenPost?.(post)} title={commentTitle}>
-        <MessageCircle size={16} /> {displayedCommentCount}
-      </button>
-      <span>
-        <Repeat2 size={16} /> {post.repostCount ?? 0}
-      </span>
-      {likeCtx?.canLike && likeView ? (
-        <button
-          type="button"
-          className={likeView.liked ? "liked" : ""}
-          onClick={() => likeCtx.toggle(post)}
-          title={likeView.liked ? "Unlike" : "Like"}
-        >
-          <Heart size={16} /> {likeView.count}
+    <>
+      <footer className="post-actions">
+        <button type="button" onClick={() => onOpenPost?.(post)} title={commentTitle}>
+          <MessageCircle size={16} /> {displayedCommentCount}
         </button>
-      ) : (
         <span>
-          <Heart size={16} /> {post.likeCount ?? 0}
+          <Repeat2 size={16} /> {post.repostCount ?? 0}
         </span>
-      )}
-      {bookmarkCtx?.canBookmark && bookmarkView ? (
-        <button
-          className={bookmarkView.bookmarked ? "bookmarked" : ""}
-          type="button"
-          onClick={() => bookmarkCtx.toggle(post)}
-          title={bookmarkView.bookmarked ? "Remove bookmark" : "Bookmark post"}
-        >
-          <Bookmark size={16} /> {bookmarkView.bookmarked ? "Bookmarked" : "Bookmark"}
+        {likeCtx?.canLike && likeView ? (
+          <button
+            type="button"
+            className={likeView.liked ? "liked" : ""}
+            onClick={() => likeCtx.toggle(post)}
+            title={likeView.liked ? "Unlike" : "Like"}
+          >
+            <Heart size={16} /> {likeView.count}
+          </button>
+        ) : (
+          <span>
+            <Heart size={16} /> {post.likeCount ?? 0}
+          </span>
+        )}
+        {bookmarkCtx?.canBookmark && bookmarkView ? (
+          <button
+            className={bookmarkView.bookmarked ? "bookmarked" : ""}
+            type="button"
+            onClick={() => bookmarkCtx.toggle(post)}
+            title={bookmarkView.bookmarked ? "Remove bookmark" : "Bookmark post"}
+          >
+            <Bookmark size={16} /> {bookmarkView.bookmarked ? "Bookmarked" : "Bookmark"}
+          </button>
+        ) : null}
+        <button type="button" onClick={handleShare} title="Share post">
+          <Share2 size={16} /> {shareState === "copied" ? "Copied" : shareState === "shared" ? "Shared" : shareState === "error" ? "Copy failed" : "Share"}
         </button>
-      ) : null}
-      <button type="button" onClick={handleShare} title="Share post">
-        <Share2 size={16} /> {shareState === "copied" ? "Copied" : shareState === "shared" ? "Shared" : shareState === "error" ? "Copy failed" : "Share"}
-      </button>
-      {onReply && (
-        <button
-          type="button"
-          className={replyActive ? "active" : ""}
-          onClick={() => onReply(post)}
-          disabled={!canReply}
-          title="Reply to this post"
-        >
-          <MessageCircle size={16} /> Reply
-        </button>
-      )}
-      {localLists.length > 0 && (
-        <details className="post-list-menu">
-          <summary title="Add post to local lists">
-            <List size={16} /> Lists
+        {onReply && (
+          <button
+            type="button"
+            className={replyActive ? "active" : ""}
+            onClick={handleReplyClick}
+            disabled={!canReply}
+            title="Reply to this post"
+          >
+            <MessageCircle size={16} /> Reply
+          </button>
+        )}
+        {localLists.length > 0 && (
+          <details className="post-list-menu">
+            <summary title="Add post to local lists">
+              <List size={16} /> Lists
+            </summary>
+            <div>
+              {localLists.map((list) => {
+                const isListed = !!list.posts?.some((listPost) => listPost.uri === post.uri);
+                return (
+                  <button
+                    className={isListed ? "listed" : ""}
+                    key={list.id}
+                    type="button"
+                    onClick={() => onToggleListPost?.(list.id, post)}
+                  >
+                    {isListed ? "Remove from" : "Add to"} {list.name}
+                  </button>
+                );
+              })}
+            </div>
+          </details>
+        )}
+        <details className="post-list-menu post-more-menu">
+          <summary title="More options">
+            <MoreHorizontal size={16} />
           </summary>
           <div>
-            {localLists.map((list) => {
-              const isListed = !!list.posts?.some((listPost) => listPost.uri === post.uri);
-              return (
-                <button
-                  className={isListed ? "listed" : ""}
-                  key={list.id}
-                  type="button"
-                  onClick={() => onToggleListPost?.(list.id, post)}
-                >
-                  {isListed ? "Remove from" : "Add to"} {list.name}
-                </button>
-              );
-            })}
+            <a href={postBskyUrl(post)} target="_blank" rel="noreferrer">
+              Open on Bluesky
+            </a>
+            {canDeletePost && (
+              <button type="button" className="danger-action" onClick={() => deletePostCtx?.deletePost(post)}>
+                Delete post
+              </button>
+            )}
+            {canBlockAuthor && (
+              <button
+                type="button"
+                className={blockView?.blocked ? "block-listed" : ""}
+                onClick={() => blockCtx?.toggle(post.author)}
+              >
+                {blockView?.blocked ? `Unblock @${post.author.handle}` : `Block @${post.author.handle}`}
+              </button>
+            )}
           </div>
         </details>
-      )}
-      <details className="post-list-menu post-more-menu">
-        <summary title="More options">
-          <MoreHorizontal size={16} />
-        </summary>
-        <div>
-          <a href={postBskyUrl(post)} target="_blank" rel="noreferrer">
-            Open on Bluesky
-          </a>
-          {canDeletePost && (
-            <button type="button" className="danger-action" onClick={() => deletePostCtx?.deletePost(post)}>
-              Delete post
-            </button>
-          )}
-          {canBlockAuthor && (
-            <button
-              type="button"
-              className={blockView?.blocked ? "block-listed" : ""}
-              onClick={() => blockCtx?.toggle(post.author)}
-            >
-              {blockView?.blocked ? `Unblock @${post.author.handle}` : `Block @${post.author.handle}`}
-            </button>
-          )}
-        </div>
-      </details>
-    </footer>
+      </footer>
+      {showReplyLimited && <ReplyLimitedNotice />}
+    </>
   );
 }
 
@@ -7101,6 +7134,7 @@ function CombinedThreadViewCard({
   const quoteCount = posts.reduce((total, post) => total + (post.quoteCount ?? 0), 0);
   const likeCount = posts.reduce((total, post) => total + (post.likeCount ?? 0), 0);
   const hideThreadMarkers = canHideCombinedThreadMarkers(posts);
+  const { showReplyLimited, handleReplyClick } = useReplyGate(rootPost, onOpenReply);
 
   const handleShare = async () => {
     const url = postBskyUrl(rootPost);
@@ -7233,13 +7267,14 @@ function CombinedThreadViewCard({
         <button
           type="button"
           className={activeReplyParentUri === rootPost.uri ? "active" : ""}
-          onClick={() => onOpenReply(rootPost)}
+          onClick={handleReplyClick}
           disabled={!canReply}
           title="Reply to the first post in this thread"
         >
           <MessageCircle size={16} /> Reply
         </button>
       </footer>
+      {showReplyLimited && <ReplyLimitedNotice />}
     </article>
   );
 }
@@ -7292,8 +7327,6 @@ function PostCard({
   const linkMediaHidden = !showMedia && !linkMediaRevealed && !!external?.thumb;
   const moderationNotes = [
     ...(post.viewer?.threadMuted ? ["Thread muted"] : []),
-    ...(post.viewer?.replyDisabled ? ["Replies limited"] : []),
-    ...(post.viewer?.embeddingDisabled ? ["Embedding disabled"] : []),
     ...sensitiveLabels.map(moderationLabelText),
   ];
   return (
@@ -7325,7 +7358,7 @@ function PostCard({
       </header>
       {item.reason?.by && <p className="reason">Reposted by {displayName(item.reason.by)}</p>}
       {item.reply?.parent && <p className="reason">Replying in a thread from @{item.reply.parent.author.handle}</p>}
-      {(isOwnPost || labels.length > 0 || moderationNotes.length > 0) && (
+      {(isOwnPost || labels.length > 0) && (
         <div className="post-badges" aria-label="Post context">
           {isOwnPost && <span>Your post</span>}
           {labels.slice(0, 3).map((label) => (

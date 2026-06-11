@@ -3336,6 +3336,19 @@ button.surface-action {
   color: var(--bsky-blue-soft);
 }
 
+.reply-limited-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 6px 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .post-actions button.bookmarked {
   color: var(--bsky-blue-soft);
 }
