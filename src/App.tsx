@@ -6317,8 +6317,10 @@ function ThreadedPostCard({
   onOpenProfile?: (profile: Profile) => void;
 }) {
   const onOpenTag = useContext(TagSearchContext);
+  const bookmarkCtx = useContext(BookmarkContext);
   const posts = [thread.root.post, ...thread.replies.map((item) => item.post)];
   const rootPost = thread.root.post;
+  const bookmarkView = bookmarkCtx?.getState(rootPost);
   const postTimeLabel = formatPostTime(rootPost.record.createdAt || rootPost.indexedAt);
   const replyCount = posts.reduce((total, post) => total + (post.replyCount ?? 0), 0);
   const repostCount = posts.reduce((total, post) => total + (post.repostCount ?? 0), 0);
@@ -6377,6 +6379,16 @@ function ThreadedPostCard({
         <span title="Total likes across combined posts">
           <Heart size={16} /> {likeCount}
         </span>
+        {bookmarkCtx?.canBookmark && bookmarkView && (
+          <button
+            type="button"
+            className={bookmarkView.bookmarked ? "bookmarked" : ""}
+            onClick={() => bookmarkCtx.toggle(rootPost)}
+            title={bookmarkView.bookmarked ? "Remove thread bookmark" : "Bookmark thread"}
+          >
+            <Bookmark size={16} /> {bookmarkView.bookmarked ? "Bookmarked" : "Bookmark"}
+          </button>
+        )}
         <button type="button" onClick={() => onOpenPost?.(rootPost)} title="Open full thread">
           Open thread
         </button>
