@@ -730,6 +730,11 @@ function buildThreadedFeedRows(items: FeedItem[]): FeedRow[] {
     if (!rootItem || !isSelfThreadReply(item, rootItem.post)) {
       continue;
     }
+    const replyTime = postSortTime(item.post);
+    const rootTime = postSortTime(rootItem.post);
+    if (!Number.isFinite(replyTime) || !Number.isFinite(rootTime) || replyTime - rootTime < 0 || replyTime - rootTime > CONTINUATION_REPLY_WINDOW_MS) {
+      continue;
+    }
     repliesByRoot.set(rootUri, [...(repliesByRoot.get(rootUri) ?? []), item]);
     groupedReplyUris.add(item.post.uri);
   }
@@ -1521,7 +1526,13 @@ export function App() {
       }
 
       const rootUri = postReplyRootUri(item.post);
-      return !!rootUri && byUri.has(rootUri) && isSelfThreadReply(item, byUri.get(rootUri)?.post);
+      const rootItem = rootUri ? byUri.get(rootUri) : undefined;
+      if (!rootItem || !isSelfThreadReply(item, rootItem.post)) {
+        return false;
+      }
+      const replyTime = postSortTime(item.post);
+      const rootTime = postSortTime(rootItem.post);
+      return Number.isFinite(replyTime) && Number.isFinite(rootTime) && replyTime - rootTime >= 0 && replyTime - rootTime <= CONTINUATION_REPLY_WINDOW_MS;
     });
   }, [feedState.items, profileTab, route.kind]);
 
