@@ -2654,8 +2654,106 @@ button.surface-action {
   background: rgba(5, 96, 255, 0.12);
 }
 
+.compact {
+  padding-top: 14px;
+}
+
+.compact .virtual-row {
+  padding-bottom: 6px;
+}
+
 .compact .post-card {
-  padding: 12px 14px;
+  position: relative;
+  padding: 8px 10px;
+}
+
+.compact .post-header {
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 7px;
+}
+
+.compact .post-header .avatar {
+  width: 26px;
+  height: 26px;
+}
+
+.compact .post-header strong {
+  font-size: 13px;
+  line-height: 1.1;
+}
+
+.compact .post-byline,
+.compact .post-header span,
+.compact .reason {
+  font-size: 11px;
+  line-height: 1.1;
+}
+
+.compact .post-byline {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact .post-byline span {
+  display: inline;
+}
+
+.compact .reason,
+.compact .post-badges,
+.compact .moderation-notice {
+  margin-top: 5px;
+}
+
+.compact .post-text {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 5px 0;
+  font-size: 15px;
+  line-height: 1.32;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.compact .post-text.has-line-breaks {
+  white-space: normal;
+}
+
+.compact .post-actions {
+  gap: 13px;
+  font-size: 12px;
+}
+
+.compact .post-actions svg {
+  width: 13px;
+  height: 13px;
+}
+
+.compact .media-hidden-button {
+  margin: 2px 0;
+  min-height: 24px;
+  padding: 2px 7px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+
+.timeline.compact .post-card.media-hidden > .media-hidden-button {
+  position: absolute;
+  right: 10px;
+  bottom: 6px;
+  z-index: 1;
+  min-height: 20px;
+  margin: 0;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.timeline.compact .post-card.media-hidden > .media-hidden-button svg {
+  width: 12px;
+  height: 12px;
 }
 
 .post-header {
@@ -3466,26 +3564,103 @@ button.surface-action {
   min-height: min(46vh, 420px);
 }
 
-.compact .post-card.text-only {
+.compact .post-card.text-only,
+.compact .post-card.media-hidden {
   display: grid;
-  grid-template-columns: 244px minmax(0, 1fr);
-  column-gap: 16px;
+  grid-template-columns: 280px minmax(0, 1fr);
+  column-gap: 10px;
   align-items: start;
 }
 
-.compact .post-card.text-only .post-header {
+.compact .post-card.text-only .post-header,
+.compact .post-card.media-hidden .post-header {
   grid-column: 1;
 }
 
 .compact .post-card.text-only .reason,
 .compact .post-card.text-only .post-badges,
 .compact .post-card.text-only .post-text,
-.compact .post-card.text-only .post-actions {
+.compact .post-card.text-only .post-actions,
+.compact .post-card.media-hidden .reason,
+.compact .post-card.media-hidden .post-badges,
+.compact .post-card.media-hidden .moderation-notice,
+.compact .post-card.media-hidden .post-text,
+.compact .post-card.media-hidden .post-image-video-media,
+.compact .post-card.media-hidden .link-card,
+.compact .post-card.media-hidden .quote-card,
+.compact .post-card.media-hidden .post-actions {
   grid-column: 2;
 }
 
-.compact .post-card.text-only .post-text {
+.compact .post-card.text-only .post-text,
+.compact .post-card.media-hidden .post-text {
   margin-top: 0;
+}
+
+.compact .post-card.media-hidden .link-card,
+.compact .post-card.media-hidden .link-card a {
+  min-height: 0;
+}
+
+.compact .post-card.media-hidden .link-card {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.compact .post-card.media-hidden .link-card a {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.compact .post-card.media-hidden .link-card span {
+  padding: 4px 8px;
+}
+
+.compact .post-card.media-hidden .link-card strong {
+  display: block;
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact .post-card.media-hidden .link-card small {
+  display: none;
+}
+
+.compact .post-card.media-hidden .link-card button {
+  min-height: 26px;
+  margin-right: 6px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.compact .post-card.media-hidden .quote-card {
+  max-height: 62px;
+  margin: 4px 0;
+  padding: 8px;
+  overflow: hidden;
+}
+
+.compact .post-card.media-hidden .quote-header {
+  grid-template-columns: 26px 1fr;
+  gap: 7px;
+}
+
+.compact .post-card.media-hidden .quote-header .avatar {
+  width: 26px;
+  height: 26px;
+}
+
+.compact .post-card.media-hidden .quote-text {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 5px 0;
+  font-size: 13px;
+  line-height: 1.3;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
 }
 
 .bookmarks-list {
@@ -4534,46 +4709,46 @@ button.surface-action {
 }
 
 @media (min-width: 1900px) {
-  .timeline.compact .post-card.has-link,
-  .timeline.compact .post-card.has-quote,
-  .timeline.compact .post-card.has-media {
+  .timeline.compact .post-card.has-link:not(.media-hidden),
+  .timeline.compact .post-card.has-quote:not(.media-hidden),
+  .timeline.compact .post-card.has-media:not(.media-hidden) {
     display: grid;
     grid-template-columns: minmax(280px, 0.92fr) minmax(360px, 1.08fr);
     column-gap: 18px;
     align-items: start;
   }
 
-  .timeline.compact .post-card.has-link .post-header,
-  .timeline.compact .post-card.has-quote .post-header,
-  .timeline.compact .post-card.has-media .post-header,
-  .timeline.compact .post-card.has-link .reason,
-  .timeline.compact .post-card.has-quote .reason,
-  .timeline.compact .post-card.has-media .reason,
-  .timeline.compact .post-card.has-link .post-badges,
-  .timeline.compact .post-card.has-quote .post-badges,
-  .timeline.compact .post-card.has-media .post-badges,
-  .timeline.compact .post-card.has-link .post-text,
-  .timeline.compact .post-card.has-quote .post-text,
-  .timeline.compact .post-card.has-media .post-text,
-  .timeline.compact .post-card.has-link .post-actions,
-  .timeline.compact .post-card.has-quote .post-actions,
-  .timeline.compact .post-card.has-media .post-actions {
+  .timeline.compact .post-card.has-link:not(.media-hidden) .post-header,
+  .timeline.compact .post-card.has-quote:not(.media-hidden) .post-header,
+  .timeline.compact .post-card.has-media:not(.media-hidden) .post-header,
+  .timeline.compact .post-card.has-link:not(.media-hidden) .reason,
+  .timeline.compact .post-card.has-quote:not(.media-hidden) .reason,
+  .timeline.compact .post-card.has-media:not(.media-hidden) .reason,
+  .timeline.compact .post-card.has-link:not(.media-hidden) .post-badges,
+  .timeline.compact .post-card.has-quote:not(.media-hidden) .post-badges,
+  .timeline.compact .post-card.has-media:not(.media-hidden) .post-badges,
+  .timeline.compact .post-card.has-link:not(.media-hidden) .post-text,
+  .timeline.compact .post-card.has-quote:not(.media-hidden) .post-text,
+  .timeline.compact .post-card.has-media:not(.media-hidden) .post-text,
+  .timeline.compact .post-card.has-link:not(.media-hidden) .post-actions,
+  .timeline.compact .post-card.has-quote:not(.media-hidden) .post-actions,
+  .timeline.compact .post-card.has-media:not(.media-hidden) .post-actions {
     grid-column: 1;
   }
 
-  .timeline.compact .post-card.has-link .link-card,
-  .timeline.compact .post-card.has-quote .quote-card,
-  .timeline.compact .post-card.has-media .image-grid,
-  .timeline.compact .post-card.has-media .video-card {
+  .timeline.compact .post-card.has-link:not(.media-hidden) .link-card,
+  .timeline.compact .post-card.has-quote:not(.media-hidden) .quote-card,
+  .timeline.compact .post-card.has-media:not(.media-hidden) .image-grid,
+  .timeline.compact .post-card.has-media:not(.media-hidden) .video-card {
     grid-column: 2;
     grid-row: 1 / span 8;
     margin-top: 0;
   }
 
-  .timeline.compact .post-card.has-media .image-grid.count-1 img,
-  .timeline.compact .post-card.has-media .video-card video,
-  .timeline.compact .post-card.has-media .video-card img,
-  .timeline.compact .post-card.has-media .video-placeholder {
+  .timeline.compact .post-card.has-media:not(.media-hidden) .image-grid.count-1 img,
+  .timeline.compact .post-card.has-media:not(.media-hidden) .video-card video,
+  .timeline.compact .post-card.has-media:not(.media-hidden) .video-card img,
+  .timeline.compact .post-card.has-media:not(.media-hidden) .video-placeholder {
     min-height: var(--post-embed-min);
   }
 }
@@ -4722,7 +4897,8 @@ button.surface-action {
     aspect-ratio: 16 / 9;
   }
 
-  .compact .post-card.text-only {
+  .compact .post-card.text-only,
+  .compact .post-card.media-hidden {
     display: block;
   }
 

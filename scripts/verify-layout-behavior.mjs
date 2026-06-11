@@ -21,7 +21,7 @@ requirePattern(app, /const \[widthByContext, setWidthByContext\][\s\S]*readWidth
 requirePattern(app, /const storedWidth = widthByContext\[densityKey\] \|\| widthByContext\.default;[\s\S]*const workspaceWidth = /, "active width should resolve per-feed with a default fallback");
 requirePattern(app, /localStorage\.setItem\(widthByContextStorageKey, JSON\.stringify\(nextPreferences\)\)/, "per-feed width preference should persist locally");
 
-requirePattern(app, /function VirtualPostList\([\s\S]*defaultRowHeight = density === "compact" \? 190 : density === "media" \? 360 : 260/s, "virtual rows should use density-aware estimated heights");
+requirePattern(app, /function VirtualPostList\([\s\S]*defaultRowHeight = density === "compact" \? 112 : density === "media" \? 360 : 260/s, "virtual rows should use density-aware estimated heights");
 requirePattern(app, /const overscanPixels = defaultRowHeight \* 3/, "virtual list should overscan a bounded row window");
 requirePattern(app, /function VirtualPostList\([\s\S]*const findRowIndex = useCallback\([\s\S]*while \(low <= high\)/s, "virtual list should locate rows by offset without scanning all rows on scroll");
 requirePattern(app, /data-total-rows=\{items\.length\}[\s\S]*data-rendered-rows=\{visibleItems\.length\}/s, "virtual list should expose loaded and rendered row counts");
@@ -53,8 +53,9 @@ requirePattern(css, /@media \(max-width: 720px\) \{[\s\S]*\.app-shell \{[\s\S]*g
 // content should use that width.
 forbidPattern(css, /\.post-text \{[^}]*max-width/s, "post prose must not be capped narrower than the wide content column");
 forbidPattern(css, /\.post-card \.post-actions \{[^}]*max-width: 720px/s, "post text-flow elements must not be capped narrower than the wide content column");
-requirePattern(css, /@media \(min-width: 1900px\) \{[\s\S]*\.timeline\.compact \.post-card\.has-link,[\s\S]*display: grid;[\s\S]*grid-template-columns: minmax\(280px, 0\.92fr\) minmax\(360px, 1\.08fr\);/s, "very wide compact rich cards should become two-zone cards");
-requirePattern(css, /@media \(max-width: 720px\) \{[\s\S]*\.compact \.post-card\.text-only \{[\s\S]*display: block;/s, "wide-only compact layout should collapse on mobile");
+requirePattern(css, /@media \(min-width: 1900px\) \{[\s\S]*\.timeline\.compact \.post-card\.has-link:not\(\.media-hidden\),[\s\S]*display: grid;[\s\S]*grid-template-columns: minmax\(280px, 0\.92fr\) minmax\(360px, 1\.08fr\);/s, "very wide compact rich cards should become two-zone cards when media is visible");
+requirePattern(css, /\.compact \.post-card\.text-only,[\s\S]*\.compact \.post-card\.media-hidden \{[\s\S]*display: grid;/s, "compact media-hidden cards should use dense desktop rows");
+requirePattern(css, /@media \(max-width: 720px\) \{[\s\S]*\.compact \.post-card\.text-only,[\s\S]*\.compact \.post-card\.media-hidden \{[\s\S]*display: block;/s, "wide-only compact layout should collapse on mobile");
 
 forbidPattern(css, /\.timeline\s*\{[^}]*max-width:\s*6\d\dpx/s, "timeline should not be capped to a narrow mobile column");
 forbidPattern(css, /\.post-card\s*\{[^}]*max-width:\s*6\d\dpx/s, "post cards should not be capped to a narrow mobile column");

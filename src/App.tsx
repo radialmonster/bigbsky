@@ -3285,7 +3285,7 @@ function VirtualPostList({
     [incomingItems, showNsfw],
   );
   const rows = useMemo(() => buildThreadedFeedRows(items), [items]);
-  const defaultRowHeight = density === "compact" ? 190 : density === "media" ? 360 : 260;
+  const defaultRowHeight = density === "compact" ? 112 : density === "media" ? 360 : 260;
   const overscanPixels = defaultRowHeight * 3;
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(720);
@@ -7318,6 +7318,7 @@ function PostCard({
   const preservesLineBreaks = text.includes("\n");
   const hasRichContent = images.length > 0 || !!external || !!recordEmbed || !!video;
   const postVariant = images.length > 0 || !!video ? "has-media" : external ? "has-link" : recordEmbed ? "has-quote" : "text-only";
+  const hasHiddenMedia = !showMedia && (images.length > 0 || !!video || !!external || !!recordEmbed);
   const isOwnPost = !!currentDid && post.author.did === currentDid;
   const canDeletePost = !!deletePostCtx?.canDelete && isOwnPost;
   const labels = post.labels ?? [];
@@ -7330,7 +7331,7 @@ function PostCard({
     ...sensitiveLabels.map(moderationLabelText),
   ];
   return (
-    <article className={`post-card ${postVariant}`}>
+    <article className={`post-card ${postVariant}${hasHiddenMedia ? " media-hidden" : ""}`}>
       <header className="post-header">
         <Avatar profile={post.author} />
         <div className="post-author-block">
