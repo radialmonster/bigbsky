@@ -1,5 +1,5 @@
 import type { BrowserOAuthClient, OAuthSession } from "@atproto/oauth-client-browser";
-import type { FeedResponse, ListView, Profile, SearchPostsResponse, ThreadNode } from "./api";
+import type { AuthorFeedFilter, FeedResponse, ListView, Profile, SearchPostsResponse, ThreadNode } from "./api";
 
 const productionClientId = "https://bigbsky.com/oauth-client-metadata.json";
 const handleResolver = "https://bsky.social";
@@ -434,16 +434,16 @@ export async function getProfileAuthed(actor: string, signal?: AbortSignal): Pro
 // Authenticated author-feed read so viewer-relative post state (viewer.like,
 // viewer.repost) and the author's viewer.following/blocking are populated.
 // Falls back to the public read when signed out. Same shape as getAuthorFeed.
-export async function getAuthorFeedAuthed(actor: string, cursor?: string, signal?: AbortSignal): Promise<FeedResponse> {
+export async function getAuthorFeedAuthed(actor: string, cursor?: string, signal?: AbortSignal, filter?: AuthorFeedFilter): Promise<FeedResponse> {
   const session = await ensureSession();
   if (!session) {
     const { getAuthorFeed } = await import("./api");
-    return getAuthorFeed(actor, cursor, signal);
+    return getAuthorFeed(actor, cursor, signal, filter);
   }
   const { Agent } = await import("@atproto/api");
   const agent = new Agent(session);
   const response = await agent.app.bsky.feed.getAuthorFeed(
-    { actor, limit: 30, ...(cursor ? { cursor } : {}) },
+    { actor, limit: 30, ...(filter ? { filter } : {}), ...(cursor ? { cursor } : {}) },
     signal ? { signal } : undefined,
   );
   return {

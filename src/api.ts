@@ -321,12 +321,15 @@ export function getActorFeeds(actor: string, limit = 30, signal?: AbortSignal) {
   );
 }
 
-export function getAuthorFeed(actor: string, cursor?: string, signal?: AbortSignal) {
+export type AuthorFeedFilter = "posts_with_replies" | "posts_no_replies" | "posts_with_media" | "posts_with_video";
+
+export function getAuthorFeed(actor: string, cursor?: string, signal?: AbortSignal, filter?: AuthorFeedFilter) {
   return getJson<FeedResponse>(
     "app.bsky.feed.getAuthorFeed",
     {
       actor,
       limit: "30",
+      ...(filter ? { filter } : {}),
       ...(cursor ? { cursor } : {}),
     },
     signal,

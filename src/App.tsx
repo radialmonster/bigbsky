@@ -332,6 +332,7 @@ const widthModes = ["balanced", "wide", "focus"] as const;
 const searchTabs = ["posts", "people", "feeds"] as const;
 const profileTabs = ["posts", "replies", "media", "videos", "feeds", "lists"] as const;
 type ProfileTab = (typeof profileTabs)[number] | "new-post";
+type ProfileFeedFilter = "posts_with_replies" | "posts_no_replies" | "posts_with_media" | "posts_with_video";
 const searchLanguages = [
   { label: "Any language", value: "" },
   { label: "English", value: "en" },
@@ -540,6 +541,19 @@ function readTimelineScrollCache() {
   } catch {
     return {};
   }
+}
+
+function profileFeedFilterForTab(tab: ProfileTab): ProfileFeedFilter {
+  if (tab === "posts") {
+    return "posts_no_replies";
+  }
+  if (tab === "media") {
+    return "posts_with_media";
+  }
+  if (tab === "videos") {
+    return "posts_with_video";
+  }
+  return "posts_with_replies";
 }
 
 function writeTimelineScrollCache(cache: Record<string, number>) {
@@ -1561,6 +1575,10 @@ export function App() {
       return feedState.items.filter((item) => hasPostVideo(item.post));
     }
 
+    if (profileTab === "posts") {
+      return feedState.items;
+    }
+
     const byUri = new Map(feedState.items.map((item) => [item.post.uri, item]));
     return feedState.items.filter((item) => {
       if (!item.post.record.reply && !item.reply?.parent) {
@@ -1629,8 +1647,8 @@ export function App() {
     }
   }, [signedInDid]);
 
-  const loadProfileFeed = useCallback(async (actor: string, cursor?: string, signal?: AbortSignal) => {
-    const cacheKey = `profile:${actor}`;
+  const loadProfileFeed = useCallback(async (actor: string, cursor?: string, signal?: AbortSignal, filter: ProfileFeedFilter = "posts_with_replies") => {
+    const cacheKey = `profile:${actor}:${filter}`;
     if (!cursor) {
       const cached = profileCacheRef.current[cacheKey];
       if (cached?.feed.status === "ready") {
@@ -1656,7 +1674,7 @@ export function App() {
     // the two outcomes separate.
     const [profileResult, feedResult] = await Promise.allSettled([
       cursor ? Promise.resolve(null) : getProfileAuthed(actor, signal),
-      getAuthorFeedAuthed(actor, cursor, signal),
+      getAuthorFeedAuthed(actor, cursor, signal, filter),
     ]);
 
     if (signal?.aborted) {
@@ -1816,14 +1834,14 @@ export function App() {
     const controller = new AbortController();
     if (route.kind === "profile") {
       setProfile(null);
-      void loadProfileFeed(route.actor, undefined, controller.signal);
+      void loadProfileFeed(route.actor, undefined, controller.signal, profileFeedFilterForTab(profileTab));
       return () => controller.abort();
     }
 
     setProfile(null);
     void loadFeed(activeSource, undefined, controller.signal);
     return () => controller.abort();
-  }, [activeSource, loadFeed, loadProfileFeed, route]);
+  }, [activeSource, loadFeed, loadProfileFeed, profileTab, route]);
 
   useEffect(() => {
     if (route.kind !== "search") {
@@ -2578,7 +2596,7 @@ export function App() {
     }
 
     if (route.kind === "profile") {
-      void loadProfileFeed(route.actor, feedState.cursor);
+      void loadProfileFeed(route.actor, feedState.cursor, undefined, profileFeedFilterForTab(profileTab));
       return;
     }
 
@@ -2588,9 +2606,9 @@ export function App() {
     if (route.kind !== "profile") {
       return;
     }
-    delete profileCacheRef.current[route.actor];
-    void loadProfileFeed(route.actor);
-  }, [loadProfileFeed, route]);
+    delete profileCacheRef.current[`profile:${route.actor}:${profileFeedFilterForTab(profileTab)}`];
+    void loadProfileFeed(route.actor, undefined, undefined, profileFeedFilterForTab(profileTab));
+  }, [loadProfileFeed, profileTab, route]);
   const openPost = (post: FeedPost) => {
     const path = postPath(post);
     if (!path) {
@@ -3014,8 +3032,8 @@ export function App() {
                 {feedState.status === "ready" && visibleProfileItems.length === 0 && (
                   profileTab === "posts" && feedState.items.length > 0 ? (
                     <EmptyState
-                      title="No standalone posts"
-                      message="This account's loaded activity is all replies. Open the Replies tab to see them."
+                      title="No posts loaded"
+                      message="Bluesky did not return standalone posts for this page yet. Try loading more, or open the Replies tab."
                     />
                   ) : (
                     <EmptyState title="No posts in this tab" message="This public profile has no loaded posts matching the selected view." />
