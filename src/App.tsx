@@ -626,6 +626,10 @@ function feedDensityOverride(source: FeedSource, preferences: Record<string, str
   return densityModes.includes(value) ? value : undefined;
 }
 
+function postHasVisualMedia(post: FeedPost) {
+  return getEmbedImages(post.embed).length > 0 || !!getVideoEmbed(post.embed);
+}
+
 function postPath(post: FeedPost) {
   const rkey = post.uri.split("/").pop();
   return rkey ? `/profile/${encodeURIComponent(post.author.handle)}/post/${encodeURIComponent(rkey)}` : null;
@@ -3407,6 +3411,7 @@ export function App() {
                 containerRef={timelineRef}
                 density={density}
                 items={feedState.items}
+                mediaOnly={density === "media"}
                 onOpenImage={openImageViewer}
                 onOpenPost={openPost}
                 onOpenProfile={openProfile}
@@ -3495,6 +3500,7 @@ function VirtualPostList({
   density,
   items: incomingItems,
   localLists,
+  mediaOnly = false,
   onOpenImage,
   onOpenLinkPreview,
   onOpenPost,
@@ -3508,6 +3514,7 @@ function VirtualPostList({
   density: string;
   items: FeedItem[];
   localLists: LocalList[];
+  mediaOnly?: boolean;
   onOpenImage: (image: ImageViewerState) => void;
   onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
   onOpenPost: (post: FeedPost) => void;
@@ -3519,8 +3526,14 @@ function VirtualPostList({
   // the feed entirely (not just gate their media), so they never appear.
   const showNsfw = useContext(ShowNsfwContext);
   const items = useMemo(
-    () => (showNsfw ? incomingItems : incomingItems.filter((item) => !isAdultPost(item.post))),
-    [incomingItems, showNsfw],
+    () =>
+      incomingItems.filter((item) => {
+        if (!showNsfw && isAdultPost(item.post)) {
+          return false;
+        }
+        return !mediaOnly || postHasVisualMedia(item.post);
+      }),
+    [incomingItems, mediaOnly, showNsfw],
   );
   const rows = useMemo(() => buildThreadedFeedRows(items), [items]);
   const defaultRowHeight = density === "compact" ? 112 : density === "media" ? 360 : 260;
