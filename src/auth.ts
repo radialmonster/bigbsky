@@ -201,6 +201,7 @@ export async function signOut(did?: string) {
 
 export async function clearOAuthLocalSession() {
   activeSession = null;
+  clientPromise = null;
   safeLocalStorageRemove(activeDidKey);
   safeLocalStorageRemove(activeHandleKey);
   await clearOAuthSessionStorage();

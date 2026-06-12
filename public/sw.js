@@ -1,4 +1,4 @@
-const CACHE_NAME = "bigbsky-shell-v3";
+const CACHE_NAME = "bigbsky-shell-v4";
 const SHELL_URLS = ["/", "/index.html"];
 
 async function cacheShellResponse(request) {
