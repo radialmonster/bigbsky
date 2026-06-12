@@ -6870,7 +6870,7 @@ function SensitiveMediaGate({ values, onReveal }: { values: string[]; onReveal: 
 // Shown in place of images/video when the "Show Media" setting is off. Clicking
 // reveals the media for that one card without changing the global setting.
 function MediaHiddenButton({ kind, onReveal, revealed = false }: { kind: "image" | "video"; onReveal: () => void; revealed?: boolean }) {
-  const label = revealed ? "Hide Media" : "Click to Reveal Media";
+  const label = revealed ? "Hide Media" : "Reveal Media";
   return (
     <button
       type="button"

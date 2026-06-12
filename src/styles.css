@@ -5394,14 +5394,35 @@ button.surface-action {
   .compact .post-card.text-only,
   .compact .post-card.media-hidden {
     display: block;
+    padding: 8px 10px 10px;
+  }
+
+  .compact .post-byline span + span {
+    margin-left: 4px;
+  }
+
+  .compact .post-byline .post-timestamp {
+    margin-left: 4px;
+  }
+
+  .compact .post-text {
+    margin: 4px 0;
+    font-size: 15px;
+    line-height: 1.22;
+  }
+
+  .compact .post-actions {
+    gap: 10px;
   }
 
   .timeline.compact .post-card.media-hidden .media-hidden-button {
     position: static;
     width: max-content;
     max-width: 100%;
-    margin: 6px 0;
-    padding: 2px 9px;
+    min-height: 22px;
+    margin: 4px 0;
+    padding: 1px 8px;
+    font-size: 11px;
   }
 
   .image-viewer {
