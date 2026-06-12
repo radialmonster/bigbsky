@@ -4425,7 +4425,6 @@ function SurfaceView({
       <section className="surface-placeholder">
         <h2>{title}</h2>
         <p>{surface.copy}</p>
-        {name === "explore" && <ExploreSearch onSearch={onOpenSearchQuery} />}
       </section>
       {name === "explore" && <ExploreTrendingTopics onOpenSearchQuery={onOpenSearchQuery} />}
       {name === "feeds" && (
@@ -4577,28 +4576,6 @@ function FeedDensityOverrideControl({
         ))}
       </select>
     </label>
-  );
-}
-
-function ExploreSearch({ onSearch }: { onSearch: (query: string) => void }) {
-  const [query, setQuery] = useState("");
-  return (
-    <form
-      className="explore-search"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSearch(query);
-      }}
-    >
-      <Search size={18} />
-      <input
-        aria-label="Search Bluesky"
-        placeholder="Search posts, people, and feeds"
-        value={query}
-        onInput={(event) => setQuery(event.currentTarget.value)}
-      />
-      <button type="submit">Search</button>
-    </form>
   );
 }
 
