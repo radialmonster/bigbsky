@@ -115,7 +115,7 @@ import {
 import { getRouteState, type RouteState } from "./router";
 import { displayName, feedSources, navigationItems, type FeedSource } from "./sources";
 
-const navIcons = [Home, Compass, Hash, List, Bookmark, User, Settings, Send];
+const navIcons = [Home, Compass, Search, Hash, List, Bookmark, User, Settings, Send];
 const InfoPage = lazy(() => import("./InfoPage"));
 
 // Lets deeply-nested post cards open an in-app hashtag search without threading
@@ -2800,6 +2800,11 @@ export function App() {
       return;
     }
 
+    if (item === "Search") {
+      navigate({ kind: "search" }, "/search");
+      return;
+    }
+
     if (item === "Feeds") {
       const routeState = { kind: "surface", name: "feeds" } as const;
       remember({
@@ -4425,6 +4430,11 @@ function SurfaceView({
       <section className="surface-placeholder">
         <h2>{title}</h2>
         <p>{surface.copy}</p>
+        {name === "explore" && (
+          <button className="surface-action" type="button" onClick={onOpenSearch}>
+            Open Search
+          </button>
+        )}
       </section>
       {name === "explore" && <ExploreTrendingTopics onOpenSearchQuery={onOpenSearchQuery} />}
       {name === "feeds" && (

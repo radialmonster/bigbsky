@@ -32,6 +32,7 @@ export const feedSources: FeedSource[] = [
 export const navigationItems = [
   "Home",
   "Explore",
+  "Search",
   "Feeds",
   "Lists",
   "Bookmarks",
