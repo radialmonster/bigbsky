@@ -2181,6 +2181,32 @@ button.surface-action {
   line-height: 1.4;
 }
 
+.feed-density-control {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+}
+
+.feed-density-control span {
+  color: var(--app-text-soft);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.feed-density-control select {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface-2);
+  color: var(--app-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .directory-pin {
   min-height: 32px;
   margin-top: 12px;
@@ -2667,6 +2693,10 @@ button.surface-action {
   padding: 8px 10px;
 }
 
+.compact .post-card.media-hidden {
+  padding-bottom: 14px;
+}
+
 .compact .post-header {
   grid-template-columns: 26px minmax(0, 1fr);
   gap: 7px;
@@ -2678,14 +2708,14 @@ button.surface-action {
 }
 
 .compact .post-header strong {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.1;
 }
 
 .compact .post-byline,
 .compact .post-header span,
 .compact .reason {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.1;
 }
 
@@ -2710,8 +2740,8 @@ button.surface-action {
   display: -webkit-box;
   overflow: hidden;
   margin: 5px 0;
-  font-size: 15px;
-  line-height: 1.32;
+  font-size: 17px;
+  line-height: 1.24;
   white-space: normal;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 1;
@@ -2739,21 +2769,35 @@ button.surface-action {
   font-size: 12px;
 }
 
-.timeline.compact .post-card.media-hidden > .media-hidden-button {
+.timeline.compact .post-card.media-hidden .media-hidden-button {
   position: absolute;
-  right: 10px;
-  bottom: 6px;
+  left: 44px;
+  top: 42px;
   z-index: 1;
-  min-height: 20px;
+  width: auto;
+  min-width: 0;
+  height: auto;
+  min-height: 24px;
   margin: 0;
-  padding: 0 6px;
+  padding: 0 9px;
   border-radius: 6px;
-  font-size: 11px;
+  border-style: solid;
+  border-color: rgba(117, 175, 255, 0.34);
+  background: rgba(5, 96, 255, 0.1);
+  color: var(--app-text-soft);
+  font-size: 12px;
+  font-weight: 800;
 }
 
-.timeline.compact .post-card.media-hidden > .media-hidden-button svg {
-  width: 12px;
-  height: 12px;
+.timeline.compact .post-card.media-hidden .media-hidden-button svg {
+  width: 13px;
+  height: 13px;
+}
+
+.timeline.compact .post-card.media-hidden .media-hidden-button:hover,
+.timeline.compact .post-card.media-hidden .media-hidden-button:focus-visible {
+  border-color: var(--bsky-blue-soft);
+  color: #fff;
 }
 
 .post-header {
@@ -2872,6 +2916,26 @@ button.surface-action {
   border-color: rgba(117, 175, 255, 0.28);
 }
 
+.thread-open-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: max-content;
+  margin-top: 8px;
+  padding: 3px 8px;
+  border: 1px solid rgba(117, 175, 255, 0.32);
+  border-radius: 7px;
+  background: rgba(5, 96, 255, 0.08);
+  color: var(--bsky-blue-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.thread-open-chip:hover {
+  border-color: rgba(117, 175, 255, 0.58);
+  color: #fff;
+}
+
 .thread-combined-body {
   display: grid;
   gap: 0;
@@ -2946,24 +3010,6 @@ button.surface-action {
   font-weight: 700;
 }
 
-.sensitive-media-hide {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  padding: 4px 10px;
-  border: 1px solid var(--app-border);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--app-text-soft);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.sensitive-media-hide:hover {
-  color: var(--app-text);
-}
-
 /* Compact placeholder shown in place of images/video when "Show Media" is off.
    Unlike the sensitive gate this is a slim inline bar, not a tall panel. */
 .media-hidden-button {
@@ -2983,20 +3029,6 @@ button.surface-action {
 .media-hidden-button:hover {
   color: var(--app-text);
   border-color: var(--app-text-muted);
-}
-
-.media-hidden-show {
-  padding: 3px 12px;
-  border-radius: 999px;
-  background: var(--bsky-blue);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.link-media-hidden {
-  margin: 0 10px;
-  align-self: center;
 }
 
 /* When the link thumbnail is hidden the card has no media column, so collapse
@@ -3068,8 +3100,7 @@ button.surface-action {
   cursor: pointer;
 }
 
-/* Compact uses the same text sizes as Comfortable; it differs only in card
-   padding and the two-zone (text left, media right) layout, not font size. */
+/* Compact keeps posts scannable with single-line text and a metadata column. */
 
 .image-grid {
   display: grid;
@@ -3300,6 +3331,18 @@ button.surface-action {
    defaults (16px / 13px) that looked cramped in the wide column. */
 .link-card strong {
   font-size: 17px;
+}
+
+.link-card em {
+  display: block;
+  overflow: hidden;
+  margin-top: 4px;
+  color: var(--bsky-blue-soft);
+  font-size: 17px;
+  font-style: normal;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .link-card small {
@@ -3564,6 +3607,189 @@ button.surface-action {
   min-height: min(46vh, 420px);
 }
 
+.media-only-card {
+  width: 100%;
+  padding: 10px;
+}
+
+.media-only-single {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: center;
+}
+
+.media-only-single img {
+  display: block;
+  max-width: 100%;
+  width: auto;
+  max-height: calc(100vh - 132px);
+  margin: 0 auto;
+  border-radius: 8px;
+  object-fit: contain;
+  background: var(--app-surface-2);
+}
+
+.media-only-justified {
+  display: grid;
+  gap: 10px;
+  justify-items: stretch;
+  width: 100%;
+}
+
+.media-only-row {
+  display: flex;
+  gap: 10px;
+  justify-content: stretch;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: var(--media-row-aspect, 3) / 1;
+  max-height: calc(100vh - 132px);
+  min-width: 0;
+}
+
+.media-only-tile {
+  position: relative;
+  flex: var(--media-aspect, 1) 1 0;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+}
+
+.media-only-tile img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.media-only-card .video-card {
+  width: 100%;
+  margin: 0;
+}
+
+.media-only-card .video-card video,
+.media-only-card .video-card img,
+.media-only-card .video-placeholder {
+  max-height: calc(100vh - 132px);
+}
+
+.media-only-card .alt-badge {
+  display: none;
+}
+
+.media-only-footer {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: start;
+  min-height: 24px;
+  margin-top: 8px;
+}
+
+.media-only-expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--app-text-muted);
+}
+
+.media-only-expand:hover,
+.media-only-expand:focus-visible {
+  border-color: rgba(117, 175, 255, 0.44);
+  color: var(--bsky-blue-soft);
+}
+
+.media-only-details {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.media-only-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  color: var(--app-text-muted);
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.media-only-author {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  max-width: 320px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.media-only-author strong,
+.media-only-author span,
+.media-only-timestamp,
+.media-only-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-only-author strong {
+  flex: 0 1 auto;
+  color: var(--app-text);
+}
+
+.media-only-author span {
+  flex: 1 1 auto;
+}
+
+.media-only-timestamp {
+  flex: 0 0 auto;
+  color: var(--app-text-muted);
+  text-decoration: none;
+}
+
+.media-only-timestamp:hover,
+.media-only-author:hover strong {
+  color: var(--bsky-blue-soft);
+}
+
+.media-only-text {
+  flex: 1 1 420px;
+  min-width: 0;
+  color: var(--app-text);
+  overflow-wrap: break-word;
+  white-space: normal;
+  word-break: normal;
+}
+
+.media-only-details .post-actions {
+  gap: 16px;
+  font-size: 15px;
+}
+
+.media-only-details .post-actions svg {
+  width: 18px;
+  height: 18px;
+}
+
 .compact .post-card.text-only,
 .compact .post-card.media-hidden {
   display: grid;
@@ -3573,7 +3799,11 @@ button.surface-action {
 }
 
 .compact .post-card.text-only .post-header,
-.compact .post-card.media-hidden .post-header {
+.compact .post-card.media-hidden .post-header,
+.compact .post-card.text-only .thread-open-chip,
+.compact .post-card.media-hidden .thread-open-chip,
+.compact .thread-combined-card .post-header,
+.compact .thread-combined-card .thread-open-chip {
   grid-column: 1;
 }
 
@@ -3588,7 +3818,9 @@ button.surface-action {
 .compact .post-card.media-hidden .post-image-video-media,
 .compact .post-card.media-hidden .link-card,
 .compact .post-card.media-hidden .quote-card,
-.compact .post-card.media-hidden .post-actions {
+.compact .post-card.media-hidden .post-actions,
+.compact .thread-combined-card .combined-thread-text,
+.compact .thread-combined-card .post-actions {
   grid-column: 2;
 }
 
@@ -3628,6 +3860,11 @@ button.surface-action {
   display: none;
 }
 
+.compact .post-card.media-hidden .link-card em {
+  margin-top: 1px;
+  font-size: 14px;
+}
+
 .compact .post-card.media-hidden .link-card button {
   min-height: 26px;
   margin-right: 6px;
@@ -3636,31 +3873,103 @@ button.surface-action {
 }
 
 .compact .post-card.media-hidden .quote-card {
-  max-height: 62px;
-  margin: 4px 0;
-  padding: 8px;
+  display: grid;
+  grid-template-columns: minmax(140px, max-content) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  max-height: none;
+  margin: 2px 0;
+  padding: 4px 8px;
   overflow: hidden;
 }
 
 .compact .post-card.media-hidden .quote-header {
-  grid-template-columns: 26px 1fr;
-  gap: 7px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .compact .post-card.media-hidden .quote-header .avatar {
-  width: 26px;
-  height: 26px;
+  width: 20px;
+  height: 20px;
+}
+
+.compact .post-card.media-hidden .quote-header .author-button {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.compact .post-card.media-hidden .quote-header strong,
+.compact .post-card.media-hidden .quote-header span {
+  display: inline;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact .post-card.media-hidden .quote-header strong {
+  max-width: 132px;
+  font-size: 12px;
+  line-height: 1.1;
+}
+
+.compact .post-card.media-hidden .quote-header span {
+  max-width: 112px;
+  font-size: 11px;
+  line-height: 1.1;
 }
 
 .compact .post-card.media-hidden .quote-text {
   display: -webkit-box;
   overflow: hidden;
-  margin: 5px 0;
-  font-size: 13px;
-  line-height: 1.3;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.25;
   white-space: normal;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 1;
+}
+
+.compact .post-card.media-hidden .quote-open-button {
+  justify-self: end;
+  overflow: hidden;
+  color: var(--bsky-blue-soft);
+  font-size: 12px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact .post-card.media-hidden .quote-card > .media-hidden-button,
+.compact .post-card.media-hidden .quote-card > .sensitive-media-gate,
+.compact .post-card.media-hidden .quote-card > .quote-link-card,
+.compact .post-card.media-hidden .quote-card > .image-grid,
+.compact .post-card.media-hidden .quote-card > .video-card {
+  display: none;
+}
+
+.compact .post-card.text-only .thread-open-chip,
+.compact .post-card.media-hidden .thread-open-chip,
+.compact .thread-combined-card .thread-open-chip {
+  margin: 4px 0 0 33px;
+  min-height: 24px;
+  padding: 0 9px;
+  border-color: rgba(117, 175, 255, 0.5);
+  background: rgba(5, 96, 255, 0.14);
+  color: var(--bsky-blue-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.compact .post-card.text-only .thread-open-chip svg,
+.compact .post-card.media-hidden .thread-open-chip svg,
+.compact .thread-combined-card .thread-open-chip svg {
+  width: 13px;
+  height: 13px;
 }
 
 .bookmarks-list {

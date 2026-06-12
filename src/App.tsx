@@ -128,6 +128,8 @@ const ShowNsfwContext = createContext<boolean>(false);
 // off, media is replaced by a click-to-reveal affordance (text still shows).
 const ShowMediaContext = createContext<boolean>(true);
 
+const DensityContext = createContext<string>("comfortable");
+
 // Like state + toggle, provided once and consumed directly by post cards so we
 // don't thread like props through the virtualized list and every call site.
 // Override state lives in the parent (App) so it survives row virtualization.
@@ -943,6 +945,10 @@ function isAdultPost(post: FeedPost): boolean {
   return sensitiveMediaValues(labels).length > 0;
 }
 
+function postHasVisualMedia(post: FeedPost) {
+  return getEmbedImages(post.embed).length > 0 || !!getVideoEmbed(post.embed);
+}
+
 function videoKindLabel(type?: string) {
   if (type?.toLowerCase().includes("gif")) {
     return "GIF";
@@ -1552,6 +1558,7 @@ export function App() {
   const feedRoutePath = (source: FeedSource) => `/feed/${encodeURIComponent(source.id)}`;
   const densityKey = route.kind === "feed" ? `feed:${activeSource.id}` : route.kind;
   const density = densityByContext[densityKey] || densityByContext.default || "comfortable";
+  const defaultDensity = densityByContext.default || "comfortable";
   const storedWidth = widthByContext[densityKey] || widthByContext.default;
   const workspaceWidth = (
     widthModes.includes(storedWidth as (typeof widthModes)[number]) ? storedWidth : "balanced"
@@ -2202,11 +2209,30 @@ export function App() {
   }
 
   function updateDensity(nextDensity: string) {
+    if (nextDensity === "media") {
+      setShowMedia(true);
+      localStorage.setItem(showMediaStorageKey, "true");
+    }
     const nextPreferences = {
       ...densityByContext,
-      [densityKey]: nextDensity,
       default: nextDensity,
     };
+    setDensityByContext(nextPreferences);
+    localStorage.setItem("bigbsky:density-by-context", JSON.stringify(nextPreferences));
+  }
+
+  function updateFeedDensityOverride(feedId: string, nextDensity: string | null) {
+    if (nextDensity === "media") {
+      setShowMedia(true);
+      localStorage.setItem(showMediaStorageKey, "true");
+    }
+    const key = `feed:${feedId}`;
+    const nextPreferences = { ...densityByContext };
+    if (nextDensity) {
+      nextPreferences[key] = nextDensity;
+    } else {
+      delete nextPreferences[key];
+    }
     setDensityByContext(nextPreferences);
     localStorage.setItem("bigbsky:density-by-context", JSON.stringify(nextPreferences));
   }
@@ -2233,6 +2259,16 @@ export function App() {
     setShowMedia((current) => {
       const next = !current;
       localStorage.setItem(showMediaStorageKey, next ? "true" : "false");
+      if (!next) {
+        const nextPreferences = Object.fromEntries(
+          Object.entries(densityByContext).filter(([, value]) => value !== "media"),
+        );
+        if ((nextPreferences.default || "comfortable") === "media") {
+          nextPreferences.default = "comfortable";
+        }
+        setDensityByContext(nextPreferences);
+        localStorage.setItem("bigbsky:density-by-context", JSON.stringify(nextPreferences));
+      }
       return next;
     });
   }
@@ -2830,6 +2866,7 @@ export function App() {
     <TagSearchContext.Provider value={openTag}>
       <ShowNsfwContext.Provider value={showNsfw}>
       <ShowMediaContext.Provider value={showMedia}>
+      <DensityContext.Provider value={density}>
       <LikeContext.Provider value={likeContextValue}>
       <BookmarkContext.Provider value={bookmarkContextValue}>
       <BlockContext.Provider value={blockContextValue}>
@@ -3010,7 +3047,8 @@ export function App() {
             containerRef={timelineRef}
             auth={authState}
             name={route.name}
-            density={density}
+            defaultDensity={defaultDensity}
+            densityByContext={densityByContext}
             recentCount={recentItems.length}
             savedPreferenceCount={Object.keys(densityByContext).length}
             localDataKeyCount={countBigbskyLocalKeys()}
@@ -3031,6 +3069,7 @@ export function App() {
             onClearLocalData={clearLocalReaderData}
             onCreateLocalList={createLocalList}
             onDensityChange={updateDensity}
+            onFeedDensityOverrideChange={updateFeedDensityOverride}
             onDeleteLocalList={deleteLocalList}
             onOpenFeed={openFeedSource}
             onOpenProfile={openProfile}
@@ -3244,6 +3283,7 @@ export function App() {
       </BlockContext.Provider>
       </BookmarkContext.Provider>
       </LikeContext.Provider>
+      </DensityContext.Provider>
       </ShowMediaContext.Provider>
       </ShowNsfwContext.Provider>
     </TagSearchContext.Provider>
@@ -3281,8 +3321,11 @@ function VirtualPostList({
   // the feed entirely (not just gate their media), so they never appear.
   const showNsfw = useContext(ShowNsfwContext);
   const items = useMemo(
-    () => (showNsfw ? incomingItems : incomingItems.filter((item) => !isAdultPost(item.post))),
-    [incomingItems, showNsfw],
+    () => {
+      const visibleItems = showNsfw ? incomingItems : incomingItems.filter((item) => !isAdultPost(item.post));
+      return density === "media" ? visibleItems.filter((item) => postHasVisualMedia(item.post)) : visibleItems;
+    },
+    [density, incomingItems, showNsfw],
   );
   const rows = useMemo(() => buildThreadedFeedRows(items), [items]);
   const defaultRowHeight = density === "compact" ? 112 : density === "media" ? 360 : 260;
@@ -3720,7 +3763,8 @@ function SurfaceView({
   containerRef,
   auth,
   name,
-  density,
+  defaultDensity,
+  densityByContext,
   recentCount,
   savedPreferenceCount,
   localDataKeyCount,
@@ -3741,6 +3785,7 @@ function SurfaceView({
   onClearLocalData,
   onCreateLocalList,
   onDensityChange,
+  onFeedDensityOverrideChange,
   onDeleteLocalList,
   onOpenFeed,
   onOpenProfile,
@@ -3772,7 +3817,8 @@ function SurfaceView({
   containerRef: RefObject<HTMLDivElement | null>;
   auth: AuthState;
   name: string;
-  density: string;
+  defaultDensity: string;
+  densityByContext: Record<string, string>;
   recentCount: number;
   savedPreferenceCount: number;
   localDataKeyCount: number;
@@ -3793,6 +3839,7 @@ function SurfaceView({
   onClearLocalData: () => void | Promise<void>;
   onCreateLocalList: (name: string, description: string) => void;
   onDensityChange: (density: string) => void;
+  onFeedDensityOverrideChange: (feedId: string, density: string | null) => void;
   onDeleteLocalList: (id: string) => void;
   onOpenFeed: (source: FeedSource) => void;
   onOpenProfile: (profile: Profile) => void;
@@ -3917,27 +3964,31 @@ function SurfaceView({
             <h3>Appearance</h3>
             <dl>
               <div>
-                <dt>Current density</dt>
-                <dd>{density}</dd>
+                <dt>Default density</dt>
+                <dd>{defaultDensity}</dd>
               </div>
               <div>
                 <dt>Saved preference keys</dt>
                 <dd>{savedPreferenceCount.toLocaleString()}</dd>
               </div>
             </dl>
-            <p>Density is stored locally and applied before timeline rows paint.</p>
-            <div className="settings-control-group" aria-label="Reading density setting">
+            <p>Default density is stored locally and applies to feeds without their own view override.</p>
+            <div className="settings-control-group" aria-label="Default reading density setting">
               {densityModes.map((mode) => (
                 <button
-                  className={density === mode ? "selected-setting" : ""}
+                  className={defaultDensity === mode ? "selected-setting" : ""}
                   key={mode}
                   type="button"
+                  disabled={mode === "media" && !showMedia}
                   onClick={() => onDensityChange(mode)}
+                  title={mode === "media" && !showMedia ? "Turn on Show Media to use media density" : undefined}
                 >
                   {mode}
                 </button>
               ))}
             </div>
+            {!showMedia && <p className="settings-note">Media density requires Show Media to be on.</p>}
+            <p className="settings-note">Per-feed view overrides are managed on the Feeds page.</p>
             <p>Feed width is stored locally and changes how much desktop space the reader claims from side context.</p>
             <div className="settings-control-group" aria-label="Feed width setting">
               {widthModes.map((mode) => (
@@ -4194,56 +4245,76 @@ function SurfaceView({
               />
             ) : (
               <div className="feed-directory-grid">
-                {subscribedFeeds.map((source) => (
-                  <article className="feed-directory-card" key={source.id}>
-                    <button type="button" onClick={() => onOpenFeed(source)}>
-                      <span>{source.group}</span>
-                      <strong>{source.label}</strong>
-                      <small>{source.description}</small>
-                    </button>
-                    <div className="feed-directory-card-actions">
-                      <button
-                        className={pinnedFeedIds.includes(source.id) ? "directory-pin pinned" : "directory-pin"}
-                        type="button"
-                        onClick={() => onTogglePinnedFeed(source)}
-                      >
-                        {pinnedFeedIds.includes(source.id) ? "Pinned" : "Pin locally"}
+                {subscribedFeeds.map((source) => {
+                  const override = densityByContext[`feed:${source.id}`];
+                  return (
+                    <article className="feed-directory-card" key={source.id}>
+                      <button type="button" onClick={() => onOpenFeed(source)}>
+                        <span>{source.group}</span>
+                        <strong>{source.label}</strong>
+                        <small>{source.description}</small>
                       </button>
-                      {canFollowFeeds && (
+                      <FeedDensityOverrideControl
+                        feedId={source.id}
+                        defaultDensity={defaultDensity}
+                        override={override}
+                        showMedia={showMedia}
+                        onChange={onFeedDensityOverrideChange}
+                      />
+                      <div className="feed-directory-card-actions">
                         <button
+                          className={pinnedFeedIds.includes(source.id) ? "directory-pin pinned" : "directory-pin"}
                           type="button"
-                          className="directory-unfollow"
-                          onClick={() => onToggleFollowFeed(source.uri, source.label)}
-                          disabled={followBusyUri === source.uri}
+                          onClick={() => onTogglePinnedFeed(source)}
                         >
-                          {followBusyUri === source.uri ? "…" : "Following"}
+                          {pinnedFeedIds.includes(source.id) ? "Pinned" : "Pin locally"}
                         </button>
-                      )}
-                    </div>
-                  </article>
-                ))}
+                        {canFollowFeeds && (
+                          <button
+                            type="button"
+                            className="directory-unfollow"
+                            onClick={() => onToggleFollowFeed(source.uri, source.label)}
+                            disabled={followBusyUri === source.uri}
+                          >
+                            {followBusyUri === source.uri ? "…" : "Following"}
+                          </button>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             )}
           </section>
           <section className="bsky-list-section" aria-label="Built-in feeds">
             <h3 className="bsky-list-section-heading">Built-in feeds</h3>
             <div className="feed-directory-grid">
-              {feedSources.map((source) => (
-                <article className="feed-directory-card" key={source.id}>
-                  <button type="button" onClick={() => onOpenFeed(source)}>
-                    <span>{source.group}</span>
-                    <strong>{source.label}</strong>
-                    <small>{source.description}</small>
-                  </button>
-                  <button
-                    className={pinnedFeedIds.includes(source.id) ? "directory-pin pinned" : "directory-pin"}
-                    type="button"
-                    onClick={() => onTogglePinnedFeed(source)}
-                  >
-                    {pinnedFeedIds.includes(source.id) ? "Pinned" : "Pin locally"}
-                  </button>
-                </article>
-              ))}
+              {feedSources.map((source) => {
+                const override = densityByContext[`feed:${source.id}`];
+                return (
+                  <article className="feed-directory-card" key={source.id}>
+                    <button type="button" onClick={() => onOpenFeed(source)}>
+                      <span>{source.group}</span>
+                      <strong>{source.label}</strong>
+                      <small>{source.description}</small>
+                    </button>
+                    <FeedDensityOverrideControl
+                      feedId={source.id}
+                      defaultDensity={defaultDensity}
+                      override={override}
+                      showMedia={showMedia}
+                      onChange={onFeedDensityOverrideChange}
+                    />
+                    <button
+                      className={pinnedFeedIds.includes(source.id) ? "directory-pin pinned" : "directory-pin"}
+                      type="button"
+                      onClick={() => onTogglePinnedFeed(source)}
+                    >
+                      {pinnedFeedIds.includes(source.id) ? "Pinned" : "Pin locally"}
+                    </button>
+                  </article>
+                );
+              })}
             </div>
           </section>
           <ExploreDiscoverFeeds
@@ -4269,6 +4340,38 @@ function SurfaceView({
         </section>
       )}
     </div>
+  );
+}
+
+function FeedDensityOverrideControl({
+  feedId,
+  defaultDensity,
+  override,
+  showMedia,
+  onChange,
+}: {
+  feedId: string;
+  defaultDensity: string;
+  override?: string;
+  showMedia: boolean;
+  onChange: (feedId: string, density: string | null) => void;
+}) {
+  const effective = override || defaultDensity;
+  return (
+    <label className="feed-density-control">
+      <span>View</span>
+      <select
+        value={override || "default"}
+        onChange={(event) => onChange(feedId, event.target.value === "default" ? null : event.target.value)}
+      >
+        <option value="default">Default ({effective})</option>
+        {densityModes.map((mode) => (
+          <option value={mode} key={mode} disabled={mode === "media" && !showMedia}>
+            {mode}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -6612,11 +6715,14 @@ function renderRichText(
 }
 
 function threadMarkerMatch(text: string) {
-  const match = text.match(/(?:^|\n)[ \t\u200e\u200f\u202a-\u202e\u2066-\u2069]*(\d{1,3})\s*\/\s*(\d{1,3})[ \t\u200e\u200f\u202a-\u202e\u2066-\u2069]*(?=\n|$)/u);
+  const markerPattern = /(?:^|\s)[\t\u200e\u200f\u202a-\u202e\u2066-\u2069]*(\d{1,3})\s*\/\s*(\d{1,3})(?:\s*🧵)?[\t\u200e\u200f\u202a-\u202e\u2066-\u2069]*$/u;
+  const match = text.match(markerPattern);
   if (!match) {
     return null;
   }
-  return { index: Number(match[1]), total: Number(match[2]) };
+  const index = Number(match[1]);
+  const total = Number(match[2]);
+  return total > 1 && index >= 1 && index <= total ? { index, total } : null;
 }
 
 function canHideCombinedThreadMarkers(posts: FeedPost[]) {
@@ -6633,8 +6739,18 @@ function canHideCombinedThreadMarkers(posts: FeedPost[]) {
 function combinedThreadText(post: FeedPost, hideThreadMarker: boolean) {
   const text = post.record.text || "";
   return hideThreadMarker
-    ? text.replace(/(?:^|\n)[ \t\u200e\u200f\u202a-\u202e\u2066-\u2069]*\d{1,3}\s*\/\s*\d{1,3}[ \t\u200e\u200f\u202a-\u202e\u2066-\u2069]*(?=\n|$)/u, "").trim()
+    ? text.replace(/(?:^|\s)[\t\u200e\u200f\u202a-\u202e\u2066-\u2069]*\d{1,3}\s*\/\s*\d{1,3}(?:\s*🧵)?[\t\u200e\u200f\u202a-\u202e\u2066-\u2069]*$/u, "").trim()
     : text.trim();
+}
+
+function formatExternalUrlLabel(uri: string) {
+  try {
+    const url = new URL(uri);
+    const path = `${url.pathname}${url.search}`.replace(/\/$/, "");
+    return `${url.hostname.replace(/^www\./, "")}${path && path !== "/" ? path : ""}`;
+  } catch {
+    return uri;
+  }
 }
 
 function sensitiveMediaValues(labels: Array<{ val?: string }>) {
@@ -6661,13 +6777,18 @@ function SensitiveMediaGate({ values, onReveal }: { values: string[]; onReveal: 
 
 // Shown in place of images/video when the "Show Media" setting is off. Clicking
 // reveals the media for that one card without changing the global setting.
-function MediaHiddenButton({ kind, onReveal }: { kind: "image" | "video"; onReveal: () => void }) {
-  const label = kind === "video" ? "Video hidden" : "Media hidden";
+function MediaHiddenButton({ kind, onReveal, revealed = false }: { kind: "image" | "video"; onReveal: () => void; revealed?: boolean }) {
+  const label = revealed ? "Hide Media" : "Click to Reveal Media";
   return (
-    <button type="button" className="media-hidden-button" onClick={onReveal}>
+    <button
+      type="button"
+      className="media-hidden-button"
+      onClick={onReveal}
+      title={revealed ? `Hide ${kind}` : `Show ${kind}`}
+      aria-label={revealed ? `Hide ${kind}` : `Show hidden ${kind}`}
+    >
       {kind === "video" ? <Film size={16} /> : <Image size={16} />}
       <span>{label}</span>
-      <span className="media-hidden-show">Show</span>
     </button>
   );
 }
@@ -6787,6 +6908,10 @@ function ThreadedPostCard({
           </div>
         </div>
       </header>
+      <button type="button" className="thread-open-chip" onClick={() => onOpenPost?.(rootPost)} title="Open full thread">
+        <MessageCircle size={13} />
+        <span>{posts.length} post thread</span>
+      </button>
       <div className="combined-thread-text">
         {posts.map((post, index) => {
           const text = combinedThreadText(post, hideThreadMarkers);
@@ -6924,11 +7049,203 @@ function PostImageVideoMedia({ post, onOpenImage }: { post: FeedPost; onOpenImag
       )}
       {video && <VideoEmbedCard video={video} />}
       {mediaRevealed && (mediaWarningValues.length > 0 || !showMedia) && (
-        <button type="button" className="sensitive-media-hide" onClick={() => setMediaRevealed(false)}>
-          <EyeOff size={13} /> Hide {mediaWarningValues.length > 0 ? "sensitive media" : "media"}
-        </button>
+        <MediaHiddenButton kind={images.length > 0 ? "image" : "video"} revealed onReveal={() => setMediaRevealed(false)} />
       )}
     </div>
+  );
+}
+
+function imageAspectRatio(image: ReturnType<typeof getEmbedImages>[number]) {
+  const width = image.aspectRatio?.width;
+  const height = image.aspectRatio?.height;
+  return width && height ? Math.max(0.45, Math.min(2.4, width / height)) : 1;
+}
+
+function mediaImageRows(images: ReturnType<typeof getEmbedImages>) {
+  const rows: Array<ReturnType<typeof getEmbedImages>> = [];
+  for (let index = 0; index < images.length; ) {
+    const remaining = images.length - index;
+    const count = remaining === 4 ? 2 : Math.min(3, remaining);
+    rows.push(images.slice(index, index + count));
+    index += count;
+  }
+  return rows;
+}
+
+function MediaOnlyImageTile({
+  image,
+  viewerImages,
+  onOpenImage,
+}: {
+  image: ReturnType<typeof getEmbedImages>[number];
+  viewerImages: Array<{ src: string; alt: string }>;
+  onOpenImage?: (image: ImageViewerState) => void;
+}) {
+  const src = image.thumb || image.fullsize;
+  const [aspectRatio, setAspectRatio] = useState(() => imageAspectRatio(image));
+  const viewerIndex = viewerImages.findIndex((viewerImage) => viewerImage.src === (image.fullsize || image.thumb));
+
+  return (
+    <button
+      className="media-only-tile"
+      type="button"
+      style={{ "--media-aspect": aspectRatio } as CSSProperties}
+      onClick={() => viewerImages.length > 0 && onOpenImage?.({ images: viewerImages, index: Math.max(0, viewerIndex) })}
+      aria-label={image.alt ? "Open image" : "Open full size image"}
+    >
+      <img
+        alt={image.alt || ""}
+        src={src}
+        loading="lazy"
+        decoding="async"
+        onLoad={(event) => {
+          const img = event.currentTarget;
+          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+            setAspectRatio(Math.max(0.45, Math.min(2.8, img.naturalWidth / img.naturalHeight)));
+          }
+        }}
+      />
+      {image.alt && <span className="alt-badge">ALT</span>}
+    </button>
+  );
+}
+
+function MediaOnlyPostCard({
+  post,
+  onOpenImage,
+  onOpenPost,
+  onOpenProfile,
+  onReply,
+  replyActive = false,
+  canReply = true,
+  localLists = [],
+  onToggleListPost,
+  canDeletePost = false,
+  canBlockAuthor = false,
+}: {
+  post: FeedPost;
+  onOpenImage?: (image: ImageViewerState) => void;
+  onOpenPost?: (post: FeedPost) => void;
+  onOpenProfile?: (profile: Profile) => void;
+  onReply?: (post: FeedPost) => void;
+  replyActive?: boolean;
+  canReply?: boolean;
+  localLists?: LocalList[];
+  onToggleListPost?: (listId: string, post: FeedPost) => void;
+  canDeletePost?: boolean;
+  canBlockAuthor?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const images = getEmbedImages(post.embed).slice(0, maxPostImages);
+  const video = getVideoEmbed(post.embed);
+  const text = post.record.text?.trim() || "";
+  const postTimeLabel = formatPostTime(post.record.createdAt || post.indexedAt);
+  const viewerImages = images
+    .map((image) => ({
+      src: image.fullsize || image.thumb || "",
+      alt: image.alt || "",
+    }))
+    .filter((image) => image.src);
+
+  if (images.length === 0 && !video) {
+    return null;
+  }
+
+  return (
+    <article className="post-card media-only-card">
+      {images.length === 1 && (
+        <button
+          className="media-only-single"
+          type="button"
+          onClick={() => viewerImages.length > 0 && onOpenImage?.({ images: viewerImages, index: 0 })}
+          aria-label={images[0].alt ? "Open image" : "Open full size image"}
+        >
+          <img
+            alt={images[0].alt || ""}
+            src={images[0].thumb || images[0].fullsize}
+            loading="lazy"
+            decoding="async"
+            style={
+              images[0].aspectRatio?.width && images[0].aspectRatio?.height
+                ? { aspectRatio: `${images[0].aspectRatio.width} / ${images[0].aspectRatio.height}` }
+                : undefined
+            }
+          />
+          {images[0].alt && <span className="alt-badge">ALT</span>}
+        </button>
+      )}
+      {images.length > 1 && (
+        <div className="media-only-justified" aria-label="Post media">
+          {mediaImageRows(images).map((row, rowIndex) => (
+            <div
+              className="media-only-row"
+              key={`media-row-${post.uri}-${rowIndex}`}
+              style={{ "--media-row-aspect": row.reduce((total, image) => total + imageAspectRatio(image), 0) } as CSSProperties}
+            >
+              {row.map((image) => (
+                <MediaOnlyImageTile
+                  image={image}
+                  key={image.thumb || image.fullsize}
+                  viewerImages={viewerImages}
+                  onOpenImage={onOpenImage}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+      {video && <VideoEmbedCard video={video} />}
+      <footer className="media-only-footer">
+        <button
+          type="button"
+          className="media-only-expand"
+          onClick={() => setExpanded((current) => !current)}
+          aria-expanded={expanded}
+          title={expanded ? "Hide post details" : "Show post details"}
+        >
+          {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        </button>
+        {expanded && (
+          <div className="media-only-details">
+            <div className="media-only-meta">
+              <a
+                className="media-only-author"
+                href={profilePath(post.author)}
+                onClick={(event) => onOpenProfile && handleInternalLinkClick(event, () => onOpenProfile(post.author))}
+              >
+                <strong>{displayName(post.author)}</strong>
+                <span>@{post.author.handle}</span>
+              </a>
+              <span aria-hidden="true">·</span>
+              <a
+                className="media-only-timestamp"
+                href={postPath(post) ?? postBskyUrl(post)}
+                onClick={(event) => onOpenPost && handleInternalLinkClick(event, () => onOpenPost(post))}
+                title={`Open thread posted ${postTimeLabel}`}
+              >
+                {postTimeLabel}
+              </a>
+              {text && (
+                <span className="media-only-text">
+                  {text}
+                </span>
+              )}
+            </div>
+            <PostActionBar
+              post={post}
+              onOpenPost={onOpenPost}
+              onReply={onReply}
+              replyActive={replyActive}
+              canReply={canReply}
+              localLists={localLists}
+              onToggleListPost={onToggleListPost}
+              canDeletePost={canDeletePost}
+              canBlockAuthor={canBlockAuthor}
+            />
+          </div>
+        )}
+      </footer>
+    </article>
   );
 }
 
@@ -7304,6 +7621,7 @@ function PostCard({
   const post = item.post;
   const onOpenTag = useContext(TagSearchContext);
   const showMedia = useContext(ShowMediaContext);
+  const density = useContext(DensityContext);
   const blockCtx = useContext(BlockContext);
   const deletePostCtx = useContext(DeletePostContext);
   const canBlockAuthor = !!blockCtx?.canBlock && post.author.did !== blockCtx?.selfDid;
@@ -7316,6 +7634,7 @@ function PostCard({
   const postTimestamp = post.record.createdAt || post.indexedAt;
   const postTimeLabel = formatPostTime(postTimestamp);
   const preservesLineBreaks = text.includes("\n");
+  const threadMarker = threadMarkerMatch(text);
   const hasRichContent = images.length > 0 || !!external || !!recordEmbed || !!video;
   const postVariant = images.length > 0 || !!video ? "has-media" : external ? "has-link" : recordEmbed ? "has-quote" : "text-only";
   const hasHiddenMedia = !showMedia && (images.length > 0 || !!video || !!external || !!recordEmbed);
@@ -7330,6 +7649,25 @@ function PostCard({
     ...(post.viewer?.threadMuted ? ["Thread muted"] : []),
     ...sensitiveLabels.map(moderationLabelText),
   ];
+
+  if (density === "media") {
+    return (
+      <MediaOnlyPostCard
+        post={post}
+        onOpenImage={onOpenImage}
+        onOpenPost={onOpenPost}
+        onOpenProfile={onOpenProfile}
+        onReply={onReply}
+        replyActive={replyActive}
+        canReply={!!onReply}
+        localLists={localLists}
+        onToggleListPost={onToggleListPost}
+        canDeletePost={canDeletePost}
+        canBlockAuthor={canBlockAuthor}
+      />
+    );
+  }
+
   return (
     <article className={`post-card ${postVariant}${hasHiddenMedia ? " media-hidden" : ""}`}>
       <header className="post-header">
@@ -7357,6 +7695,14 @@ function PostCard({
           </div>
         </div>
       </header>
+      {threadMarker && (
+        <button type="button" className="thread-open-chip" onClick={() => onOpenPost?.(post)} title="Open full thread">
+          <MessageCircle size={13} />
+          <span>
+            Open Thread {threadMarker.index}/{threadMarker.total}
+          </span>
+        </button>
+      )}
       {item.reason?.by && <p className="reason">Reposted by {displayName(item.reason.by)}</p>}
       {item.reply?.parent && <p className="reason">Replying in a thread from @{item.reply.parent.author.handle}</p>}
       {(isOwnPost || labels.length > 0) && (
@@ -7383,21 +7729,19 @@ function PostCard({
         !hasRichContent && <p className="post-text muted">Post has no plain text.</p>
       )}
       <PostImageVideoMedia post={post} onOpenImage={onOpenImage} />
+      {!showMedia && external?.thumb && (
+        <MediaHiddenButton kind="image" revealed={linkMediaRevealed} onReveal={() => setLinkMediaRevealed((current) => !current)} />
+      )}
       {external && (
         <div className={linkMediaHidden ? "link-card no-media" : "link-card"}>
           <a href={external.uri} target="_blank" rel="noreferrer">
             {external.thumb && !linkMediaHidden && <img alt="" src={external.thumb} loading="lazy" decoding="async" />}
             <span>
               <strong>{external.title || external.uri}</strong>
+              <em>Open {formatExternalUrlLabel(external.uri || external.title || "")}</em>
               <small>{external.description}</small>
             </span>
           </a>
-          {linkMediaHidden && (
-            <button type="button" className="media-hidden-button link-media-hidden" onClick={() => setLinkMediaRevealed(true)}>
-              <Image size={15} />
-              <span className="media-hidden-show">Show image</span>
-            </button>
-          )}
         </div>
       )}
       {recordEmbed && (
@@ -7522,6 +7866,7 @@ function QuotedPostCard({
           {embeddedExternal.thumb && !hideMediaForSetting && <img alt="" src={embeddedExternal.thumb} loading="lazy" decoding="async" />}
           <span>
             <strong>{embeddedExternal.title || embeddedExternal.uri}</strong>
+            <em>Open {formatExternalUrlLabel(embeddedExternal.uri || embeddedExternal.title || "")}</em>
             <small>{embeddedExternal.description}</small>
           </span>
         </a>
