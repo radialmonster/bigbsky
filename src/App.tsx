@@ -1046,14 +1046,6 @@ function VideoEmbedCard({ video, compact = false }: { video: VideoEmbedView; com
     }
 
     setUnsupported(false);
-    if (element.canPlayType("application/vnd.apple.mpegurl")) {
-      element.src = playlist;
-      return () => {
-        element.removeAttribute("src");
-        element.load();
-      };
-    }
-
     let active = true;
     let destroy: (() => void) | undefined;
     import("hls.js")
@@ -1062,7 +1054,11 @@ function VideoEmbedCard({ video, compact = false }: { video: VideoEmbedView; com
           return;
         }
         if (!Hls.isSupported()) {
-          setUnsupported(true);
+          if (videoRef.current.canPlayType("application/vnd.apple.mpegurl")) {
+            videoRef.current.src = playlist;
+          } else {
+            setUnsupported(true);
+          }
           return;
         }
         const hls = new Hls();
@@ -1084,6 +1080,8 @@ function VideoEmbedCard({ video, compact = false }: { video: VideoEmbedView; com
     return () => {
       active = false;
       destroy?.();
+      element.removeAttribute("src");
+      element.load();
     };
   }, [playlist]);
 
