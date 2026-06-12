@@ -28,6 +28,10 @@ function safeLocalStorageRemove(key: string) {
   }
 }
 
+function isDeletedSessionError(error: unknown) {
+  return /session.*deleted|deleted.*session/i.test(String(error));
+}
+
 export type SubscribedFeed = {
   uri: string;
   displayName: string;
@@ -140,6 +144,11 @@ export async function initAuthSession(): Promise<AuthInitResult> {
 
     return { session: null, status: "signed-out" };
   } catch (error) {
+    if (isDeletedSessionError(error)) {
+      await clearOAuthLocalSession();
+      return { session: null, status: "signed-out" };
+    }
+
     return {
       session: null,
       status: "error",
