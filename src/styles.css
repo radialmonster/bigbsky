@@ -1073,7 +1073,7 @@ button {
 }
 
 .surface-placeholder {
-  max-width: 760px;
+  width: 100%;
   padding: 22px;
   border: 1px solid var(--app-border);
   border-radius: 8px;
@@ -1218,9 +1218,9 @@ button {
 
 .surface-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
   gap: 12px;
-  max-width: 980px;
+  width: 100%;
   margin-top: 14px;
 }
 
@@ -1259,9 +1259,9 @@ button {
 
 .settings-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
   gap: 12px;
-  max-width: 1060px;
+  width: 100%;
   margin-top: 14px;
 }
 
@@ -1551,7 +1551,7 @@ button {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) auto;
   gap: 16px;
-  max-width: 980px;
+  width: 100%;
   padding: 18px;
   border: 1px solid var(--app-border);
   border-radius: 8px;
@@ -1619,9 +1619,9 @@ button {
 
 .self-profile-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: 12px;
-  max-width: 980px;
+  width: 100%;
 }
 
 /* Each card is itself the clickable control (button or link). */
@@ -1773,14 +1773,14 @@ button.surface-action {
 .notification-list {
   display: grid;
   gap: 10px;
-  max-width: 980px;
+  width: 100%;
 }
 
 /* Authenticated notifications feed */
 .notif-feed {
   display: grid;
   gap: 2px;
-  max-width: 720px;
+  width: 100%;
 }
 
 .notif-row {
@@ -2282,9 +2282,9 @@ button.surface-action {
 
 .feed-directory-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
   gap: 12px;
-  max-width: 980px;
+  width: 100%;
   margin-top: 14px;
 }
 
