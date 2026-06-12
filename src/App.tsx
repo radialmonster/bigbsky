@@ -55,6 +55,7 @@ import {
   isListUri,
   getEmbedImages,
   getExternalEmbed,
+  getAuthorFeed,
   getFeed,
   getFeedGenerator,
   getPopularFeedGenerators,
@@ -147,7 +148,7 @@ const LikeContext = createContext<LikeContextValue | null>(null);
 // every call site. Override state lives in the parent (App) so it survives row
 // virtualization. Only available when signed in (bookmarks are an authenticated
 // AppView feature). Mirrors LikeContext.
-type BookmarkView = { bookmarked: boolean };
+type BookmarkView = { bookmarked: boolean; error?: string };
 type BookmarkContextValue = {
   canBookmark: boolean;
   getState: (post: FeedPost) => BookmarkView;
@@ -738,6 +739,7 @@ type ThreadedFeedItem = {
 
 type FeedRow = FeedItem | ThreadedFeedItem;
 type PostRefValue = { uri: string; cid: string };
+type BranchLoadResult = { added: number };
 const CONTINUATION_REPLY_WINDOW_MS = 10 * 60 * 1000;
 type ThreadPart = {
   node: ThreadPostNode;
@@ -890,7 +892,7 @@ function buildThreadedFeedRows(items: FeedItem[]): FeedRow[] {
 async function hydrateProfileSelfThreads(items: FeedItem[], signal?: AbortSignal) {
   const threadRoots = items.filter((item) => {
     const marker = threadMarkerMatch(item.post.record.text || "");
-    return marker?.index === 1 && marker.total > 1;
+    return (marker?.index === 1 && marker.total > 1) || (!item.post.record.reply && (item.post.replyCount ?? 0) > 0);
   });
 
   if (threadRoots.length === 0) {
@@ -943,6 +945,33 @@ function replaceThreadBranch(node: ThreadNode, uri: string, replacement: ThreadN
     ...node,
     replies: node.replies?.map((reply) => replaceThreadBranch(reply, uri, replacement)),
   };
+}
+
+function findThreadNodeByUri(node: ThreadNode | undefined, uri: string): ThreadPostNode | null {
+  if (!node || !("post" in node)) {
+    return null;
+  }
+
+  if (node.post.uri === uri) {
+    return node;
+  }
+
+  for (const reply of node.replies ?? []) {
+    const found = findThreadNodeByUri(reply, uri);
+    if (found) {
+      return found;
+    }
+  }
+
+  return null;
+}
+
+function countThreadPostNodes(node: ThreadNode | undefined): number {
+  if (!node || !("post" in node)) {
+    return 0;
+  }
+
+  return 1 + (node.replies ?? []).reduce((total, reply) => total + countThreadPostNodes(reply), 0);
 }
 
 function safeEmbedImages(images: ReturnType<typeof getEmbedImages>) {
@@ -1012,10 +1041,6 @@ function isAdultPost(post: FeedPost): boolean {
     ...((post.author?.labels ?? []) as Array<{ val?: string }>),
   ];
   return sensitiveMediaValues(labels).length > 0;
-}
-
-function postHasVisualMedia(post: FeedPost) {
-  return safeEmbedImages(getEmbedImages(post.embed)).length > 0 || !!getVideoEmbed(post.embed);
 }
 
 function videoKindLabel(type?: string) {
@@ -1191,6 +1216,7 @@ export function App() {
   // present. Lives here (not in the card) so optimistic state survives row
   // virtualization. in-flight set guards against double-taps.
   const [bookmarkOverrides, setBookmarkOverrides] = useState<Record<string, boolean>>({});
+  const [bookmarkErrors, setBookmarkErrors] = useState<Record<string, string>>({});
   const bookmarkInFlight = useRef<Set<string>>(new Set());
   const [localLists, setLocalLists] = useState<LocalList[]>(() => readLocalLists());
   // The signed-in user's real Bluesky lists (owned + subscribed), loaded on the
@@ -1224,6 +1250,7 @@ export function App() {
     status: "idle",
   });
   const [loadingThreadBranches, setLoadingThreadBranches] = useState<Record<string, boolean>>({});
+  const [threadBranchResults, setThreadBranchResults] = useState<Record<string, BranchLoadResult>>({});
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const feedCacheRef = useRef<Record<string, FeedState>>({});
   const feedMetadataCacheRef = useRef<Record<string, FeedGeneratorView>>({});
@@ -1671,7 +1698,8 @@ export function App() {
   }, [subscribedFeeds, myLists]);
   const feedRoutePath = (source: FeedSource) => `/feed/${encodeURIComponent(source.id)}`;
   const densityKey = route.kind === "feed" ? feedPreferenceKey(activeSource) : route.kind;
-  const density = (route.kind === "feed" ? feedDensityOverride(activeSource, densityByContext) : densityByContext[densityKey]) || densityByContext.default || "comfortable";
+  const storedDensity = (route.kind === "feed" ? feedDensityOverride(activeSource, densityByContext) : densityByContext[densityKey]) || densityByContext.default || "comfortable";
+  const density = storedDensity === "media" && !showMedia ? "comfortable" : storedDensity;
   const defaultDensity = densityByContext.default || "comfortable";
   const storedWidth = widthByContext[densityKey] || widthByContext.default;
   const workspaceWidth = (
@@ -1904,7 +1932,17 @@ export function App() {
     }
 
     if (feedResult.status === "fulfilled") {
-      const feedResponse = feedResult.value;
+      let feedResponse = feedResult.value;
+      if (!cursor && feedResponse.feed.length === 0 && (profileResponse?.postsCount ?? 0) > 0) {
+        try {
+          const publicFeedResponse = await getAuthorFeed(actor, undefined, signal, filter);
+          if (publicFeedResponse.feed.length > 0) {
+            feedResponse = publicFeedResponse;
+          }
+        } catch {
+          // Keep the authenticated response; the normal empty/error UI will handle it.
+        }
+      }
       const responseItems = filter === "posts_no_replies" ? await hydrateProfileSelfThreads(feedResponse.feed, signal) : feedResponse.feed;
       if (signal?.aborted) {
         return;
@@ -2239,6 +2277,7 @@ export function App() {
     if (route.kind !== "post") {
       setThread({ status: "idle" });
       setLoadingThreadBranches({});
+      setThreadBranchResults({});
       return;
     }
 
@@ -2252,6 +2291,7 @@ export function App() {
 
     const controller = new AbortController();
     setThread({ status: "loading" });
+    setThreadBranchResults({});
     getPostThreadAuthed(route.actor, route.rkey, controller.signal)
       .then(async (response) => {
         const thread = await hydrateThreadContinuations(response.thread, controller.signal);
@@ -2281,6 +2321,7 @@ export function App() {
     const cacheKey = `${route.actor}:${route.rkey}`;
     delete threadCacheRef.current[cacheKey];
     setThread({ status: "loading" });
+    setThreadBranchResults({});
     getPostThreadAuthed(route.actor, route.rkey)
       .then(async (response) => {
         const thread = await hydrateThreadContinuations(response.thread);
@@ -2297,9 +2338,12 @@ export function App() {
       return;
     }
 
+    const previousBranch = findThreadNodeByUri(thread.node, uri);
+    const previousPostCount = Math.max(0, countThreadPostNodes(previousBranch ?? undefined) - 1);
     const cachedBranch = threadBranchCacheRef.current[uri];
     if (cachedBranch) {
       setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
+      setThreadBranchResults((current) => ({ ...current, [uri]: { added: Math.max(0, countThreadPostNodes(cachedBranch) - 1 - previousPostCount) } }));
       setThread((current) => {
         if (current.status !== "ready" || !current.node) {
           return current;
@@ -2315,9 +2359,17 @@ export function App() {
     }
 
     setLoadingThreadBranches((current) => ({ ...current, [uri]: true }));
+    setThreadBranchResults((current) => {
+      const { [uri]: _removed, ...rest } = current;
+      return rest;
+    });
     getPostThreadByUriAuthed(uri)
       .then((response) => {
         threadBranchCacheRef.current[uri] = response.thread;
+        setThreadBranchResults((current) => ({
+          ...current,
+          [uri]: { added: Math.max(0, countThreadPostNodes(response.thread) - 1 - previousPostCount) },
+        }));
         setThread((current) => {
           if (current.status !== "ready" || !current.node) {
             return current;
@@ -2403,16 +2455,6 @@ export function App() {
     setShowMedia((current) => {
       const next = !current;
       safeLocalStorageSet(showMediaStorageKey, next ? "true" : "false");
-      if (!next) {
-        const nextPreferences = Object.fromEntries(
-          Object.entries(densityByContext).filter(([, value]) => value !== "media"),
-        );
-        if ((nextPreferences.default || "comfortable") === "media") {
-          nextPreferences.default = "comfortable";
-        }
-        setDensityByContext(nextPreferences);
-        safeLocalStorageSet("bigbsky:density-by-context", JSON.stringify(nextPreferences));
-      }
       return next;
     });
   }
@@ -2505,11 +2547,11 @@ export function App() {
     (post: FeedPost): BookmarkView => {
       const ov = bookmarkOverrides[post.uri];
       if (ov !== undefined) {
-        return { bookmarked: ov };
+        return { bookmarked: ov, error: bookmarkErrors[post.uri] };
       }
-      return { bookmarked: !!post.viewer?.bookmarked };
+      return { bookmarked: !!post.viewer?.bookmarked, error: bookmarkErrors[post.uri] };
     },
-    [bookmarkOverrides],
+    [bookmarkOverrides, bookmarkErrors],
   );
 
   const toggleBookmark = useCallback(
@@ -2520,6 +2562,10 @@ export function App() {
       const ov = bookmarkOverrides[post.uri];
       const bookmarked = ov !== undefined ? ov : !!post.viewer?.bookmarked;
       bookmarkInFlight.current.add(post.uri);
+      setBookmarkErrors((current) => {
+        const { [post.uri]: _removed, ...rest } = current;
+        return rest;
+      });
       // Optimistic update.
       setBookmarkOverrides((current) => ({ ...current, [post.uri]: !bookmarked }));
       void (async () => {
@@ -2532,6 +2578,7 @@ export function App() {
         } catch {
           // Revert to pre-click state.
           setBookmarkOverrides((current) => ({ ...current, [post.uri]: bookmarked }));
+          setBookmarkErrors((current) => ({ ...current, [post.uri]: "Bookmark update failed" }));
         } finally {
           bookmarkInFlight.current.delete(post.uri);
         }
@@ -3163,6 +3210,7 @@ export function App() {
             currentDid={authState.session?.did}
             thread={thread}
             loadingBranches={loadingThreadBranches}
+            branchResults={threadBranchResults}
             onOpenImage={openImageViewer}
             onOpenPost={openPost}
             onOpenProfile={openProfile}
@@ -3466,11 +3514,8 @@ function VirtualPostList({
   // the feed entirely (not just gate their media), so they never appear.
   const showNsfw = useContext(ShowNsfwContext);
   const items = useMemo(
-    () => {
-      const visibleItems = showNsfw ? incomingItems : incomingItems.filter((item) => !isAdultPost(item.post));
-      return density === "media" ? visibleItems.filter((item) => postHasVisualMedia(item.post)) : visibleItems;
-    },
-    [density, incomingItems, showNsfw],
+    () => (showNsfw ? incomingItems : incomingItems.filter((item) => !isAdultPost(item.post))),
+    [incomingItems, showNsfw],
   );
   const rows = useMemo(() => buildThreadedFeedRows(items), [items]);
   const defaultRowHeight = density === "compact" ? 112 : density === "media" ? 360 : 260;
@@ -4387,6 +4432,11 @@ function SurfaceView({
         <>
           <section className="bsky-list-section" aria-label="Your feeds">
             <h3 className="bsky-list-section-heading">Your feeds</h3>
+            {!showMedia && (
+              <p className="feed-media-warning">
+                Feed views cannot be set to Media while Show Media is off.
+              </p>
+            )}
             {!auth.session ? (
               <EmptyState
                 title="Sign in to see your feeds"
@@ -4511,6 +4561,7 @@ function FeedDensityOverrideControl({
   onChange: (source: FeedSource, density: string | null) => void;
 }) {
   const effective = override || defaultDensity;
+  const effectiveLabel = effective === "media" && !showMedia ? "media, paused" : effective;
   return (
     <label className="feed-density-control">
       <span>View</span>
@@ -4518,7 +4569,7 @@ function FeedDensityOverrideControl({
         value={override || "default"}
         onChange={(event) => onChange(source, event.target.value === "default" ? null : event.target.value)}
       >
-        <option value="default">Default ({effective})</option>
+        <option value="default">Default ({effectiveLabel})</option>
         {densityModes.map((mode) => (
           <option value={mode} key={mode} disabled={mode === "media" && !showMedia}>
             {mode}
@@ -5018,6 +5069,9 @@ function SelfProfileSurface({
           </div>
         </dl>
         <div className="self-profile-actions">
+          <button type="button" className="self-profile-primary" onClick={() => onOpenSelfTab("posts")}>
+            Open Profile on BigBsky
+          </button>
           <a className="self-profile-action-link" href={bskyProfileUrl} target="_blank" rel="noreferrer" title="Open your profile on Bluesky">
             Open Profile on Bluesky
           </a>
@@ -6437,14 +6491,14 @@ function BookmarksView({
   onToggleListPost: (listId: string, post: FeedPost) => void;
 }) {
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
-  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [items, setItems] = useState<FeedItem[]>([]);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     if (!signedIn) {
       setStatus("idle");
-      setPosts([]);
+      setItems([]);
       setCursor(undefined);
       return undefined;
     }
@@ -6453,10 +6507,11 @@ function BookmarksView({
     void (async () => {
       try {
         const response = await getBookmarks();
+        const hydratedItems = await hydrateProfileSelfThreads(response.feed);
         if (cancelled) {
           return;
         }
-        setPosts(response.feed.map((item) => item.post));
+        setItems(hydratedItems);
         setCursor(response.cursor);
         setStatus("ready");
       } catch {
@@ -6478,7 +6533,8 @@ function BookmarksView({
     void (async () => {
       try {
         const response = await getBookmarks(cursor);
-        setPosts((current) => [...current, ...response.feed.map((item) => item.post)]);
+        const hydratedItems = await hydrateProfileSelfThreads(response.feed);
+        setItems((current) => [...current, ...hydratedItems]);
         setCursor(response.cursor);
       } catch {
         // Keep what we have; the load-more control stays for an explicit retry.
@@ -6503,26 +6559,25 @@ function BookmarksView({
         <LoadingState label="Loading your bookmarks" />
       ) : status === "error" ? (
         <ErrorState message="Couldn't load bookmarks. If you just updated permissions, re-authorize from Settings, then try again." />
-      ) : posts.length === 0 ? (
+      ) : items.length === 0 ? (
         <EmptyState title="No bookmarks yet" message="Use the Bookmark action on any post to save it to your Bluesky account." />
       ) : (
-        <section className="bookmarks-list" aria-label="Bookmarks">
-          {posts.map((post) => (
-            <PostCard
-              item={{ post }}
-              currentDid={currentDid}
-              key={post.uri}
-              onOpenImage={onOpenImage}
-              onOpenLinkPreview={onOpenLinkPreview}
-              onOpenPost={onOpenPost}
-              onOpenProfile={onOpenProfile}
-              localLists={localLists}
-              onToggleListPost={onToggleListPost}
-            />
-          ))}
+        <VirtualPostList
+          containerRef={containerRef}
+          currentDid={currentDid}
+          density="comfortable"
+          items={items}
+          localLists={localLists}
+          onOpenImage={onOpenImage}
+          onOpenLinkPreview={onOpenLinkPreview}
+          onOpenPost={onOpenPost}
+          onOpenProfile={onOpenProfile}
+          onToggleListPost={onToggleListPost}
+          onRenderedRowsChange={() => undefined}
+        >
           {cursor && <AutoLoadMoreButton label="Load more bookmarks" onLoadMore={loadMore} />}
           {!cursor && <EndOfFeedCard />}
-        </section>
+        </VirtualPostList>
       )}
     </div>
   );
@@ -7117,11 +7172,11 @@ function ThreadedPostCard({
         {bookmarkCtx?.canBookmark && bookmarkView && (
           <button
             type="button"
-            className={bookmarkView.bookmarked ? "bookmarked" : ""}
+            className={bookmarkView.error ? "bookmark-error" : bookmarkView.bookmarked ? "bookmarked" : ""}
             onClick={() => bookmarkCtx.toggle(rootPost)}
-            title={bookmarkView.bookmarked ? "Remove bookmark from first post" : "Bookmark first post"}
+            title={bookmarkView.error || (bookmarkView.bookmarked ? "Remove bookmark from first post" : "Bookmark first post")}
           >
-            <Bookmark size={16} /> {bookmarkView.bookmarked ? "Bookmarked" : "Bookmark"}
+            <Bookmark size={16} /> {bookmarkView.error || (bookmarkView.bookmarked ? "Bookmarked" : "Bookmark")}
           </button>
         )}
         <button type="button" onClick={handleShare} title="Share first post">
@@ -7485,8 +7540,37 @@ function PostActionBar({
   const blockView = blockCtx?.getState(post.author);
   const deletePostCtx = useContext(DeletePostContext);
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDetailsElement | null>(null);
   const { showReplyLimited, handleReplyClick } = useReplyGate(post, onReply);
   const displayedCommentCount = commentCount ?? post.replyCount ?? 0;
+
+  useEffect(() => {
+    if (!moreMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && moreMenuRef.current?.contains(target)) {
+        return;
+      }
+      setMoreMenuOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMoreMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [moreMenuOpen]);
 
   const handleShare = async () => {
     const url = postBskyUrl(post);
@@ -7541,12 +7625,12 @@ function PostActionBar({
         )}
         {bookmarkCtx?.canBookmark && bookmarkView ? (
           <button
-            className={bookmarkView.bookmarked ? "bookmarked" : ""}
+            className={bookmarkView.error ? "bookmark-error" : bookmarkView.bookmarked ? "bookmarked" : ""}
             type="button"
             onClick={() => bookmarkCtx.toggle(post)}
-            title={bookmarkView.bookmarked ? "Remove bookmark" : "Bookmark post"}
+            title={bookmarkView.error || (bookmarkView.bookmarked ? "Remove bookmark" : "Bookmark post")}
           >
-            <Bookmark size={16} /> {bookmarkView.bookmarked ? "Bookmarked" : "Bookmark"}
+            <Bookmark size={16} /> {bookmarkView.error || (bookmarkView.bookmarked ? "Bookmarked" : "Bookmark")}
           </button>
         ) : null}
         <button type="button" onClick={handleShare} title="Share post">
@@ -7585,16 +7669,28 @@ function PostActionBar({
             </div>
           </details>
         )}
-        <details className="post-list-menu post-more-menu">
+        <details
+          className="post-list-menu post-more-menu"
+          open={moreMenuOpen}
+          ref={moreMenuRef}
+          onToggle={(event) => setMoreMenuOpen(event.currentTarget.open)}
+        >
           <summary title="More options">
             <MoreHorizontal size={16} />
           </summary>
           <div>
-            <a href={postBskyUrl(post)} target="_blank" rel="noreferrer">
+            <a href={postBskyUrl(post)} target="_blank" rel="noreferrer" onClick={() => setMoreMenuOpen(false)}>
               Open on Bluesky
             </a>
             {canDeletePost && (
-              <button type="button" className="danger-action" onClick={() => deletePostCtx?.deletePost(post)}>
+              <button
+                type="button"
+                className="danger-action"
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  deletePostCtx?.deletePost(post);
+                }}
+              >
                 Delete post
               </button>
             )}
@@ -7602,7 +7698,10 @@ function PostActionBar({
               <button
                 type="button"
                 className={blockView?.blocked ? "block-listed" : ""}
-                onClick={() => blockCtx?.toggle(post.author)}
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  blockCtx?.toggle(post.author);
+                }}
               >
                 {blockView?.blocked ? `Unblock @${post.author.handle}` : `Block @${post.author.handle}`}
               </button>
@@ -7771,11 +7870,11 @@ function CombinedThreadViewCard({
         {bookmarkCtx?.canBookmark && bookmarkView ? (
           <button
             type="button"
-            className={bookmarkView.bookmarked ? "bookmarked" : ""}
+            className={bookmarkView.error ? "bookmark-error" : bookmarkView.bookmarked ? "bookmarked" : ""}
             onClick={() => bookmarkCtx.toggle(rootPost)}
-            title={bookmarkView.bookmarked ? "Remove bookmark from first post" : "Bookmark first post"}
+            title={bookmarkView.error || (bookmarkView.bookmarked ? "Remove bookmark from first post" : "Bookmark first post")}
           >
-            <Bookmark size={16} /> {bookmarkView.bookmarked ? "Bookmarked" : "Bookmark"}
+            <Bookmark size={16} /> {bookmarkView.error || (bookmarkView.bookmarked ? "Bookmarked" : "Bookmark")}
           </button>
         ) : null}
         <button type="button" onClick={handleShare} title="Share first post">
@@ -7857,7 +7956,7 @@ function PostCard({
     ...sensitiveLabels.map(moderationLabelText),
   ];
 
-  if (density === "media" && !s) {
+  if (density === "media" && !s && (images.length > 0 || !!video)) {
     return (
       <MediaOnlyPostCard
         post={post}
@@ -8232,6 +8331,7 @@ function ThreadView({
   localLists,
   thread,
   loadingBranches,
+  branchResults,
   onOpenImage,
   onOpenLinkPreview,
   onLoadBranch,
@@ -8245,6 +8345,7 @@ function ThreadView({
   localLists: LocalList[];
   thread: { status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string };
   loadingBranches: Record<string, boolean>;
+  branchResults: Record<string, BranchLoadResult>;
   onOpenImage: (image: ImageViewerState) => void;
   onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
   onLoadBranch: (uri: string) => void;
@@ -8363,7 +8464,7 @@ function ThreadView({
               parentNode,
               index,
               parentNodes.length,
-              { loadingBranches, onLoadBranch, onOpenImage, onOpenPost, onOpenProfile },
+              { loadingBranches, branchResults, onLoadBranch, onOpenImage, onOpenPost, onOpenProfile },
               onOpenLinkPreview,
               { currentDid, localLists, onToggleListPost },
             ),
@@ -8392,6 +8493,7 @@ function ThreadView({
           onToggleBranch={(uri) => setExpandedBranches((current) => ({ ...current, [uri]: !current[uri] }))}
           handlers={{
             loadingBranches,
+            branchResults,
             onLoadBranch,
             onOpenImage,
             onOpenPost,
@@ -8411,6 +8513,7 @@ function ThreadView({
           setExpandedBranches((current) => ({ ...current, [uri]: !current[uri] })),
           {
             loadingBranches,
+            branchResults,
             onLoadBranch,
             onOpenImage,
             onOpenPost,
@@ -8437,6 +8540,7 @@ function renderThreadContextNode(
   total: number,
   handlers: {
     loadingBranches: Record<string, boolean>;
+    branchResults: Record<string, BranchLoadResult>;
     onLoadBranch: (uri: string) => void;
     onOpenImage: (image: ImageViewerState) => void;
     onOpenPost: (post: FeedPost) => void;
@@ -8504,6 +8608,7 @@ function LongThreadCard({
   onToggleBranch: (uri: string) => void;
   handlers: {
     loadingBranches: Record<string, boolean>;
+    branchResults: Record<string, BranchLoadResult>;
     onLoadBranch: (uri: string) => void;
     onOpenImage: (image: ImageViewerState) => void;
     onOpenPost: (post: FeedPost) => void;
@@ -8897,6 +9002,7 @@ function renderThreadNode(
   onToggleBranch: (uri: string) => void,
   handlers: {
     loadingBranches: Record<string, boolean>;
+    branchResults: Record<string, BranchLoadResult>;
     onLoadBranch: (uri: string) => void;
     onOpenImage: (image: ImageViewerState) => void;
     onOpenPost: (post: FeedPost) => void;
@@ -8936,9 +9042,12 @@ function renderThreadNode(
   const discussionReplies = continuationReply ? replies.filter((reply) => reply !== continuationReply) : replies;
   const visibleReplies = isExpanded ? discussionReplies : discussionReplies.slice(0, 8);
   const hiddenReplyCount = Math.max(0, discussionReplies.length - visibleReplies.length);
+  const hasCollapsedReplies = discussionReplies.length > 8;
   const knownReplyCount = node.post.replyCount ?? 0;
   const hasUnloadedReplies = knownReplyCount > replies.length;
   const isLoadingBranch = !!handlers.loadingBranches[node.post.uri];
+  const branchResult = handlers.branchResults[node.post.uri];
+  const canLoadUnloadedReplies = hasUnloadedReplies && (!hasCollapsedReplies || isExpanded);
 
   return (
     <div className="thread-node" key={node.post.uri} style={threadDepthStyle(depth)}>
@@ -8980,20 +9089,31 @@ function renderThreadNode(
       {visibleReplies.map((reply) =>
         renderThreadNode(reply, depth + 1, expandedBranches, onToggleBranch, handlers, onOpenLinkPreview, savedState),
       )}
-      {discussionReplies.length > 8 && (
+      {hasCollapsedReplies && (
         <button className="load-more branch-toggle" type="button" onClick={() => onToggleBranch(node.post.uri)}>
           {isExpanded ? "Show fewer replies" : `Show ${hiddenReplyCount} more replies`}
         </button>
       )}
-      {hasUnloadedReplies && (
+      {canLoadUnloadedReplies && isLoadingBranch && (
+        <div className="branch-load-status" role="status">
+          Loading replies...
+        </div>
+      )}
+      {canLoadUnloadedReplies && !isLoadingBranch && (
         <button
           className="load-more branch-toggle"
           type="button"
-          disabled={isLoadingBranch}
           onClick={() => handlers.onLoadBranch(node.post.uri)}
         >
-          {isLoadingBranch ? "Loading branch" : `Load ${knownReplyCount - replies.length} more from Bluesky`}
+          {`Load ${knownReplyCount - replies.length} more replies`}
         </button>
+      )}
+      {!isLoadingBranch && branchResult && (
+        <div className="branch-load-status" role="status">
+          {branchResult.added > 0
+            ? `Loaded ${branchResult.added.toLocaleString()} more ${branchResult.added === 1 ? "reply" : "replies"}`
+            : "No new replies returned"}
+        </div>
       )}
     </div>
   );

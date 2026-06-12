@@ -3,6 +3,8 @@ import type { AuthorFeedFilter, FeedResponse, ListView, Profile, SearchPostsResp
 
 const productionClientId = "https://bigbsky.com/oauth-client-metadata.json";
 const handleResolver = "https://bsky.social";
+const appViewDid = "did:web:api.bsky.app";
+const appViewServiceType = "bsky_appview";
 const activeDidKey = "bigbsky:auth:active-did";
 const activeHandleKey = "bigbsky:auth:active-handle";
 const oauthDatabaseName = "@atproto-oauth-client";
@@ -11,6 +13,16 @@ let clientPromise: Promise<BrowserOAuthClient> | null = null;
 // Retained so authenticated reads (e.g. the signed-in user's saved feeds) can
 // reuse the active OAuth session instead of re-restoring it.
 let activeSession: OAuthSession | null = null;
+
+function asAppViewAgent(agent: InstanceType<typeof import("@atproto/api").Agent>) {
+  return agent.withProxy(appViewServiceType, appViewDid);
+}
+
+async function readPostBookmarked(agent: InstanceType<typeof import("@atproto/api").Agent>, uri: string): Promise<boolean> {
+  const response = await asAppViewAgent(agent).app.bsky.feed.getPostThread({ uri, depth: 0, parentHeight: 0 });
+  const thread = response.data.thread as ThreadNode;
+  return "post" in thread ? !!thread.post.viewer?.bookmarked : false;
+}
 
 function safeLocalStorageSet(key: string, value: string) {
   try {
@@ -763,7 +775,10 @@ export async function bookmarkPost(uri: string, cid: string): Promise<void> {
   }
   const { Agent } = await import("@atproto/api");
   const agent = new Agent(session);
-  await agent.app.bsky.bookmark.createBookmark({ uri, cid });
+  await asAppViewAgent(agent).app.bsky.bookmark.createBookmark({ uri, cid });
+  if (!(await readPostBookmarked(agent, uri))) {
+    throw new Error("Bluesky did not confirm this bookmark. Try again in a moment.");
+  }
 }
 
 // Remove a native bookmark. deleteBookmark takes the POST uri (there is no
@@ -775,7 +790,10 @@ export async function unbookmarkPost(uri: string): Promise<void> {
   }
   const { Agent } = await import("@atproto/api");
   const agent = new Agent(session);
-  await agent.app.bsky.bookmark.deleteBookmark({ uri });
+  await asAppViewAgent(agent).app.bsky.bookmark.deleteBookmark({ uri });
+  if (await readPostBookmarked(agent, uri)) {
+    throw new Error("Bluesky did not remove this bookmark. Try again in a moment.");
+  }
 }
 
 // List the signed-in user's native bookmarks. The bookmark view embeds the
@@ -789,7 +807,7 @@ export async function getBookmarks(cursor?: string, signal?: AbortSignal): Promi
   }
   const { Agent } = await import("@atproto/api");
   const agent = new Agent(session);
-  const response = await agent.app.bsky.bookmark.getBookmarks(
+  const response = await asAppViewAgent(agent).app.bsky.bookmark.getBookmarks(
     { limit: 50, ...(cursor ? { cursor } : {}) },
     signal ? { signal } : undefined,
   );

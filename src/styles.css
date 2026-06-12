@@ -1594,16 +1594,20 @@ button {
   gap: 8px;
 }
 
-.self-profile-actions button {
+.self-profile-actions button,
+.self-profile-actions a {
+  display: inline-flex;
+  align-items: center;
   min-height: 36px;
   padding: 0 12px;
   border-radius: 8px;
   background: var(--app-surface-2);
   color: var(--app-text);
   font-weight: 700;
+  text-decoration: none;
 }
 
-.self-profile-actions button:first-child {
+.self-profile-actions .self-profile-primary {
   background: var(--bsky-blue);
   color: #fff;
 }
@@ -1969,6 +1973,13 @@ button.surface-action {
   margin: 0 0 10px;
   font-size: 14px;
   color: var(--app-text-muted);
+}
+
+.feed-media-warning {
+  margin: -2px 0 12px;
+  color: var(--app-danger);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .bsky-list-grid {
@@ -3616,6 +3627,10 @@ button.surface-action {
   color: var(--bsky-blue-soft);
 }
 
+.post-actions button.bookmark-error {
+  color: var(--app-danger);
+}
+
 .post-actions button.liked {
   color: #ec4899;
 }
@@ -4536,7 +4551,41 @@ button.surface-action {
 }
 
 .branch-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
   margin: 8px 0 16px;
+  padding: 0 12px;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface-2);
+  color: var(--bsky-blue-soft);
+  font-size: 13px;
+}
+
+.branch-toggle:hover:not(:disabled) {
+  border-color: rgba(117, 175, 255, 0.44);
+  background: rgba(5, 96, 255, 0.12);
+  color: var(--app-text);
+}
+
+.branch-toggle:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.branch-load-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  margin: 8px 0 16px;
+  padding: 0 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: rgba(117, 175, 255, 0.08);
+  color: var(--app-text-muted);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .thread-continuation,
