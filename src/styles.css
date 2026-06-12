@@ -2873,14 +2873,12 @@ button.surface-action {
 }
 
 .compact .post-text {
-  display: -webkit-box;
-  overflow: hidden;
+  display: block;
+  overflow: visible;
   margin: 5px 0;
   font-size: 17px;
   line-height: 1.24;
   white-space: normal;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 1;
 }
 
 .compact .post-text.has-line-breaks {
@@ -5396,6 +5394,14 @@ button.surface-action {
   .compact .post-card.text-only,
   .compact .post-card.media-hidden {
     display: block;
+  }
+
+  .timeline.compact .post-card.media-hidden .media-hidden-button {
+    position: static;
+    width: max-content;
+    max-width: 100%;
+    margin: 6px 0;
+    padding: 2px 9px;
   }
 
   .image-viewer {
