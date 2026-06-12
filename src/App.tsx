@@ -1032,25 +1032,73 @@ function VideoEmbedCard({ video, compact = false }: { video: VideoEmbedView; com
   const kind = videoKindLabel(video.type);
   const playlist = safeHttpUrl(video.playlist);
   const thumbnail = safeHttpUrl(video.thumbnail);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [unsupported, setUnsupported] = useState(false);
   const aspectRatio =
     video.aspectRatio?.width && video.aspectRatio?.height
       ? { aspectRatio: `${video.aspectRatio.width} / ${video.aspectRatio.height}` }
       : undefined;
 
+  useEffect(() => {
+    const element = videoRef.current;
+    if (!playlist || !element) {
+      return undefined;
+    }
+
+    setUnsupported(false);
+    if (element.canPlayType("application/vnd.apple.mpegurl")) {
+      element.src = playlist;
+      return () => {
+        element.removeAttribute("src");
+        element.load();
+      };
+    }
+
+    let active = true;
+    let destroy: (() => void) | undefined;
+    import("hls.js")
+      .then(({ default: Hls }) => {
+        if (!active || !videoRef.current) {
+          return;
+        }
+        if (!Hls.isSupported()) {
+          setUnsupported(true);
+          return;
+        }
+        const hls = new Hls();
+        destroy = () => hls.destroy();
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (data?.fatal) {
+            setUnsupported(true);
+          }
+        });
+        hls.loadSource(playlist);
+        hls.attachMedia(videoRef.current);
+      })
+      .catch(() => {
+        if (active) {
+          setUnsupported(true);
+        }
+      });
+
+    return () => {
+      active = false;
+      destroy?.();
+    };
+  }, [playlist]);
+
   return (
     <div className={compact ? "video-card quote-video-card" : "video-card"}>
-      {playlist ? (
+      {playlist && !unsupported ? (
         <video
+          ref={videoRef}
           controls
           playsInline
           preload="metadata"
           poster={thumbnail}
           aria-label={video.alt ? `${kind}: ${video.alt}` : kind}
           style={aspectRatio}
-        >
-          <source src={playlist} type="application/vnd.apple.mpegurl" />
-          {kind} playback is not supported by this browser.
-        </video>
+        />
       ) : thumbnail ? (
         <a className="video-fallback-link" href={thumbnail} target="_blank" rel="noreferrer">
           <img alt={video.alt || ""} src={thumbnail} loading="lazy" decoding="async" style={aspectRatio} />
