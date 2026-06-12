@@ -231,7 +231,7 @@ async function ensureSession(): Promise<OAuthSession | null> {
 
 // Fetch the signed-in user's saved/pinned feeds from their AT Protocol
 // preferences and resolve display metadata. Returns [] when signed out. This is
-// an authenticated read routed through the user's session; no BigBSky backend.
+// an authenticated read routed through the user's session; no BigBsky backend.
 export async function getSubscribedFeeds(): Promise<SubscribedFeed[]> {
   const session = await ensureSession();
   if (!session) {
@@ -375,7 +375,7 @@ export async function getMyLists(): Promise<MyLists> {
 // Subscribe the signed-in user to a feed generator ("Follow") by adding it to
 // their AT Protocol saved feeds (pinned), via the official preference helper.
 // This is a real authenticated write routed through the user's session/PDS — no
-// BigBSky backend. Throws if signed out.
+// BigBsky backend. Throws if signed out.
 export async function followFeed(feedUri: string): Promise<void> {
   const session = await ensureSession();
   if (!session) {

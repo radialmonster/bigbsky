@@ -37,6 +37,8 @@ export const navigationItems = [
   "Bookmarks",
   "Profile",
   "Settings",
+  "New Post",
+  "Info",
 ];
 
 export function displayName(profile?: Profile) {

@@ -32,7 +32,7 @@ export function getRouteState(pathname = window.location.pathname): RouteState {
     return { kind: "surface", name: "oauth-callback" };
   }
 
-  const surfaces = new Set(["explore", "feeds", "notifications", "chat", "lists", "bookmarks", "settings"]);
+  const surfaces = new Set(["explore", "feeds", "notifications", "chat", "lists", "bookmarks", "settings", "info"]);
   if (parts[0] && surfaces.has(parts[0])) {
     return { kind: "surface", name: parts[0] };
   }

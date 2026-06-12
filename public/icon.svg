@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
-  <title id="title">BigBSky icon</title>
+  <title id="title">BigBsky icon</title>
   <desc id="desc">A blue desktop reader mark with layered skyline cards.</desc>
   <rect width="512" height="512" rx="88" fill="#0f172a"/>
   <path fill="#38bdf8" d="M96 170c0-38 31-69 69-69h182c38 0 69 31 69 69v143c0 38-31 69-69 69H165c-38 0-69-31-69-69V170Z"/>

@@ -1,11 +1,11 @@
-// The single source of truth for the AT Protocol OAuth scopes BigBSky requests
+// The single source of truth for the AT Protocol OAuth scopes BigBsky requests
 // is the static client metadata document, public/oauth-client-metadata.json.
 // That JSON is what the authorization server actually fetches (at the client_id
 // URL) and enforces. This module re-exports its `scope` string so that app code
 // (e.g. the loopback / localhost client id built in auth.ts) and the published
 // metadata can never drift apart — there is exactly one place to edit.
 //
-// BigBSky is mostly an alternative reading theme for Bluesky: read broadly,
+// BigBsky is mostly an alternative reading theme for Bluesky: read broadly,
 // write narrowly. The scope tokens in the JSON, with the rationale for each:
 //
 //   atproto

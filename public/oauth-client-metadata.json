@@ -1,6 +1,6 @@
 {
   "client_id": "https://bigbsky.com/oauth-client-metadata.json",
-  "client_name": "BigBSky",
+  "client_name": "BigBsky",
   "client_uri": "https://bigbsky.com",
   "logo_uri": "https://bigbsky.com/icon.svg",
   "redirect_uris": [

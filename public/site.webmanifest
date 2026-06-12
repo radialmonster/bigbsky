@@ -1,6 +1,6 @@
 {
-  "name": "BigBSky",
-  "short_name": "BigBSky",
+  "name": "BigBsky",
+  "short_name": "BigBsky",
   "description": "A desktop-first Bluesky reader built as a static app.",
   "start_url": "/",
   "scope": "/",

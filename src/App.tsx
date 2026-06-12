@@ -30,7 +30,7 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { createContext, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, lazy, Suspense, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   type ActorSearchResponse,
@@ -114,7 +114,8 @@ import {
 import { getRouteState, type RouteState } from "./router";
 import { displayName, feedSources, navigationItems, type FeedSource } from "./sources";
 
-const navIcons = [Home, Compass, Hash, List, Bookmark, User, Settings];
+const navIcons = [Home, Compass, Hash, List, Bookmark, User, Settings, Send];
+const InfoPage = lazy(() => import("./InfoPage"));
 
 // Lets deeply-nested post cards open an in-app hashtag search without threading
 // a callback through every PostCard/VirtualPostList call site.
@@ -375,7 +376,7 @@ const initialAuthState: AuthState = {
   session: null,
 };
 
-function countBigbskyLocalKeys() {
+function countBigBskyLocalKeys() {
   try {
     return Object.keys(localStorage).filter((key) => key.startsWith("bigbsky:")).length;
   } catch {
@@ -564,6 +565,25 @@ function writeTimelineScrollCache(cache: Record<string, number>) {
   } catch {
     // Scroll restoration is best-effort browser state.
   }
+}
+
+function feedPreferenceKeys(source: FeedSource) {
+  const keys = new Set([`feed:${source.uri}`, `feed:${source.id}`]);
+  for (const known of feedSources) {
+    if (known.uri === source.uri) {
+      keys.add(`feed:${known.id}`);
+    }
+  }
+  return [...keys];
+}
+
+function feedPreferenceKey(source: FeedSource) {
+  return `feed:${source.uri}`;
+}
+
+function feedDensityOverride(source: FeedSource, preferences: Record<string, string>) {
+  const value = preferences[feedPreferenceKey(source)];
+  return densityModes.includes(value) ? value : undefined;
 }
 
 function postPath(post: FeedPost) {
@@ -1556,8 +1576,8 @@ export function App() {
     return options;
   }, [subscribedFeeds, myLists]);
   const feedRoutePath = (source: FeedSource) => `/feed/${encodeURIComponent(source.id)}`;
-  const densityKey = route.kind === "feed" ? `feed:${activeSource.id}` : route.kind;
-  const density = densityByContext[densityKey] || densityByContext.default || "comfortable";
+  const densityKey = route.kind === "feed" ? feedPreferenceKey(activeSource) : route.kind;
+  const density = (route.kind === "feed" ? feedDensityOverride(activeSource, densityByContext) : densityByContext[densityKey]) || densityByContext.default || "comfortable";
   const defaultDensity = densityByContext.default || "comfortable";
   const storedWidth = widthByContext[densityKey] || widthByContext.default;
   const workspaceWidth = (
@@ -2221,17 +2241,25 @@ export function App() {
     localStorage.setItem("bigbsky:density-by-context", JSON.stringify(nextPreferences));
   }
 
-  function updateFeedDensityOverride(feedId: string, nextDensity: string | null) {
+  function updateFeedDensityOverride(source: FeedSource, nextDensity: string | null) {
     if (nextDensity === "media") {
       setShowMedia(true);
       localStorage.setItem(showMediaStorageKey, "true");
     }
-    const key = `feed:${feedId}`;
+    const key = feedPreferenceKey(source);
+    const keysToClear = feedPreferenceKeys(source);
     const nextPreferences = { ...densityByContext };
     if (nextDensity) {
+      for (const staleKey of keysToClear) {
+        if (staleKey !== key) {
+          delete nextPreferences[staleKey];
+        }
+      }
       nextPreferences[key] = nextDensity;
     } else {
-      delete nextPreferences[key];
+      for (const staleKey of keysToClear) {
+        delete nextPreferences[staleKey];
+      }
     }
     setDensityByContext(nextPreferences);
     localStorage.setItem("bigbsky:density-by-context", JSON.stringify(nextPreferences));
@@ -2582,7 +2610,7 @@ export function App() {
 
   function openNavigation(item: string) {
     if (item === "Chat") {
-      // BigBSky does not handle DMs; the Chat nav opens Bluesky messages
+      // BigBsky does not handle DMs; the Chat nav opens Bluesky messages
       // directly rather than routing to an in-app surface.
       window.open("https://bsky.app/messages", "_blank", "noopener,noreferrer");
       return;
@@ -2626,6 +2654,11 @@ export function App() {
       // The single account hub: signed in shows the account page (identity,
       // sign out, shortcuts); signed out shows the sign-in form.
       navigate({ kind: "surface", name: "profile" }, "/profile");
+      return;
+    }
+
+    if (item === "New Post") {
+      openNewPostComposer();
       return;
     }
 
@@ -2895,15 +2928,12 @@ export function App() {
                 }
                 onClick={() => openNavigation(item)}
               >
-                <Icon size={20} />
+                {Icon ? <Icon size={20} /> : <i className="plain-info-icon" aria-hidden="true" />}
                 <span>{item}</span>
               </button>
             );
           })}
         </nav>
-        <button className="compose-button" type="button" title="New post" aria-label="New post" onClick={openNewPostComposer}>
-          <Send size={20} />
-        </button>
       </aside>
 
       <aside className="feed-map" aria-label="Feeds">
@@ -2993,16 +3023,13 @@ export function App() {
           >
             <Menu size={20} />
           </button>
-          <button className="mobile-compose-button" type="button" title="New post" aria-label="New post" onClick={openNewPostComposer}>
-            <Send size={20} />
-          </button>
         </header>
 
         {missingScopes.length > 0 && (
           <div className="reauth-banner" role="status">
             <div>
               <strong>Permissions updated</strong>
-              <span>BigBSky added new capabilities since you signed in. Re-authorize to keep everything working.</span>
+              <span>BigBsky added new capabilities since you signed in. Re-authorize to keep everything working.</span>
             </div>
             <div className="reauth-banner-actions">
               <button type="button" className="reauth-primary" onClick={handleReauthorize}>
@@ -3051,7 +3078,7 @@ export function App() {
             densityByContext={densityByContext}
             recentCount={recentItems.length}
             savedPreferenceCount={Object.keys(densityByContext).length}
-            localDataKeyCount={countBigbskyLocalKeys()}
+            localDataKeyCount={countBigBskyLocalKeys()}
             localLists={localLists}
             myLists={myLists}
             myListsStatus={myListsStatus}
@@ -3192,6 +3219,7 @@ export function App() {
                     {feedState.cursor && (
                       <AutoLoadMoreButton label="Load more profile posts" onLoadMore={loadMore} error={feedState.loadMoreError} />
                     )}
+                    {!feedState.cursor && !feedState.loadMoreError && <EndOfFeedCard />}
                   </VirtualPostList>
                 )}
               </>
@@ -3222,6 +3250,7 @@ export function App() {
                 {feedState.cursor && (
                   <AutoLoadMoreButton label="Load more feed posts" onLoadMore={loadMore} error={feedState.loadMoreError} />
                 )}
+                {feedState.items.length > 0 && !feedState.cursor && !feedState.loadMoreError && <EndOfFeedCard />}
               </VirtualPostList>
             )}
           </div>
@@ -3839,7 +3868,7 @@ function SurfaceView({
   onClearLocalData: () => void | Promise<void>;
   onCreateLocalList: (name: string, description: string) => void;
   onDensityChange: (density: string) => void;
-  onFeedDensityOverrideChange: (feedId: string, density: string | null) => void;
+  onFeedDensityOverrideChange: (source: FeedSource, density: string | null) => void;
   onDeleteLocalList: (id: string) => void;
   onOpenFeed: (source: FeedSource) => void;
   onOpenProfile: (profile: Profile) => void;
@@ -3886,7 +3915,7 @@ function SurfaceView({
       copy: "Lists are staged as browser-local workspaces now. Authenticated Bluesky list sync and list timelines can attach here later.",
       cards: [
         { title: "List Index", detail: "Local list workspaces are visible on this route and clearable from Settings.", status: "Local" },
-        { title: "New List", detail: "Create local list shells without sending anything to BigBSky infrastructure.", status: "Active" },
+        { title: "New List", detail: "Create local list shells without sending anything to BigBsky infrastructure.", status: "Active" },
         { title: "List Timelines", detail: "Lists should behave like Feed sources once data is available.", status: "Planned" },
       ],
     },
@@ -3925,7 +3954,7 @@ function SurfaceView({
       cards: [
         { title: "Appearance", detail: "Density is stored locally per context and applied before feed paint.", status: "Active" },
         { title: "Account", detail: "Account identity and sign-out are shown after browser OAuth restore.", status: "Partial" },
-        { title: "Privacy", detail: "No BigBSky backend storage is used for v1 reader data.", status: "Static" },
+        { title: "Privacy", detail: "No BigBsky backend storage is used for v1 reader data.", status: "Static" },
       ],
     },
   };
@@ -3933,13 +3962,14 @@ function SurfaceView({
     copy: "This signed-in destination has a stable static route and is ready for OAuth-backed data.",
     cards: [{ title: "Static Route", detail: "The SPA fallback can serve this destination without server code.", status: "Ready" }],
   };
+  const builtInFeeds = feedSources.filter((source) => !subscribedFeeds.some((subscribed) => subscribed.uri === source.uri));
 
   if (name === "settings") {
     return (
       <div className="timeline comfortable">
         <section className="surface-placeholder">
           <h2>Settings</h2>
-          <p>Local reader preferences and account/session controls live here. No BigBSky backend storage is used for v1 reader data.</p>
+          <p>Local reader preferences and account/session controls live here. No BigBsky backend storage is used for v1 reader data.</p>
         </section>
         <section className="settings-grid" aria-label="Settings sections">
           <article className="settings-panel">
@@ -4110,7 +4140,7 @@ function SurfaceView({
               </>
             ) : (
               <>
-                <p>Use Bluesky OAuth from the browser. No BigBSky backend session is created.</p>
+                <p>Use Bluesky OAuth from the browser. No BigBsky backend session is created.</p>
                 <SignInForm status={auth.status} onSignIn={onSignIn} />
               </>
             )}
@@ -4118,6 +4148,14 @@ function SurfaceView({
           </article>
         </section>
       </div>
+    );
+  }
+
+  if (name === "info") {
+    return (
+      <Suspense fallback={<LoadingState label="Loading info" />}>
+        <InfoPage />
+      </Suspense>
     );
   }
 
@@ -4172,7 +4210,7 @@ function SurfaceView({
       <div className="timeline comfortable">
         <section className="surface-placeholder">
           <h2>Your profile</h2>
-          <p>Sign in with your Bluesky account to see your profile and use your follows, likes, lists, posting, and notifications. BigBSky signs in with AT Protocol OAuth in your browser — no BigBSky backend session is created.</p>
+          <p>Sign in with your Bluesky account to see your profile and use your follows, likes, lists, posting, and notifications. BigBsky signs in with AT Protocol OAuth in your browser — no BigBsky backend session is created.</p>
         </section>
         <section className="signed-out-signin" aria-label="Sign in">
           <h3>Sign in to Bluesky</h3>
@@ -4203,7 +4241,7 @@ function SurfaceView({
         <section className="surface-placeholder">
           <h2>Chat</h2>
           <p>
-            BigBSky is a reader and intentionally does not handle direct
+            BigBsky is a reader and intentionally does not handle direct
             messages. DMs stay on Bluesky, where your conversations and privacy
             controls already live — we don&apos;t request chat permissions or
             store any messages.
@@ -4246,7 +4284,7 @@ function SurfaceView({
             ) : (
               <div className="feed-directory-grid">
                 {subscribedFeeds.map((source) => {
-                  const override = densityByContext[`feed:${source.id}`];
+                  const override = feedDensityOverride(source, densityByContext);
                   return (
                     <article className="feed-directory-card" key={source.id}>
                       <button type="button" onClick={() => onOpenFeed(source)}>
@@ -4255,7 +4293,7 @@ function SurfaceView({
                         <small>{source.description}</small>
                       </button>
                       <FeedDensityOverrideControl
-                        feedId={source.id}
+                        source={source}
                         defaultDensity={defaultDensity}
                         override={override}
                         showMedia={showMedia}
@@ -4289,8 +4327,8 @@ function SurfaceView({
           <section className="bsky-list-section" aria-label="Built-in feeds">
             <h3 className="bsky-list-section-heading">Built-in feeds</h3>
             <div className="feed-directory-grid">
-              {feedSources.map((source) => {
-                const override = densityByContext[`feed:${source.id}`];
+              {builtInFeeds.map((source) => {
+                const override = feedDensityOverride(source, densityByContext);
                 return (
                   <article className="feed-directory-card" key={source.id}>
                     <button type="button" onClick={() => onOpenFeed(source)}>
@@ -4299,7 +4337,7 @@ function SurfaceView({
                       <small>{source.description}</small>
                     </button>
                     <FeedDensityOverrideControl
-                      feedId={source.id}
+                      source={source}
                       defaultDensity={defaultDensity}
                       override={override}
                       showMedia={showMedia}
@@ -4344,17 +4382,17 @@ function SurfaceView({
 }
 
 function FeedDensityOverrideControl({
-  feedId,
+  source,
   defaultDensity,
   override,
   showMedia,
   onChange,
 }: {
-  feedId: string;
+  source: FeedSource;
   defaultDensity: string;
   override?: string;
   showMedia: boolean;
-  onChange: (feedId: string, density: string | null) => void;
+  onChange: (source: FeedSource, density: string | null) => void;
 }) {
   const effective = override || defaultDensity;
   return (
@@ -4362,7 +4400,7 @@ function FeedDensityOverrideControl({
       <span>View</span>
       <select
         value={override || "default"}
-        onChange={(event) => onChange(feedId, event.target.value === "default" ? null : event.target.value)}
+        onChange={(event) => onChange(source, event.target.value === "default" ? null : event.target.value)}
       >
         <option value="default">Default ({effective})</option>
         {densityModes.map((mode) => (
@@ -4426,7 +4464,7 @@ function ExploreTrendingTopics({ onOpenSearchQuery }: { onOpenSearchQuery: (quer
     <section className="trending-topics" aria-label="Trending topics">
       <header className="trending-topics-header">
         <h3>Trending Topics</h3>
-        <p>Live from Bluesky. Open one to search posts about it in BigBSky.</p>
+        <p>Live from Bluesky. Open one to search posts about it in BigBsky.</p>
       </header>
       {state.status === "loading" && <LoadingState label="Loading trending topics" />}
       {state.status === "error" && <ErrorState message="Trending topics could not be loaded right now." />}
@@ -4491,7 +4529,7 @@ function ExploreDiscoverFeeds({
     <section className="discover-feeds" aria-label="Discover new Feeds">
       <header className="discover-feeds-header">
         <h3>Discover New Feeds</h3>
-        <p>Popular public Bluesky Feeds, loaded live. Open one to read it in BigBSky without signing in.</p>
+        <p>Popular public Bluesky Feeds, loaded live. Open one to read it in BigBsky without signing in.</p>
       </header>
       <form
         className="discover-feeds-search"
@@ -4827,7 +4865,7 @@ function SelfProfileSurface({
 }) {
   const bskyProfileUrl = `https://bsky.app/profile/${encodeURIComponent(auth.handle || "")}`;
   // Each shortcut navigates somewhere real — own-profile tabs, app surfaces, or
-  // out to Bluesky for things BigBSky delegates rather than builds.
+  // out to Bluesky for things BigBsky delegates rather than builds.
   const shortcuts: Array<{ title: string; detail: string; cta: string; onClick?: () => void; href?: string }> = [
     { title: "New post", detail: "Open the profile composer.", cta: "Compose", onClick: () => onOpenSelfTab("new-post") },
     { title: "Posts", detail: "Your posts in the profile reader.", cta: "Open", onClick: () => onOpenSelfTab("posts") },
@@ -5013,7 +5051,7 @@ function AuthedNotifications({
         <div className="surface-retry">
           {needsReauth ? (
             <>
-              <ErrorState message="Notifications need updated permissions. BigBSky added notification access since you last signed in — re-authorize to load them." />
+              <ErrorState message="Notifications need updated permissions. BigBsky added notification access since you last signed in — re-authorize to load them." />
               <div className="reauth-banner-actions">
                 <button type="button" className="reauth-primary" onClick={onReauthorize}>
                   Update permissions
@@ -6367,6 +6405,7 @@ function BookmarksView({
             />
           ))}
           {cursor && <AutoLoadMoreButton label="Load more bookmarks" onLoadMore={loadMore} />}
+          {!cursor && <EndOfFeedCard />}
         </section>
       )}
     </div>
@@ -7005,26 +7044,19 @@ function PostImageVideoMedia({ post, onOpenImage }: { post: FeedPost; onOpenImag
 
   return (
     <div className="post-image-video-media">
-      {images.length > 0 && (
-        <div className={`image-grid count-${Math.min(images.length, 4)}`}>
-          {images.slice(0, maxPostImages).map((image, imageIndex) => (
+      {images.length === 1 && (
+        <div className="image-grid count-1">
+          {images.slice(0, 1).map((image) => (
             <button
               className="image-button"
               key={image.thumb || image.fullsize}
               type="button"
               onClick={() => {
-                const viewerImages = images
-                  .slice(0, maxPostImages)
-                  .map((viewerImage) => ({
-                    src: viewerImage.fullsize || viewerImage.thumb || "",
-                    alt: viewerImage.alt || "",
-                  }))
-                  .filter((viewerImage) => viewerImage.src);
+                const viewerImages = feedViewerImages(images);
                 if (viewerImages.length === 0) {
                   return;
                 }
-                const selectedIndex = Math.max(0, viewerImages.findIndex((viewerImage) => viewerImage.src === (image.fullsize || image.thumb)));
-                onOpenImage?.({ images: viewerImages, index: selectedIndex });
+                onOpenImage?.({ images: viewerImages, index: 0 });
               }}
               aria-label={image.alt ? "Open image" : "Open full size image"}
             >
@@ -7039,11 +7071,44 @@ function PostImageVideoMedia({ post, onOpenImage }: { post: FeedPost; onOpenImag
                     : undefined
                 }
               />
-              {image.alt && <span className="alt-badge">ALT</span>}
-              {images.length > maxPostImages && imageIndex === maxPostImages - 1 && (
-                <span className="more-media-badge">+{images.length - maxPostImages}</span>
-              )}
             </button>
+          ))}
+        </div>
+      )}
+      {images.length > 1 && (
+        <div className={`image-grid image-masonry count-${Math.min(images.length, 4)}`}>
+          {pairedImageRows(images.slice(0, maxPostImages)).map((row, rowIndex) => (
+            <div
+              className="image-row"
+              key={`image-row-${post.uri}-${rowIndex}`}
+              style={{ "--media-row-aspect": row.reduce((total, image) => total + imageAspectRatio(image), 0) } as CSSProperties}
+            >
+              {row.map((image, imageIndex) => {
+                const flatIndex = rowIndex * 2 + imageIndex;
+                const viewerImages = feedViewerImages(images);
+                const selectedIndex = Math.max(0, viewerImages.findIndex((viewerImage) => viewerImage.src === (image.fullsize || image.thumb)));
+                return (
+                  <button
+                    className="image-button"
+                    key={image.thumb || image.fullsize}
+                    type="button"
+                    style={{ "--media-aspect": imageAspectRatio(image) } as CSSProperties}
+                    onClick={() => {
+                      if (viewerImages.length === 0) {
+                        return;
+                      }
+                      onOpenImage?.({ images: viewerImages, index: selectedIndex });
+                    }}
+                    aria-label={image.alt ? "Open image" : "Open full size image"}
+                  >
+                    <img alt={image.alt || ""} src={image.thumb || image.fullsize} loading="lazy" decoding="async" />
+                    {images.length > maxPostImages && flatIndex === maxPostImages - 1 && (
+                      <span className="more-media-badge">+{images.length - maxPostImages}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           ))}
         </div>
       )}
@@ -7055,10 +7120,28 @@ function PostImageVideoMedia({ post, onOpenImage }: { post: FeedPost; onOpenImag
   );
 }
 
+function feedViewerImages(images: ReturnType<typeof getEmbedImages>) {
+  return images
+    .slice(0, maxPostImages)
+    .map((viewerImage) => ({
+      src: viewerImage.fullsize || viewerImage.thumb || "",
+      alt: viewerImage.alt || "",
+    }))
+    .filter((viewerImage) => viewerImage.src);
+}
+
 function imageAspectRatio(image: ReturnType<typeof getEmbedImages>[number]) {
   const width = image.aspectRatio?.width;
   const height = image.aspectRatio?.height;
   return width && height ? Math.max(0.45, Math.min(2.4, width / height)) : 1;
+}
+
+function pairedImageRows(images: ReturnType<typeof getEmbedImages>) {
+  const rows: Array<ReturnType<typeof getEmbedImages>> = [];
+  for (let index = 0; index < images.length; index += 2) {
+    rows.push(images.slice(index, index + 2));
+  }
+  return rows;
 }
 
 function mediaImageRows(images: ReturnType<typeof getEmbedImages>) {
@@ -7105,7 +7188,6 @@ function MediaOnlyImageTile({
           }
         }}
       />
-      {image.alt && <span className="alt-badge">ALT</span>}
     </button>
   );
 }
@@ -7171,7 +7253,6 @@ function MediaOnlyPostCard({
                 : undefined
             }
           />
-          {images[0].alt && <span className="alt-badge">ALT</span>}
         </button>
       )}
       {images.length > 1 && (
@@ -9226,6 +9307,15 @@ function EmptyState({ title, message }: { title: string; message: string }) {
     <div className="state empty">
       <strong>{title}</strong>
       <span>{message}</span>
+    </div>
+  );
+}
+
+function EndOfFeedCard() {
+  return (
+    <div className="end-of-feed" role="status">
+      <strong>End of Feed</strong>
+      <span>No more posts can be returned for this feed right now.</span>
     </div>
   );
 }

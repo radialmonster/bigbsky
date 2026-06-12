@@ -9,7 +9,7 @@ createRoot(document.getElementById("root")!).render(<App />);
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/sw.js").catch((error: unknown) => {
-      console.warn("BigBSky service worker registration failed.", error);
+      console.warn("BigBsky service worker registration failed.", error);
     });
   });
 }
