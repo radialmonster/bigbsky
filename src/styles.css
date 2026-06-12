@@ -5266,12 +5266,22 @@ button.surface-action {
 }
 
 @media (max-width: 720px) {
+  html,
+  body,
+  #root {
+    height: auto;
+    min-height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
   .app-shell {
     /* minmax(0, 1fr), not bare 1fr: a 1fr track keeps a min-content floor, so
        wide post content (long handles, action rows) stopped the single column
        from shrinking to the viewport and clipped the right edge on mobile. */
     grid-template-columns: minmax(0, 1fr);
-    min-height: 100vh;
+    height: auto;
+    min-height: 100dvh;
   }
 
   .left-rail {
@@ -5352,6 +5362,12 @@ button.surface-action {
   .timeline,
   .thread-view {
     padding: 14px;
+  }
+
+  .thread-view {
+    flex: 0 0 auto;
+    overflow: visible;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
   }
 
   .thread-node,
