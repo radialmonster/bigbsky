@@ -26,7 +26,7 @@ requirePattern(/scrollCacheRef\.current\[cacheKey\] \|\| 0/, "cached feed/profil
 requirePattern(/const timelineScrollStorageKey = "bigbsky:timeline-scroll"/, "timeline scroll offsets should use a browser-local session cache key");
 requirePattern(/sessionStorage\.setItem\(timelineScrollStorageKey, JSON\.stringify\(cache\)\)/, "timeline scroll offsets should persist across browser reloads");
 requirePattern(/window\.addEventListener\("pagehide", persistScroll\)/, "timeline scroll offsets should flush before browser reloads");
-requirePattern(/Object\.keys\(sessionStorage\)[\s\S]*key\.startsWith\("bigbsky:"\)[\s\S]*sessionStorage\.removeItem\(key\)/s, "local reader data reset should clear browser-local session scroll state");
+requirePattern(/Object\.keys\(sessionStorage\)[\s\S]*key\.startsWith\("bigbsky:"\)[\s\S]*safeSessionStorageRemove\(key\)/s, "local reader data reset should clear browser-local session scroll state");
 requirePattern(/route\.name === "bookmarks" \|\| route\.name === "lists"[\s\S]*`surface:\$\{route\.name\}`/s, "bookmarks and lists surfaces should receive route-specific scroll cache keys");
 requirePattern(/activeScrollKey\.startsWith\("surface:"\)[\s\S]*timelineRef\.current\?\.scrollTo\(\{ top: scrollCacheRef\.current\[activeScrollKey\] \|\| 0 \}\)/s, "saved and lists surfaces should restore cached scroll offset when revisited");
 requirePattern(/function threadUnavailableState\([\s\S]*Blocked reply[\s\S]*Reply not found[\s\S]*Deleted reply[\s\S]*Reply temporarily unavailable/s, "thread unavailable states should distinguish blocked, deleted, not-found, and rate-limited branches");
@@ -37,7 +37,7 @@ requirePattern(/if \(!button \|\| error \|\| !\("IntersectionObserver" in window
 requirePattern(/const pinnedFeedMetaStorageKey = "bigbsky:pinned-feed-meta"/, "discovered Feed pins should persist their metadata in a browser-local store");
 requirePattern(/function readPinnedFeedMeta\(\)[\s\S]*isPinnedFeedMeta/s, "discovered Feed pin metadata should be read and validated from local storage");
 requirePattern(/const knownIds = new Set\(\[\.\.\.feedSources\.map\(\(source\) => source\.id\), \.\.\.metaSources\.map\(\(source\) => source\.id\)\]\)/, "pinned Feed ids should resolve against both static and discovered Feed sources");
-requirePattern(/setPinnedFeedMeta\(\(current\) => \{[\s\S]*localStorage\.setItem\(pinnedFeedMetaStorageKey/s, "toggling a discovered Feed pin should sync its local metadata store");
+requirePattern(/setPinnedFeedMeta\(\(current\) => \{[\s\S]*safeLocalStorageSet\(pinnedFeedMetaStorageKey/s, "toggling a discovered Feed pin should sync its local metadata store");
 
 requirePattern(/function ExploreTrendingTopics\([\s\S]*getTrendingTopics\([\s\S]*onOpenSearchQuery\(topic\.topic\)/s, "Explore trending topics should load live topics and open them as in-app searches");
 requirePattern(/function TrendingPanel\([\s\S]*getTrendingTopics\(10, controller\.signal\)[\s\S]*fallback\.length > 0/s, "the right-rail Trending panel should load live trending topics with a loaded-post fallback");
@@ -74,7 +74,7 @@ requirePattern(/renderRichText\(\s*record\.value\?\.facets\?\.length \? record\.
 requirePattern(/const gateMedia = !showNsfw && mediaWarningValues\.length > 0 && \(images\.length > 0 \|\| !!video\) && !mediaRevealed/, "adult/graphic media should be gated behind a reveal warning unless the NSFW preference is on");
 requirePattern(/\[\.\.\.labels, \.\.\.\(post\.author\.labels \?\? \[\]\)\]\.filter\(isSensitiveLabel\)/, "media gating should consider account-level (author) labels, not just post labels");
 requirePattern(/const ShowNsfwContext = createContext<boolean>\(false\)/, "the NSFW preference should default to hidden for everyone");
-requirePattern(/localStorage\.setItem\(showNsfwStorageKey, next \? "true" : "false"\)/, "the NSFW preference should persist in browser-local storage");
+requirePattern(/safeLocalStorageSet\(showNsfwStorageKey, next \? "true" : "false"\)/, "the NSFW preference should persist in browser-local storage");
 requirePattern(/gateMedia \? \(\s*<SensitiveMediaGate values=\{mediaWarningValues\} onReveal=\{\(\) => setMediaRevealed\(true\)\}/s, "sensitive media should require an explicit Show click before rendering");
 requirePattern(/const gateMedia = !showNsfw && mediaWarningValues\.length > 0 && \(embeddedImages\.length > 0 \|\| !!embeddedVideo\) && !mediaRevealed/, "quoted-post media should also be gated behind the sensitive-content warning");
 if (!/export function getTrendingTopics\(/.test(api)) {

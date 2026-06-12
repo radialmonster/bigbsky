@@ -12,6 +12,22 @@ let clientPromise: Promise<BrowserOAuthClient> | null = null;
 // reuse the active OAuth session instead of re-restoring it.
 let activeSession: OAuthSession | null = null;
 
+function safeLocalStorageSet(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Browser-local auth hints are best-effort; OAuth state lives in the client store.
+  }
+}
+
+function safeLocalStorageRemove(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Ignore storage-denied environments.
+  }
+}
+
 export type SubscribedFeed = {
   uri: string;
   displayName: string;
@@ -95,8 +111,8 @@ async function snapshotSession(session: OAuthSession, restoredFromCallback = fal
     restoredFromCallback,
   };
 
-  localStorage.setItem(activeDidKey, snapshot.did);
-  localStorage.setItem(activeHandleKey, snapshot.handle);
+  safeLocalStorageSet(activeDidKey, snapshot.did);
+  safeLocalStorageSet(activeHandleKey, snapshot.handle);
   return snapshot;
 }
 
@@ -168,10 +184,17 @@ export async function signOut(did?: string) {
   }
 
   activeSession = null;
-  localStorage.removeItem(activeDidKey);
-  localStorage.removeItem(activeHandleKey);
+  safeLocalStorageRemove(activeDidKey);
+  safeLocalStorageRemove(activeHandleKey);
   await clearOAuthSessionStorage();
   return revokeWarning;
+}
+
+export async function clearOAuthLocalSession() {
+  activeSession = null;
+  safeLocalStorageRemove(activeDidKey);
+  safeLocalStorageRemove(activeHandleKey);
+  await clearOAuthSessionStorage();
 }
 
 // Authenticated reverse-chronological "Following" home timeline. Returns an

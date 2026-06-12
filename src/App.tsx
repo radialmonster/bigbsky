@@ -70,7 +70,6 @@ import {
   type SubscribedFeed,
   blockAccount,
   bookmarkPost,
-  clearOAuthSessionStorage,
   followAccount,
   followFeed,
   getAuthorFeedAuthed,
@@ -95,6 +94,7 @@ import {
   subscribeBlockList,
   unmuteList,
   unsubscribeBlockList,
+  clearOAuthLocalSession,
   initAuthSession,
   likePost,
   MAX_POST_IMAGES,
@@ -187,6 +187,45 @@ function readShowMedia() {
     return localStorage.getItem(showMediaStorageKey) !== "false";
   } catch {
     return true;
+  }
+}
+
+function safeLocalStorageSet(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function safeLocalStorageRemove(key: string) {
+  try {
+    localStorage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function safeSessionStorageRemove(key: string) {
+  try {
+    sessionStorage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function safeHttpUrl(value?: string | null) {
+  if (!value) {
+    return undefined;
+  }
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -906,8 +945,18 @@ function replaceThreadBranch(node: ThreadNode, uri: string, replacement: ThreadN
   };
 }
 
+function safeEmbedImages(images: ReturnType<typeof getEmbedImages>) {
+  return images
+    .map((image) => ({
+      ...image,
+      thumb: safeHttpUrl(image.thumb),
+      fullsize: safeHttpUrl(image.fullsize),
+    }))
+    .filter((image) => image.thumb || image.fullsize);
+}
+
 function hasPostImages(post: FeedPost) {
-  return getEmbedImages(post.embed).length > 0;
+  return safeEmbedImages(getEmbedImages(post.embed)).length > 0;
 }
 
 function hasPostVideo(post: FeedPost) {
@@ -966,7 +1015,7 @@ function isAdultPost(post: FeedPost): boolean {
 }
 
 function postHasVisualMedia(post: FeedPost) {
-  return getEmbedImages(post.embed).length > 0 || !!getVideoEmbed(post.embed);
+  return safeEmbedImages(getEmbedImages(post.embed)).length > 0 || !!getVideoEmbed(post.embed);
 }
 
 function videoKindLabel(type?: string) {
@@ -981,6 +1030,8 @@ type VideoEmbedView = NonNullable<ReturnType<typeof getVideoEmbed>>;
 
 function VideoEmbedCard({ video, compact = false }: { video: VideoEmbedView; compact?: boolean }) {
   const kind = videoKindLabel(video.type);
+  const playlist = safeHttpUrl(video.playlist);
+  const thumbnail = safeHttpUrl(video.thumbnail);
   const aspectRatio =
     video.aspectRatio?.width && video.aspectRatio?.height
       ? { aspectRatio: `${video.aspectRatio.width} / ${video.aspectRatio.height}` }
@@ -988,21 +1039,21 @@ function VideoEmbedCard({ video, compact = false }: { video: VideoEmbedView; com
 
   return (
     <div className={compact ? "video-card quote-video-card" : "video-card"}>
-      {video.playlist ? (
+      {playlist ? (
         <video
           controls
           playsInline
           preload="metadata"
-          poster={video.thumbnail}
+          poster={thumbnail}
           aria-label={video.alt ? `${kind}: ${video.alt}` : kind}
           style={aspectRatio}
         >
-          <source src={video.playlist} type="application/vnd.apple.mpegurl" />
+          <source src={playlist} type="application/vnd.apple.mpegurl" />
           {kind} playback is not supported by this browser.
         </video>
-      ) : video.thumbnail ? (
-        <a className="video-fallback-link" href={video.thumbnail} target="_blank" rel="noreferrer">
-          <img alt={video.alt || ""} src={video.thumbnail} loading="lazy" decoding="async" style={aspectRatio} />
+      ) : thumbnail ? (
+        <a className="video-fallback-link" href={thumbnail} target="_blank" rel="noreferrer">
+          <img alt={video.alt || ""} src={thumbnail} loading="lazy" decoding="async" style={aspectRatio} />
         </a>
       ) : (
         <span className="video-placeholder" />
@@ -1011,8 +1062,8 @@ function VideoEmbedCard({ video, compact = false }: { video: VideoEmbedView; com
         <Film size={16} /> {kind}
       </span>
       {video.alt && <span className="video-alt-text">{video.alt}</span>}
-      {video.playlist && (
-        <a className="video-open-link" href={video.playlist} target="_blank" rel="noreferrer">
+      {playlist && (
+        <a className="video-open-link" href={playlist} target="_blank" rel="noreferrer">
           Open media
         </a>
       )}
@@ -1069,11 +1120,7 @@ export function App() {
   // The user's chosen Home feed id (house icon / root). Persisted locally.
   const [homeSourceId, setHomeSourceIdState] = useState<string>(() => readHomeSourceId());
   const setHomeSource = useCallback((id: string) => {
-    try {
-      localStorage.setItem(homeSourceStorageKey, id);
-    } catch {
-      /* ignore storage failures */
-    }
+    safeLocalStorageSet(homeSourceStorageKey, id);
     setHomeSourceIdState(id);
   }, []);
   const [feedSearch, setFeedSearch] = useState("");
@@ -1202,7 +1249,7 @@ export function App() {
 
   const dismissReauth = useCallback(() => {
     const signature = missingScopes.slice().sort().join(" ");
-    localStorage.setItem(reauthDismissKey, signature);
+    safeLocalStorageSet(reauthDismissKey, signature);
     setMissingScopes([]);
   }, [missingScopes]);
 
@@ -2231,20 +2278,20 @@ export function App() {
   function updateDensity(nextDensity: string) {
     if (nextDensity === "media") {
       setShowMedia(true);
-      localStorage.setItem(showMediaStorageKey, "true");
+      safeLocalStorageSet(showMediaStorageKey, "true");
     }
     const nextPreferences = {
       ...densityByContext,
       default: nextDensity,
     };
     setDensityByContext(nextPreferences);
-    localStorage.setItem("bigbsky:density-by-context", JSON.stringify(nextPreferences));
+    safeLocalStorageSet("bigbsky:density-by-context", JSON.stringify(nextPreferences));
   }
 
   function updateFeedDensityOverride(source: FeedSource, nextDensity: string | null) {
     if (nextDensity === "media") {
       setShowMedia(true);
-      localStorage.setItem(showMediaStorageKey, "true");
+      safeLocalStorageSet(showMediaStorageKey, "true");
     }
     const key = feedPreferenceKey(source);
     const keysToClear = feedPreferenceKeys(source);
@@ -2262,7 +2309,7 @@ export function App() {
       }
     }
     setDensityByContext(nextPreferences);
-    localStorage.setItem("bigbsky:density-by-context", JSON.stringify(nextPreferences));
+    safeLocalStorageSet("bigbsky:density-by-context", JSON.stringify(nextPreferences));
   }
 
   function updateWorkspaceWidth(nextWidth: (typeof widthModes)[number]) {
@@ -2272,13 +2319,13 @@ export function App() {
       default: nextWidth,
     };
     setWidthByContext(nextPreferences);
-    localStorage.setItem(widthByContextStorageKey, JSON.stringify(nextPreferences));
+    safeLocalStorageSet(widthByContextStorageKey, JSON.stringify(nextPreferences));
   }
 
   function toggleShowNsfw() {
     setShowNsfw((current) => {
       const next = !current;
-      localStorage.setItem(showNsfwStorageKey, next ? "true" : "false");
+      safeLocalStorageSet(showNsfwStorageKey, next ? "true" : "false");
       return next;
     });
   }
@@ -2286,7 +2333,7 @@ export function App() {
   function toggleShowMedia() {
     setShowMedia((current) => {
       const next = !current;
-      localStorage.setItem(showMediaStorageKey, next ? "true" : "false");
+      safeLocalStorageSet(showMediaStorageKey, next ? "true" : "false");
       if (!next) {
         const nextPreferences = Object.fromEntries(
           Object.entries(densityByContext).filter(([, value]) => value !== "media"),
@@ -2295,7 +2342,7 @@ export function App() {
           nextPreferences.default = "comfortable";
         }
         setDensityByContext(nextPreferences);
-        localStorage.setItem("bigbsky:density-by-context", JSON.stringify(nextPreferences));
+        safeLocalStorageSet("bigbsky:density-by-context", JSON.stringify(nextPreferences));
       }
       return next;
     });
@@ -2304,11 +2351,11 @@ export function App() {
   async function clearLocalReaderData() {
     Object.keys(localStorage)
       .filter((key) => key.startsWith("bigbsky:"))
-      .forEach((key) => localStorage.removeItem(key));
+      .forEach((key) => safeLocalStorageRemove(key));
     Object.keys(sessionStorage)
       .filter((key) => key.startsWith("bigbsky:"))
-      .forEach((key) => sessionStorage.removeItem(key));
-    await clearOAuthSessionStorage();
+      .forEach((key) => safeSessionStorageRemove(key));
+    await clearOAuthLocalSession();
     setDensityByContext({});
     setWidthByContext({});
     setRecentItems([]);
@@ -2375,14 +2422,14 @@ export function App() {
   function remember(item: RecentItem) {
     setRecentItems((current) => {
       const next = [item, ...current.filter((existing) => existing.path !== item.path)].slice(0, 8);
-      localStorage.setItem(recentStorageKey, JSON.stringify(next));
+      safeLocalStorageSet(recentStorageKey, JSON.stringify(next));
       return next;
     });
   }
 
   function clearRecentItems() {
     setRecentItems([]);
-    localStorage.removeItem(recentStorageKey);
+    safeLocalStorageRemove(recentStorageKey);
   }
 
   const getBookmarkState = useCallback(
@@ -2485,7 +2532,7 @@ export function App() {
         },
         ...current,
       ].slice(0, 20);
-      localStorage.setItem(localListsStorageKey, JSON.stringify(next));
+      safeLocalStorageSet(localListsStorageKey, JSON.stringify(next));
       return next;
     });
   }
@@ -2493,7 +2540,7 @@ export function App() {
   function deleteLocalList(id: string) {
     setLocalLists((current) => {
       const next = current.filter((list) => list.id !== id);
-      localStorage.setItem(localListsStorageKey, JSON.stringify(next));
+      safeLocalStorageSet(localListsStorageKey, JSON.stringify(next));
       return next;
     });
   }
@@ -2512,7 +2559,7 @@ export function App() {
           posts: exists ? posts.filter((listPost) => listPost.uri !== post.uri) : [post, ...posts].slice(0, 100),
         };
       });
-      localStorage.setItem(localListsStorageKey, JSON.stringify(next));
+      safeLocalStorageSet(localListsStorageKey, JSON.stringify(next));
       return next;
     });
   }
@@ -2523,7 +2570,7 @@ export function App() {
       const next = willPin
         ? [source.id, ...current.filter((id) => id !== source.id)].slice(0, 12)
         : current.filter((id) => id !== source.id);
-      localStorage.setItem(pinnedFeedsStorageKey, JSON.stringify(next));
+      safeLocalStorageSet(pinnedFeedsStorageKey, JSON.stringify(next));
       return next;
     });
     // Discovered Feeds aren't in the static feedSources list, so persist their
@@ -2532,7 +2579,7 @@ export function App() {
       setPinnedFeedMeta((current) => {
         const withoutSource = current.filter((item) => item.id !== source.id);
         const next = willPin ? [{ ...source }, ...withoutSource].slice(0, 12) : withoutSource;
-        localStorage.setItem(pinnedFeedMetaStorageKey, JSON.stringify(next));
+        safeLocalStorageSet(pinnedFeedMetaStorageKey, JSON.stringify(next));
         return next;
       });
     }
@@ -2553,7 +2600,7 @@ export function App() {
       }
       const next = [...current];
       [next[index], next[target]] = [next[target], next[index]];
-      localStorage.setItem(pinnedFeedsStorageKey, JSON.stringify(next));
+      safeLocalStorageSet(pinnedFeedsStorageKey, JSON.stringify(next));
       return next;
     });
   }
@@ -2567,7 +2614,7 @@ export function App() {
     setPinnedSearches((current) => {
       const exists = current.some((item) => item.toLowerCase() === trimmed.toLowerCase());
       const next = exists ? current.filter((item) => item.toLowerCase() !== trimmed.toLowerCase()) : [trimmed, ...current].slice(0, 12);
-      localStorage.setItem(pinnedSearchesStorageKey, JSON.stringify(next));
+      safeLocalStorageSet(pinnedSearchesStorageKey, JSON.stringify(next));
       return next;
     });
   }
@@ -2582,7 +2629,7 @@ export function App() {
       const next = exists
         ? current.filter((item) => item.did !== profileToPin.did && item.handle !== profileToPin.handle)
         : [profileToPin, ...current].slice(0, 16);
-      localStorage.setItem(pinnedProfilesStorageKey, JSON.stringify(next));
+      safeLocalStorageSet(pinnedProfilesStorageKey, JSON.stringify(next));
       return next;
     });
   }
@@ -2590,7 +2637,7 @@ export function App() {
   function togglePinnedNotification(id: string) {
     setPinnedNotificationIds((current) => {
       const next = current.includes(id) ? current.filter((item) => item !== id) : [id, ...current].slice(0, 20);
-      localStorage.setItem(pinnedNotificationsStorageKey, JSON.stringify(next));
+      safeLocalStorageSet(pinnedNotificationsStorageKey, JSON.stringify(next));
       return next;
     });
   }
@@ -2598,7 +2645,7 @@ export function App() {
   function toggleCollapsedFeedGroup(group: string) {
     setCollapsedFeedGroups((current) => {
       const next = { ...current, [group]: !current[group] };
-      localStorage.setItem(collapsedFeedGroupsStorageKey, JSON.stringify(next));
+      safeLocalStorageSet(collapsedFeedGroupsStorageKey, JSON.stringify(next));
       return next;
     });
   }
@@ -6053,9 +6100,9 @@ function Composer({
 
   useEffect(() => {
     if (draftText.trim().length > 0) {
-      localStorage.setItem(composerDraftStorageKey, JSON.stringify({ posts: [draftText] }));
+      safeLocalStorageSet(composerDraftStorageKey, JSON.stringify({ posts: [draftText] }));
     } else {
-      localStorage.removeItem(composerDraftStorageKey);
+      safeLocalStorageRemove(composerDraftStorageKey);
     }
   }, [draftText]);
 
@@ -6124,7 +6171,7 @@ function Composer({
       .forEach((image) => URL.revokeObjectURL(image.url));
     setImages({});
     const emptyDraft = { posts: [""] };
-    localStorage.removeItem(composerDraftStorageKey);
+    safeLocalStorageRemove(composerDraftStorageKey);
     onDraftChange(emptyDraft);
   }
 
@@ -6153,7 +6200,7 @@ function Composer({
         .forEach((image) => URL.revokeObjectURL(image.url));
       setImages({});
       const emptyDraft = { posts: [""] };
-      localStorage.removeItem(composerDraftStorageKey);
+      safeLocalStorageRemove(composerDraftStorageKey);
       onDraftChange(emptyDraft);
       setExpanded(false);
       onPosted?.();
@@ -6697,11 +6744,17 @@ function renderRichText(
     const type = feature?.$type;
 
     if (type === "app.bsky.richtext.facet#link" && feature?.uri) {
+      const href = safeHttpUrl(feature.uri);
+      if (!href) {
+        nodes.push(segment);
+        cursor = end;
+        return;
+      }
       nodes.push(
         <a
           key={index}
           className="post-link"
-          href={feature.uri}
+          href={href}
           target="_blank"
           rel="noreferrer"
           onClick={(event) => event.stopPropagation()}
@@ -7023,7 +7076,7 @@ function PostImageVideoMedia({ post, onOpenImage }: { post: FeedPost; onOpenImag
   const showNsfw = useContext(ShowNsfwContext);
   const showMedia = useContext(ShowMediaContext);
   const [mediaRevealed, setMediaRevealed] = useState(false);
-  const images = getEmbedImages(post.embed);
+  const images = safeEmbedImages(getEmbedImages(post.embed));
   const video = getVideoEmbed(post.embed);
   const labels = post.labels ?? [];
   const mediaWarningValues = sensitiveMediaValues([...labels, ...(post.author.labels ?? [])]);
@@ -7218,7 +7271,7 @@ function MediaOnlyPostCard({
   canBlockAuthor?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const images = getEmbedImages(post.embed).slice(0, maxPostImages);
+  const images = safeEmbedImages(getEmbedImages(post.embed)).slice(0, maxPostImages);
   const video = getVideoEmbed(post.embed);
   const text = post.record.text?.trim() || "";
   const postTimeLabel = formatPostTime(post.record.createdAt || post.indexedAt);
@@ -7707,8 +7760,10 @@ function PostCard({
   const deletePostCtx = useContext(DeletePostContext);
   const canBlockAuthor = !!blockCtx?.canBlock && post.author.did !== blockCtx?.selfDid;
   const [linkMediaRevealed, setLinkMediaRevealed] = useState(false);
-  const images = getEmbedImages(post.embed);
+  const images = safeEmbedImages(getEmbedImages(post.embed));
   const external = getExternalEmbed(post.embed);
+  const externalHref = safeHttpUrl(external?.uri);
+  const externalThumb = safeHttpUrl(external?.thumb);
   const recordEmbed = getRecordEmbed(post.embed);
   const video = getVideoEmbed(post.embed);
   const text = post.record.text?.trim() || "";
@@ -7725,7 +7780,7 @@ function PostCard({
   // Adult content is often labeled at the account level, not the post, so check
   // the author's labels too when deciding whether to hide media.
   const sensitiveLabels = [...labels, ...(post.author.labels ?? [])].filter(isSensitiveLabel);
-  const linkMediaHidden = !showMedia && !linkMediaRevealed && !!external?.thumb;
+  const linkMediaHidden = !showMedia && !linkMediaRevealed && !!externalThumb;
   const moderationNotes = [
     ...(post.viewer?.threadMuted ? ["Thread muted"] : []),
     ...sensitiveLabels.map(moderationLabelText),
@@ -7810,13 +7865,13 @@ function PostCard({
         !hasRichContent && <p className="post-text muted">Post has no plain text.</p>
       )}
       <PostImageVideoMedia post={post} onOpenImage={onOpenImage} />
-      {!showMedia && external?.thumb && (
+      {!showMedia && externalThumb && (
         <MediaHiddenButton kind="image" revealed={linkMediaRevealed} onReveal={() => setLinkMediaRevealed((current) => !current)} />
       )}
-      {external && (
+      {external && externalHref && (
         <div className={linkMediaHidden ? "link-card no-media" : "link-card"}>
-          <a href={external.uri} target="_blank" rel="noreferrer">
-            {external.thumb && !linkMediaHidden && <img alt="" src={external.thumb} loading="lazy" decoding="async" />}
+          <a href={externalHref} target="_blank" rel="noreferrer">
+            {externalThumb && !linkMediaHidden && <img alt="" src={externalThumb} loading="lazy" decoding="async" />}
             <span>
               <strong>{external.title || external.uri}</strong>
               <em>Open {formatExternalUrlLabel(external.uri || external.title || "")}</em>
@@ -7860,7 +7915,9 @@ function QuotedPostCard({
   const showMedia = useContext(ShowMediaContext);
   const [mediaRevealed, setMediaRevealed] = useState(false);
   const embeddedExternal = getExternalEmbed(record.embeds?.[0] ?? record.value?.embed);
-  const embeddedImages = getEmbedImages(record.embeds?.[0] ?? record.value?.embed);
+  const embeddedExternalHref = safeHttpUrl(embeddedExternal?.uri);
+  const embeddedExternalThumb = safeHttpUrl(embeddedExternal?.thumb);
+  const embeddedImages = safeEmbedImages(getEmbedImages(record.embeds?.[0] ?? record.value?.embed));
   const embeddedVideo = getVideoEmbed(record.embeds?.[0] ?? record.value?.embed);
   const text = record.value?.text?.trim() || "";
   const mediaWarningValues = sensitiveMediaValues([
@@ -7942,9 +7999,9 @@ function QuotedPostCard({
           {embeddedVideo && <VideoEmbedCard video={embeddedVideo} compact />}
         </>
       )}
-      {embeddedExternal && (
-        <a className={hideMediaForSetting && embeddedExternal.thumb ? "link-card quote-link-card no-media" : "link-card quote-link-card"} href={embeddedExternal.uri} target="_blank" rel="noreferrer">
-          {embeddedExternal.thumb && !hideMediaForSetting && <img alt="" src={embeddedExternal.thumb} loading="lazy" decoding="async" />}
+      {embeddedExternal && embeddedExternalHref && (
+        <a className={hideMediaForSetting && embeddedExternalThumb ? "link-card quote-link-card no-media" : "link-card quote-link-card"} href={embeddedExternalHref} target="_blank" rel="noreferrer">
+          {embeddedExternalThumb && !hideMediaForSetting && <img alt="" src={embeddedExternalThumb} loading="lazy" decoding="async" />}
           <span>
             <strong>{embeddedExternal.title || embeddedExternal.uri}</strong>
             <em>Open {formatExternalUrlLabel(embeddedExternal.uri || embeddedExternal.title || "")}</em>
@@ -8521,9 +8578,9 @@ function ReplyComposer({
 
   useEffect(() => {
     if (replyText.trim()) {
-      localStorage.setItem(replyDraftKey, replyText);
+      safeLocalStorageSet(replyDraftKey, replyText);
     } else {
-      localStorage.removeItem(replyDraftKey);
+      safeLocalStorageRemove(replyDraftKey);
     }
   }, [replyDraftKey, replyText]);
 
@@ -8536,7 +8593,7 @@ function ReplyComposer({
     try {
       await publishPost({ text: replyText.trim(), reply: { root, parent: { uri: parent.uri, cid: parent.cid } } });
       setReplyText("");
-      localStorage.removeItem(replyDraftKey);
+      safeLocalStorageRemove(replyDraftKey);
       onClose();
       onReplied?.();
     } catch (error) {
@@ -9185,9 +9242,11 @@ function LinkPreviewPanel({
     return null;
   }
 
+  const previewHref = safeHttpUrl(preview.uri);
+  const previewThumb = safeHttpUrl(preview.thumb);
   let hostname = "Link";
   try {
-    hostname = preview.uri ? new URL(preview.uri).hostname : "Link";
+    hostname = previewHref ? new URL(previewHref).hostname : "Link";
   } catch {
     hostname = preview.uri;
   }
@@ -9200,13 +9259,15 @@ function LinkPreviewPanel({
           <X size={14} />
         </button>
       </div>
-      {preview.thumb && <img src={preview.thumb} alt="" loading="lazy" decoding="async" />}
+      {previewThumb && <img src={previewThumb} alt="" loading="lazy" decoding="async" />}
       <strong>{preview.title || preview.uri}</strong>
       <small>{hostname}</small>
       {preview.description && <p>{preview.description}</p>}
-      <a href={preview.uri} target="_blank" rel="noreferrer">
-        Open link
-      </a>
+      {previewHref && (
+        <a href={previewHref} target="_blank" rel="noreferrer">
+          Open link
+        </a>
+      )}
       {preview.sourcePost && (
         <button type="button" onClick={() => onOpenPost(preview.sourcePost as FeedPost)}>
           Open source post

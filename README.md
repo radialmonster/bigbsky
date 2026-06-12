@@ -16,7 +16,7 @@ BigBsky is not Bluesky, not bsky.app, and not affiliated with Bluesky Social, PB
 
 ## Sign-in and data
 
-Sign-in is optional. BigBsky only asks you to sign in so it can authenticate with your Bluesky account and show your feeds, bookmarks, and profile-specific data. You can still browse public Bluesky feeds without signing in. BigBsky does not store your user data.
+Sign-in is optional. BigBsky only asks you to sign in so it can authenticate with your Bluesky account and show your feeds, bookmarks, and profile-specific data. You can still browse public Bluesky feeds without signing in. BigBsky has no server-side data store and does not store your user data on BigBsky servers. Preferences, drafts, pins, recent items, and local collections may be stored locally in your browser so the reader can remember them on this device.
 
 ## Links
 

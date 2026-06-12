@@ -6,7 +6,12 @@ export type RouteState =
   | { kind: "surface"; name: string };
 
 export function getRouteState(pathname = window.location.pathname): RouteState {
-  const parts = pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  let parts: string[];
+  try {
+    parts = pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  } catch {
+    return { kind: "feed" };
+  }
 
   if (parts[0] === "profile" && parts[1] && parts[2] === "post" && parts[3]) {
     return { kind: "post", actor: parts[1], rkey: parts[3] };
