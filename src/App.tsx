@@ -1152,6 +1152,7 @@ export function App() {
   const [myLists, setMyLists] = useState<{ owned: ListView[]; subscribed: ListView[] }>({ owned: [], subscribed: [] });
   const [myListsStatus, setMyListsStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [imageViewer, setImageViewer] = useState<ImageViewerState>(null);
+  const imageViewerHistoryRef = useRef(false);
   const [linkPreview, setLinkPreview] = useState<LinkPreviewState>(null);
   // The primary nav icon bar is hidden by default and revealed with the
   // hamburger control in the feed-title header.
@@ -2106,9 +2107,31 @@ export function App() {
   }, [activeSource, route.kind]);
 
   useEffect(() => {
-    const onPopState = () => setRoute(getRouteState());
+    const onPopState = () => {
+      if (imageViewerHistoryRef.current) {
+        imageViewerHistoryRef.current = false;
+        setImageViewer(null);
+      }
+      setRoute(getRouteState());
+    };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  const openImageViewer = useCallback((image: ImageViewerState) => {
+    if (!imageViewerHistoryRef.current) {
+      history.pushState({ imageViewer: true }, "", window.location.href);
+      imageViewerHistoryRef.current = true;
+    }
+    setImageViewer(image);
+  }, []);
+
+  const closeImageViewer = useCallback(() => {
+    if (imageViewerHistoryRef.current) {
+      history.back();
+      return;
+    }
+    setImageViewer(null);
   }, []);
 
   useEffect(() => {
@@ -3094,7 +3117,7 @@ export function App() {
             currentDid={authState.session?.did}
             thread={thread}
             loadingBranches={loadingThreadBranches}
-            onOpenImage={setImageViewer}
+            onOpenImage={openImageViewer}
             onOpenPost={openPost}
             onOpenProfile={openProfile}
             onOpenLinkPreview={openLinkPreview}
@@ -3109,7 +3132,7 @@ export function App() {
             containerRef={timelineRef}
             signedIn={!!authState.session}
             currentDid={authState.session?.did}
-            onOpenImage={setImageViewer}
+            onOpenImage={openImageViewer}
             onOpenPost={openPost}
             onOpenProfile={openProfile}
             onOpenLinkPreview={openLinkPreview}
@@ -3185,7 +3208,7 @@ export function App() {
             tab={searchTab}
             isPinnedSearch={route.query ? pinnedSearches.some((query) => query.toLowerCase() === route.query?.toLowerCase()) : false}
             onLoadMore={loadMore}
-            onOpenImage={setImageViewer}
+            onOpenImage={openImageViewer}
             onOpenPost={openPost}
             onOpenProfile={openProfile}
             onOpenLinkPreview={openLinkPreview}
@@ -3254,7 +3277,7 @@ export function App() {
                     containerRef={timelineRef}
                     density={density}
                     items={visibleProfileItems}
-                    onOpenImage={setImageViewer}
+                    onOpenImage={openImageViewer}
                     onOpenPost={openPost}
                     onOpenProfile={openProfile}
                     onOpenLinkPreview={openLinkPreview}
@@ -3285,7 +3308,7 @@ export function App() {
                 containerRef={timelineRef}
                 density={density}
                 items={feedState.items}
-                onOpenImage={setImageViewer}
+                onOpenImage={openImageViewer}
                 onOpenPost={openPost}
                 onOpenProfile={openProfile}
                 onOpenLinkPreview={openLinkPreview}
@@ -3353,7 +3376,7 @@ export function App() {
         <TrendingPanel fallback={trendingTopics} onOpenTopic={submitSearch} />
       </aside>
 
-      {imageViewer && <ImageViewer image={imageViewer} onChange={setImageViewer} onClose={() => setImageViewer(null)} />}
+      {imageViewer && <ImageViewer image={imageViewer} onChange={setImageViewer} onClose={closeImageViewer} />}
       </div>
       </DeletePostContext.Provider>
       </BlockContext.Provider>
@@ -7739,6 +7762,7 @@ function PostCard({
   onOpenProfile,
   onReply,
   replyActive = false,
+  s,
   onToggleListPost,
 }: {
   currentDid?: string;
@@ -7750,6 +7774,7 @@ function PostCard({
   onOpenProfile?: (profile: Profile) => void;
   onReply?: (post: FeedPost) => void;
   replyActive?: boolean;
+  s?: boolean;
   onToggleListPost?: (listId: string, post: FeedPost) => void;
 }) {
   const post = item.post;
@@ -7786,7 +7811,7 @@ function PostCard({
     ...sensitiveLabels.map(moderationLabelText),
   ];
 
-  if (density === "media") {
+  if (density === "media" && !s) {
     return (
       <MediaOnlyPostCard
         post={post}
@@ -8405,6 +8430,7 @@ function renderThreadContextNode(
         <PostCard
           item={{ post: node.post }}
           currentDid={savedState.currentDid}
+          s
           onOpenImage={handlers.onOpenImage}
           onOpenLinkPreview={onOpenLinkPreview}
           onOpenPost={handlers.onOpenPost}
@@ -8873,6 +8899,7 @@ function renderThreadNode(
       <PostCard
         item={{ post: node.post }}
         currentDid={savedState.currentDid}
+        s
         onOpenImage={handlers.onOpenImage}
         onOpenLinkPreview={onOpenLinkPreview}
         onOpenPost={handlers.onOpenPost}

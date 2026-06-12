@@ -5426,17 +5426,26 @@ button.surface-action {
   }
 
   .image-viewer {
-    padding: 56px 12px 112px;
+    padding: 56px 12px calc(154px + env(safe-area-inset-bottom));
   }
 
   .image-viewer img {
     max-width: calc(100vw - 24px);
-    max-height: calc(100vh - 188px);
+    max-height: calc(100vh - 230px - env(safe-area-inset-bottom));
   }
 
   .image-viewer-footer {
+    bottom: calc(14px + env(safe-area-inset-bottom));
     grid-template-columns: 1fr;
     gap: 8px;
+    max-height: min(34vh, 220px);
+    overflow: auto;
+  }
+
+  .image-viewer-footer span {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
   }
 
   .image-viewer-thumbs,

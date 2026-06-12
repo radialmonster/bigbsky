@@ -6,13 +6,14 @@ const root = "dist";
 // Initial reader-shell JS budget (gzip). The plan's hard target is <250 kB for
 // the first reader shell; this guardrail is stricter to catch creep early. It
 // was bumped from 100→110 kB when the authenticated Lists/block-list curation UI
-// landed in the main chunk, and to 111 kB when media density plus explicit
-// per-feed density override controls were added to the reader/settings shell.
+// landed in the main chunk, to 111 kB when media density plus explicit
+// per-feed density override controls were added to the reader/settings shell,
+// and to 112 kB when the media viewer gained browser Back-button handling.
 // The structural fix (tracked in the plan's
 // Performance Architecture section) is to code-split write-heavy authenticated
 // surfaces — Composer, SurfaceView/Lists, account/OAuth panels — into lazy
 // chunks; doing so should let this drop back toward 100 kB.
-const initialJsBudgetBytes = 111 * 1024;
+const initialJsBudgetBytes = 112 * 1024;
 const initialCssBudgetBytes = 20 * 1024;
 const forbiddenNames = new Set([
   "functions",
