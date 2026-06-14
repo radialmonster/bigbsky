@@ -8670,7 +8670,7 @@ function PostActionBar({
       return;
     }
     setEmbedState("copying");
-    try {
+    const fetchEmbedHtml = async () => {
       const response = await fetch(postEmbedOembedUrl(post), { headers: { Accept: "application/json" } });
       if (!response.ok) {
         throw new Error(`oEmbed request failed (${response.status}).`);
@@ -8679,7 +8679,21 @@ function PostActionBar({
       if (!data.html) {
         throw new Error("oEmbed response had no html.");
       }
-      await navigator.clipboard?.writeText(data.html);
+      return data.html;
+    };
+    try {
+      // We must fetch the snippet before we can copy it, but an `await` before
+      // writeText() drops the click's transient user activation, which can make
+      // the write fail or prompt. Hand the clipboard a Promise<Blob> synchronously
+      // (ClipboardItem) so the write is initiated within the gesture; fall back to
+      // fetch-then-writeText where ClipboardItem isn't supported.
+      if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+        await navigator.clipboard.write([
+          new ClipboardItem({ "text/plain": fetchEmbedHtml().then((html) => new Blob([html], { type: "text/plain" })) }),
+        ]);
+      } else {
+        await navigator.clipboard?.writeText(await fetchEmbedHtml());
+      }
       setEmbedState("copied");
     } catch {
       setEmbedState("error");
