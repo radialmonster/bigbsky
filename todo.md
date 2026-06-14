@@ -75,13 +75,19 @@
   - Relevant files/functions found:
     - `package.json`: `npm run build` runs TypeScript, Vite build, audit, reader verification, and layout verification.
     - `src/App.tsx`: focused changes are likely easiest around isolated components such as `FeedDensityControl`, `Composer`, or `ReplyComposer`.
-- [ ] Allow users to reorder feeds from `/feeds`.
-  - Desired behavior: on `/feeds` (`http://127.0.0.1:5173/feeds` in local dev), signed-in users can change the order of their feeds, preferably by drag-and-drop with accessible fallback controls.
-  - The saved order should drive the desktop feed-selector column beside the left rail, so feeds appear there in the same user-defined order.
+- [x] Allow users to reorder feeds from `/feeds`.
+  - Desired behavior: on `/feeds`, signed-in users can change the order of their feeds, preferably by drag-and-drop with accessible fallback controls. The saved order should drive the desktop feed-selector column beside the left rail.
+  - Done (browser-local ordering — mirrors the existing local pinned-feed reorder pattern, no account/preference write):
+    - Added `feedOrderStorageKey` (`bigbsky:feed-order`, a list of feed URIs) and `readFeedOrder()` in `src/App.tsx`, plus `feedOrder` state.
+    - Added `orderedSubscribedFeeds` memo: stable-sorts `subscribedFeeds` by their saved position in `feedOrder`; feeds without a saved position keep their Bluesky-preference order after the ordered ones. `allSources` now builds its `extras` from `orderedSubscribedFeeds`, so the selector's "My Feeds" group and the `/feeds` "Your feeds" grid share one order.
+    - Added `persistFeedOrder`, `moveSubscribedFeed(uri, ±1)` (accessible up/down), and `reorderSubscribedFeed(fromUri, toUri)` (drag-and-drop); passed `orderedSubscribedFeeds` + `onMoveFeed`/`onReorderFeed` into the feeds surface.
+    - `/feeds` "Your feeds" cards now render a drag handle (`GripVertical`) + up/down arrow buttons (`.feed-card-reorder`, reusing `.feed-move`), are `draggable` with native HTML5 DnD (dragstart/dragover/drop, `.drop-target` highlight), and show a discoverability hint (`.bsky-list-section-hint`). Controls appear only when signed in with >1 saved feed.
+    - `clearLocalReaderData` resets `feedOrder`; added `.feed-card-reorder`/`.feed-card-grip`/`.drop-target`/`.bsky-list-section-hint` styles in `src/styles.css`.
+  - Verified: `npm run build` passes (tsc, vite, audit initial JS 113 kB gzip, reader + layout + rich-text verifiers all green). Drove the running dev server via `scripts/cdp.mjs` on the signed-in session at `/feeds` (14 saved feeds): the "Move down" arrow swapped Discover/Designsky and persisted `bigbsky:feed-order` (14 URIs); the selector's "My Feeds" group reordered to match; a synthetic drag of the 3rd card onto the 1st moved it to the front. Cleared the test `bigbsky:feed-order` artifact from the operator session afterward.
+  - Follow-up (captured below): ordering is browser-local only; it does not write back to the account's `app.bsky.actor.savedFeedsPref` order, so it won't sync across devices/clients.
   - Relevant files/functions found:
-    - `docs/plan.md`: broader planning item added under TODO.
-    - `src/App.tsx`: likely owns the `/feeds` surface and desktop feed-selector rendering.
-    - `src/sources.ts`: likely owns feed source definitions and ordering inputs.
+    - `src/App.tsx`: `orderedSubscribedFeeds`, `feedOrder`, `moveSubscribedFeed`, `reorderSubscribedFeed`, `allSources`, FeedsSurface "Your feeds" grid.
+    - `src/styles.css`: `.feed-card-reorder`, `.feed-card-grip`, `.feed-directory-card.reorderable.drop-target`, `.bsky-list-section-hint`.
 - [x] Add per-feed Show Media override on `/feeds`.
   - Desired behavior: each feed on `/feeds` can choose Show Media on, off, or inherit the default setting. Done.
   - Done:
@@ -299,7 +305,13 @@
   - Relevant files/functions found:
     - `src/App.tsx`: `QuotedPostCard`, `MediaOnlyPostCard`, `PostEmbeds`, `UnsupportedEmbedNotice`, `getUnknownEmbedType`.
 
-- [ ] Review/commit the uncommitted `src/styles.css` mobile compact-media change.
-  - Found an uncommitted working-tree change in `src/styles.css` at the start of the 2026-06-14 identity-resolution session that was NOT made in that session (the session-start git snapshot reported the tree clean, so its provenance is unknown — likely a prior session's unstaged edit).
-  - The diff adds `grid-column: auto; justify-self: start;` to `.timeline.compact .post-card.media-hidden .media-hidden-button` and a new `.compact .post-card.media-hidden .link-card { grid-template-columns: minmax(0, 1fr); }` rule — i.e. a mobile/compact layout fix for the media-hidden "Show media" button and link-card grid.
-  - It was intentionally left out of the identity-resolution commit (only `src/api.ts` was committed). Decide whether the change is correct/intended, then commit it (with a real description of the visual fix) or discard it.
+- [x] Review/commit the uncommitted `src/styles.css` mobile compact-media change.
+  - Resolved: the change was committed in e4f8253 "Fix mobile hidden media link layout". Working tree is clean at the start of the 2026-06-14 feed-reorder session; the `.timeline.compact .post-card.media-hidden .media-hidden-button` (`grid-column: auto; justify-self: start;` in the mobile media query) and link-card grid rules are present in `src/styles.css`. Nothing further to do.
+
+- [ ] Optionally sync saved-feed order back to the account (follow-up).
+  - Follow-up from the `/feeds` feed-reorder work. The new ordering is browser-local (`bigbsky:feed-order`), so it does not persist across devices/clients.
+  - To sync, write the reordered list to the user's `app.bsky.actor.putPreferences` `savedFeedsPref` (v2 `savedFeeds` order) via the authed session, and have `getSubscribedFeeds` return feeds in that order so the local override becomes unnecessary (or a fallback).
+  - Verify the current preference read/write path in `src/auth.ts` (`getSubscribedFeeds`, `followFeed`/`unfollowFeed`) and the exact preference lexicon shape before implementing.
+  - Relevant files/functions found:
+    - `src/auth.ts`: `getSubscribedFeeds`, `followFeed`, `unfollowFeed` (saved-feeds preference read/write).
+    - `src/App.tsx`: `orderedSubscribedFeeds`, `feedOrder`, `persistFeedOrder`.

@@ -2256,6 +2256,43 @@ button.surface-action {
   line-height: 1.4;
 }
 
+/* Saved-feed reorder controls in the /feeds "Your feeds" grid: a drag handle
+   plus accessible up/down arrows at the top of each card. */
+.feed-card-reorder {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  cursor: grab;
+}
+
+.feed-card-reorder:active {
+  cursor: grabbing;
+}
+
+.feed-card-grip {
+  display: grid;
+  place-items: center;
+  color: var(--app-text-soft);
+}
+
+.feed-card-reorder .feed-move {
+  width: 24px;
+  height: 22px;
+}
+
+.feed-directory-card.reorderable.drop-target {
+  border-color: var(--bsky-blue-soft);
+  background: rgba(5, 96, 255, 0.1);
+}
+
+.bsky-list-section-hint {
+  margin: -2px 0 12px;
+  color: var(--app-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .feed-density-control {
   display: grid;
   gap: 5px;

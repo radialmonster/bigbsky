@@ -19,6 +19,7 @@ import {
   ChevronRight,
   ChevronUp,
   ChevronDown,
+  GripVertical,
   MessageCircle,
   MoreHorizontal,
   Repeat2,
@@ -387,6 +388,7 @@ const showNsfwStorageKey = "bigbsky:show-nsfw";
 const showMediaStorageKey = "bigbsky:show-media";
 const showMediaByFeedStorageKey = "bigbsky:show-media-by-feed";
 const pinnedFeedsStorageKey = "bigbsky:pinned-feeds";
+const feedOrderStorageKey = "bigbsky:feed-order";
 const pinnedFeedMetaStorageKey = "bigbsky:pinned-feed-meta";
 const pinnedSearchesStorageKey = "bigbsky:pinned-searches";
 const pinnedProfilesStorageKey = "bigbsky:pinned-profiles";
@@ -536,6 +538,19 @@ function readPinnedFeedIds(metaSources: FeedSource[] = readPinnedFeedMeta()) {
     const stored = JSON.parse(localStorage.getItem(pinnedFeedsStorageKey) || "[]") as string[];
     const knownIds = new Set([...feedSources.map((source) => source.id), ...metaSources.map((source) => source.id)]);
     return Array.isArray(stored) ? stored.filter((id) => knownIds.has(id)).slice(0, 12) : [];
+  } catch {
+    return [];
+  }
+}
+
+// Browser-local manual ordering of the signed-in user's saved feeds, stored as
+// a list of feed URIs. It is applied to subscribedFeeds for both the /feeds
+// "Your feeds" grid and the desktop feed-selector "My Feeds" group; feeds not
+// present here fall back to their account (Bluesky preference) order.
+function readFeedOrder() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(feedOrderStorageKey) || "[]") as unknown;
+    return Array.isArray(stored) ? stored.filter((uri): uri is string => typeof uri === "string") : [];
   } catch {
     return [];
   }
@@ -1435,6 +1450,7 @@ export function App() {
   const [devMetrics, setDevMetrics] = useState<DevMetrics>(initialDevMetrics);
   const [authState, setAuthState] = useState<AuthState>(initialAuthState);
   const [subscribedFeeds, setSubscribedFeeds] = useState<FeedSource[]>([]);
+  const [feedOrder, setFeedOrder] = useState<string[]>(() => readFeedOrder());
   const [followBusyUri, setFollowBusyUri] = useState<string | null>(null);
   const [virtualRenderedRows, setVirtualRenderedRows] = useState(0);
   const [thread, setThread] = useState<{ status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string }>({
@@ -1844,15 +1860,28 @@ export function App() {
     }
     return feedSources.find((source) => source.id === activeSourceId) ?? feedSources[0];
   }, [route, activeSourceId, subscribedFeeds, homeSourceId, signedInDid]);
+  // The signed-in user's saved feeds, reordered by the browser-local feedOrder
+  // (URIs). Feeds with a saved position sort by it; the rest keep their account
+  // order after them (stable sort). Drives both the /feeds grid and the selector.
+  const orderedSubscribedFeeds = useMemo(() => {
+    if (feedOrder.length === 0) {
+      return subscribedFeeds;
+    }
+    const rank = new Map(feedOrder.map((uri, index) => [uri, index]));
+    const fallback = feedOrder.length;
+    return [...subscribedFeeds].sort(
+      (a, b) => (rank.get(a.uri) ?? fallback) - (rank.get(b.uri) ?? fallback),
+    );
+  }, [subscribedFeeds, feedOrder]);
   // Static public feeds plus the signed-in user's subscribed feeds (deduped by
   // URI so a saved copy of a built-in feed does not appear twice).
   const allSources = useMemo(() => {
     const staticUris = new Set(feedSources.map((source) => source.uri));
-    const extras = subscribedFeeds.filter((source) => !staticUris.has(source.uri));
+    const extras = orderedSubscribedFeeds.filter((source) => !staticUris.has(source.uri));
     // The Following home timeline is only available when signed in.
     const base = signedInDid ? [followingSource, ...feedSources] : feedSources;
     return [...base, ...extras];
-  }, [subscribedFeeds, signedInDid]);
+  }, [orderedSubscribedFeeds, signedInDid]);
   // Home-page options for Settings: Following + the static public feeds, plus
   // the user's subscribed feeds when signed in. Following is always offered (it
   // falls back to Discover when signed out).
@@ -2699,6 +2728,7 @@ export function App() {
     setComposerDraft({ posts: [""] });
     setLocalLists([]);
     setPinnedFeedIds([]);
+    setFeedOrder([]);
     setPinnedSearches([]);
     setPinnedProfiles([]);
     setPinnedNotificationIds([]);
@@ -2945,6 +2975,47 @@ export function App() {
       safeLocalStorageSet(pinnedFeedsStorageKey, JSON.stringify(next));
       return next;
     });
+  }
+
+  // Persist a new saved-feed order (browser-local). The list is the full set of
+  // subscribed feed URIs in display order; orderedSubscribedFeeds then applies it
+  // to both the /feeds grid and the selector's "My Feeds" group.
+  function persistFeedOrder(uris: string[]) {
+    setFeedOrder(uris);
+    safeLocalStorageSet(feedOrderStorageKey, JSON.stringify(uris));
+  }
+
+  // Accessible up/down reorder for a saved feed.
+  function moveSubscribedFeed(uri: string, direction: -1 | 1) {
+    const current = orderedSubscribedFeeds.map((source) => source.uri);
+    const index = current.indexOf(uri);
+    if (index < 0) {
+      return;
+    }
+    const target = index + direction;
+    if (target < 0 || target >= current.length) {
+      return;
+    }
+    const next = [...current];
+    [next[index], next[target]] = [next[target], next[index]];
+    persistFeedOrder(next);
+  }
+
+  // Drag-and-drop reorder: move fromUri to occupy toUri's position.
+  function reorderSubscribedFeed(fromUri: string, toUri: string) {
+    if (fromUri === toUri) {
+      return;
+    }
+    const current = orderedSubscribedFeeds.map((source) => source.uri);
+    const from = current.indexOf(fromUri);
+    const to = current.indexOf(toUri);
+    if (from < 0 || to < 0) {
+      return;
+    }
+    const next = [...current];
+    next.splice(from, 1);
+    next.splice(to, 0, fromUri);
+    persistFeedOrder(next);
   }
 
   function togglePinnedSearch(query: string) {
@@ -3566,7 +3637,9 @@ export function App() {
             showMedia={showMedia}
             onToggleShowMedia={toggleShowMedia}
             canFollowFeeds={!!signedInDid}
-            subscribedFeeds={subscribedFeeds}
+            subscribedFeeds={orderedSubscribedFeeds}
+            onMoveFeed={moveSubscribedFeed}
+            onReorderFeed={reorderSubscribedFeed}
             followedFeedUris={followedFeedUris}
             followBusyUri={followBusyUri}
             onToggleFollowFeed={toggleFollowFeed}
@@ -4285,6 +4358,8 @@ function SurfaceView({
   onToggleShowMedia,
   canFollowFeeds,
   subscribedFeeds,
+  onMoveFeed,
+  onReorderFeed,
   followedFeedUris,
   followBusyUri,
   onToggleFollowFeed,
@@ -4341,11 +4416,16 @@ function SurfaceView({
   onToggleShowMedia: () => void;
   canFollowFeeds: boolean;
   subscribedFeeds: FeedSource[];
+  onMoveFeed: (uri: string, direction: -1 | 1) => void;
+  onReorderFeed: (fromUri: string, toUri: string) => void;
   followedFeedUris: Set<string>;
   followBusyUri: string | null;
   onToggleFollowFeed: (feedUri: string, label?: string) => void;
 }) {
   const title = name.charAt(0).toUpperCase() + name.slice(1);
+  // Tracks the saved feed currently being dragged for reorder (drop highlight).
+  const [draggingFeedUri, setDraggingFeedUri] = useState<string | null>(null);
+  const canReorderFeeds = !!auth.session && subscribedFeeds.length > 1;
   const surfaces: Record<string, { copy: string; cards: Array<{ title: string; detail: string; status: string }> }> = {
     explore: {
       copy: "Search posts, people, and feeds, or jump into a trending topic. To browse and discover feeds, use the Feeds page.",
@@ -4722,6 +4802,11 @@ function SurfaceView({
         <>
           <section className="bsky-list-section" aria-label="Your feeds">
             <h3 className="bsky-list-section-heading">Your feeds</h3>
+            {canReorderFeeds && (
+              <p className="bsky-list-section-hint">
+                Drag a feed by its handle, or use the up/down arrows, to set the order it appears here and in the feed selector.
+              </p>
+            )}
             {!auth.session ? (
               <EmptyState
                 title="Sign in to see your feeds"
@@ -4734,12 +4819,78 @@ function SurfaceView({
               />
             ) : (
               <div className="feed-directory-grid">
-                {subscribedFeeds.map((source) => {
+                {subscribedFeeds.map((source, index) => {
                   const override = feedDensityOverride(source, densityByContext);
                   const mediaOverride = feedShowMediaOverride(source, showMediaByFeed);
                   const feedShowMedia = mediaOverride ?? showMedia;
                   return (
-                    <article className="feed-directory-card" key={source.id}>
+                    <article
+                      className={
+                        draggingFeedUri && draggingFeedUri !== source.uri
+                          ? "feed-directory-card reorderable drop-target"
+                          : canReorderFeeds
+                            ? "feed-directory-card reorderable"
+                            : "feed-directory-card"
+                      }
+                      key={source.id}
+                      onDragOver={
+                        canReorderFeeds
+                          ? (event) => {
+                              event.preventDefault();
+                              event.dataTransfer.dropEffect = "move";
+                            }
+                          : undefined
+                      }
+                      onDrop={
+                        canReorderFeeds
+                          ? (event) => {
+                              event.preventDefault();
+                              const fromUri = event.dataTransfer.getData("text/plain");
+                              if (fromUri) {
+                                onReorderFeed(fromUri, source.uri);
+                              }
+                              setDraggingFeedUri(null);
+                            }
+                          : undefined
+                      }
+                    >
+                      {canReorderFeeds && (
+                        <div
+                          className="feed-card-reorder"
+                          draggable
+                          onDragStart={(event) => {
+                            event.dataTransfer.setData("text/plain", source.uri);
+                            event.dataTransfer.effectAllowed = "move";
+                            setDraggingFeedUri(source.uri);
+                          }}
+                          onDragEnd={() => setDraggingFeedUri(null)}
+                          title="Drag to reorder"
+                        >
+                          <span className="feed-card-grip" aria-hidden="true">
+                            <GripVertical size={14} />
+                          </span>
+                          <button
+                            className="feed-move"
+                            type="button"
+                            disabled={index === 0}
+                            onClick={() => onMoveFeed(source.uri, -1)}
+                            aria-label={`Move ${source.label} up`}
+                            title="Move up"
+                          >
+                            <ChevronUp size={14} />
+                          </button>
+                          <button
+                            className="feed-move"
+                            type="button"
+                            disabled={index === subscribedFeeds.length - 1}
+                            onClick={() => onMoveFeed(source.uri, 1)}
+                            aria-label={`Move ${source.label} down`}
+                            title="Move down"
+                          >
+                            <ChevronDown size={14} />
+                          </button>
+                        </div>
+                      )}
                       <button type="button" onClick={() => onOpenFeed(source)}>
                         <span>{source.group}</span>
                         <strong>{source.label}</strong>
