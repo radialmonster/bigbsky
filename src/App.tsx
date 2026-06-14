@@ -1201,6 +1201,17 @@ function postBskyUrl(post: FeedPost) {
   return rkey ? `https://bsky.app/profile/${post.author.handle}/post/${rkey}` : `https://bsky.app/profile/${post.author.handle}`;
 }
 
+// Build the official Bluesky oEmbed endpoint URL for a post. We pass the post's
+// at:// URI directly: the endpoint resolves DIDs reliably, whereas handle-based
+// bsky.app URLs can 404 against it. maxwidth is clamped to the documented
+// 220–600 range. The endpoint sends CORS `Access-Control-Allow-Origin: *`, so a
+// browser fetch works, and it enforces the public-content policy (adult/deleted/
+// private posts are redacted or rejected). Docs: docs.bsky.app/.../oembed
+function postEmbedOembedUrl(post: FeedPost, maxwidth = 600) {
+  const width = Math.min(600, Math.max(220, Math.round(maxwidth)));
+  return `https://embed.bsky.app/oembed?url=${encodeURIComponent(post.uri)}&maxwidth=${width}&format=json`;
+}
+
 function extractHashtags(text?: string) {
   if (!text) {
     return [];
@@ -8589,6 +8600,7 @@ function PostActionBar({
   const blockView = blockCtx?.getState(post.author);
   const deletePostCtx = useContext(DeletePostContext);
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
+  const [embedState, setEmbedState] = useState<"idle" | "copying" | "copied" | "error">("idle");
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const moreMenuRef = useRef<HTMLDetailsElement | null>(null);
   const { showReplyLimited, handleReplyClick } = useReplyGate(post, onReply);
@@ -8647,6 +8659,32 @@ function PostActionBar({
     }
 
     window.setTimeout(() => setShareState("idle"), 1800);
+  };
+
+  // Copy the official Bluesky embed snippet (blockquote + embed.js script) so the
+  // post can be embedded on another site. We fetch the snippet from the public
+  // oEmbed endpoint rather than hand-building it, so it tracks Bluesky's embed
+  // markup and content policy. Keep the menu open so the status label is visible.
+  const handleCopyEmbed = async () => {
+    if (embedState === "copying") {
+      return;
+    }
+    setEmbedState("copying");
+    try {
+      const response = await fetch(postEmbedOembedUrl(post), { headers: { Accept: "application/json" } });
+      if (!response.ok) {
+        throw new Error(`oEmbed request failed (${response.status}).`);
+      }
+      const data = (await response.json()) as { html?: string };
+      if (!data.html) {
+        throw new Error("oEmbed response had no html.");
+      }
+      await navigator.clipboard?.writeText(data.html);
+      setEmbedState("copied");
+    } catch {
+      setEmbedState("error");
+    }
+    window.setTimeout(() => setEmbedState("idle"), 2400);
   };
 
   return (
@@ -8731,6 +8769,20 @@ function PostActionBar({
             <a href={postBskyUrl(post)} target="_blank" rel="noreferrer" onClick={() => setMoreMenuOpen(false)}>
               Open on Bluesky
             </a>
+            <button
+              type="button"
+              onClick={handleCopyEmbed}
+              disabled={embedState === "copying"}
+              title="Copy HTML to embed this post on a website"
+            >
+              {embedState === "copying"
+                ? "Copying embed code…"
+                : embedState === "copied"
+                  ? "Embed code copied"
+                  : embedState === "error"
+                    ? "Couldn't copy embed code"
+                    : "Copy embed code"}
+            </button>
             {canDeletePost && (
               <button
                 type="button"
