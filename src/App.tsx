@@ -27,6 +27,7 @@ import {
   Settings,
   Share2,
   ShieldAlert,
+  Smile,
   User,
   Users,
 } from "lucide-react";
@@ -6826,6 +6827,138 @@ function PostLanguagePicker({
   );
 }
 
+// Curated emoji set for the composer picker, grouped the way bsky's picker is.
+// Plain text insertion only — emoji are ordinary Unicode characters, so no API
+// or upload is involved; they flow through the post text like any other glyph.
+const EMOJI_GROUPS: Array<{ label: string; emoji: string[] }> = [
+  {
+    label: "Smileys",
+    emoji: [
+      "😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "🙃",
+      "😉", "😊", "😇", "🥰", "😍", "🤩", "😘", "😋", "😜", "🤪",
+      "😎", "🤓", "🥳", "😏", "😴", "😪", "🤔", "🤨", "😐", "😶",
+      "🙄", "😬", "😯", "😳", "🥺", "😢", "😭", "😤", "😠", "😡",
+      "🤯", "😱", "😨", "😰", "😥", "🤗", "🤭", "🤐", "😴", "🤤",
+    ],
+  },
+  {
+    label: "Gestures",
+    emoji: [
+      "👍", "👎", "👌", "🤌", "✌️", "🤞", "🤟", "🤙", "👈", "👉",
+      "👆", "👇", "☝️", "👋", "🤚", "🖐️", "✋", "👏", "🙌", "🙏",
+      "🤝", "💪", "🫶", "👀", "🧠", "🫡", "🤷", "🤦",
+    ],
+  },
+  {
+    label: "Hearts",
+    emoji: [
+      "❤️", "🧡", "💛", "💚", "💙", "💜", "🤎", "🖤", "🤍", "💔",
+      "❤️‍🔥", "💖", "💗", "💓", "💞", "💕", "💌", "💯",
+    ],
+  },
+  {
+    label: "Animals & Nature",
+    emoji: [
+      "🐶", "🐱", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷",
+      "🐸", "🐙", "🦋", "🐝", "🐢", "🐰", "🦄", "🌟", "⭐", "🔥",
+      "🌈", "☀️", "🌙", "⚡", "❄️", "🌸", "🌹", "🌻", "🍀", "🌊",
+    ],
+  },
+  {
+    label: "Food & Drink",
+    emoji: [
+      "🍎", "🍊", "🍓", "🍉", "🍇", "🍌", "🍍", "🥑", "🍕", "🍔",
+      "🌮", "🍟", "🍩", "🍪", "🎂", "🍰", "🍫", "🍿", "☕", "🍵",
+      "🍺", "🍻", "🥂", "🍷",
+    ],
+  },
+  {
+    label: "Activities & Objects",
+    emoji: [
+      "⚽", "🏀", "🏈", "🎾", "🎮", "🎲", "🎯", "🎵", "🎸", "🎤",
+      "🎉", "🎊", "🎁", "🏆", "🥇", "📷", "📱", "💻", "💡", "📚",
+      "✈️", "🚀", "🌍", "🕰️", "💰", "🎈",
+    ],
+  },
+  {
+    label: "Symbols",
+    emoji: [
+      "✅", "❌", "⭕", "❓", "❗", "💬", "👁️", "🔗", "🔒", "🔔",
+      "⚠️", "♻️", "✨", "💥", "💢", "💤", "🆗", "🆕", "🔝", "©️",
+    ],
+  },
+];
+
+function EmojiPicker({ onSelect, disabled }: { onSelect: (emoji: string) => void; disabled?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    function onDocPointer(event: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  function choose(emoji: string) {
+    onSelect(emoji);
+    setOpen(false);
+  }
+
+  return (
+    <div className="composer-emoji" ref={rootRef}>
+      <button
+        type="button"
+        title="Add emoji"
+        aria-label="Add emoji"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <Smile size={20} />
+      </button>
+      {open && (
+        <div className="composer-emoji-menu" role="dialog" aria-label="Emoji picker">
+          {EMOJI_GROUPS.map((group) => (
+            <div className="composer-emoji-group" key={group.label}>
+              <p className="composer-emoji-group-label">{group.label}</p>
+              <div className="composer-emoji-grid">
+                {group.emoji.map((emoji, index) => (
+                  <button
+                    key={`${group.label}-${index}`}
+                    type="button"
+                    className="composer-emoji-option"
+                    title={emoji}
+                    onClick={() => choose(emoji)}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 type GraphemeSegmenter = {
   segment(input: string): Iterable<{ segment: string; index: number }>;
 };
@@ -6929,6 +7062,7 @@ function Composer({
   // picked files belong to.
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const attachTarget = useRef<number>(0);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     if (draftText.trim().length > 0) {
@@ -6950,6 +7084,25 @@ function Composer({
 
   function setDraftText(value: string) {
     onDraftChange({ posts: [value] });
+  }
+
+  // Insert text (e.g. an emoji) at the textarea caret, replacing any selection,
+  // then restore focus with the caret just after the inserted text.
+  function insertAtCaret(snippet: string) {
+    const el = textareaRef.current;
+    if (!el) {
+      setDraftText(draftText + snippet);
+      return;
+    }
+    const start = el.selectionStart ?? draftText.length;
+    const end = el.selectionEnd ?? draftText.length;
+    const next = draftText.slice(0, start) + snippet + draftText.slice(end);
+    setDraftText(next);
+    const caret = start + snippet.length;
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(caret, caret);
+    });
   }
 
   function attachImage(index: number) {
@@ -7070,6 +7223,7 @@ function Composer({
       <div className="composer-thread">
         <div className="composer-draft">
           <textarea
+            ref={textareaRef}
             placeholder="What's on your mind?"
             value={draftText}
             onChange={(event) => setDraftText(event.target.value)}
@@ -7111,6 +7265,7 @@ function Composer({
               >
                 <Image size={20} />
               </button>
+              <EmojiPicker disabled={posting} onSelect={insertAtCaret} />
             </div>
             <div className="composer-meta">
               <PostLanguagePicker
@@ -9582,6 +9737,7 @@ function ReplyComposer({
   const [images, setImages] = useState<ComposerImageState[]>([]);
   const [postLang, setPostLang] = useState(readDefaultPostLanguage);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   // Bluesky's 300 limit counts graphemes, not UTF-16 code units — mirror the
   // post composer so emoji/multibyte replies are measured the same way.
   const remainingReplyChars = POST_GRAPHEME_LIMIT - graphemeLength(replyText);
@@ -9606,6 +9762,24 @@ function ReplyComposer({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Insert text (e.g. an emoji) at the reply textarea caret, replacing any
+  // selection, then restore focus with the caret after the inserted text.
+  function insertAtCaret(snippet: string) {
+    const el = textareaRef.current;
+    if (!el) {
+      setReplyText((current) => current + snippet);
+      return;
+    }
+    const start = el.selectionStart ?? replyText.length;
+    const end = el.selectionEnd ?? replyText.length;
+    const caret = start + snippet.length;
+    setReplyText(replyText.slice(0, start) + snippet + replyText.slice(end));
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(caret, caret);
+    });
+  }
 
   function onFilesSelected(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) {
@@ -9672,6 +9846,7 @@ function ReplyComposer({
   return (
     <section className="reply-composer inline" aria-label={`Reply to ${displayName(parent.author)}`}>
       <textarea
+        ref={textareaRef}
         autoFocus
         placeholder={canReply ? `Reply to @${parent.author.handle}` : "Sign in to reply."}
         value={replyText}
@@ -9724,6 +9899,7 @@ function ReplyComposer({
           >
             <Image size={20} />
           </button>
+          <EmojiPicker disabled={!canReply || replyPosting} onSelect={insertAtCaret} />
         </div>
         <div className="composer-meta">
           <PostLanguagePicker

@@ -1135,6 +1135,65 @@ button {
   font-weight: 700;
 }
 
+/* Emoji picker: a Smile icon button (same round style as the other composer
+   tools) with a scrollable popover of grouped emoji. */
+.composer-emoji {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.composer-emoji-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  width: 320px;
+  max-width: min(320px, calc(100vw - 32px));
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 10px;
+  border: 1px solid var(--app-border-strong);
+  border-radius: 12px;
+  background: var(--app-surface-2);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.composer-emoji-group + .composer-emoji-group {
+  margin-top: 8px;
+}
+
+.composer-emoji-group-label {
+  margin: 0 0 4px;
+  padding: 0 2px;
+  color: var(--app-text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.composer-emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+}
+
+.composer-emoji-option {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.composer-emoji-option:hover {
+  background: var(--app-surface);
+}
+
 /* Primary send button (reply composer) and load-more share the filled style. */
 .composer-send button:last-child,
 .load-more {
