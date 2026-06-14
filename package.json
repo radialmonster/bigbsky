@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "cdp": "node scripts/cdp.mjs",
-    "build": "tsc -b && vite build && node scripts/audit-build.mjs && node scripts/verify-reader-behavior.mjs && node scripts/verify-layout-behavior.mjs",
+    "build": "tsc -b && vite build && node scripts/audit-build.mjs && node scripts/verify-reader-behavior.mjs && node scripts/verify-layout-behavior.mjs && node scripts/verify-richtext.mjs",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

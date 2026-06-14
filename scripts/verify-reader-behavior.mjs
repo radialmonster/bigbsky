@@ -68,7 +68,8 @@ requirePattern(/setEngagement\(\(current\) => \(current === stat\.key \? null : 
 if (!/export function getLikes\(/.test(api) || !/export function getRepostedBy\(/.test(api) || !/export function getQuotes\(/.test(api)) {
   failures.push("api should expose public getLikes/getRepostedBy/getQuotes readers");
 }
-requirePattern(/function renderRichText\([\s\S]*app\.bsky\.richtext\.facet#link[\s\S]*app\.bsky\.richtext\.facet#mention[\s\S]*app\.bsky\.richtext\.facet#tag/s, "post text should render link, mention, and tag facets from Bluesky rich text");
+requirePattern(/import \{ segmentRichText \} from "\.\/richtext"/, "rich-text facet segmentation should come from the pure src/richtext.ts helper");
+requirePattern(/function renderRichText\([\s\S]*segmentRichText\(text, facets\)[\s\S]*segment\.kind === "link"[\s\S]*segment\.kind === "mention"[\s\S]*segment\.kind === "tag"/s, "post text should render link, mention, and tag facet segments from Bluesky rich text");
 requirePattern(/const TagSearchContext = createContext[\s\S]*onClick=\{\(event\) => \{[\s\S]*onOpenTag\(tag\)/s, "hashtag facets should open an in-app search via the tag-search context");
 requirePattern(/renderRichText\(post\.record\.facets\?\.length \? post\.record\.text \|\| "" : text, post\.record\.facets, onOpenProfile/, "post cards should render rich-text facets for post body text");
 requirePattern(/renderRichText\(\s*record\.value\?\.facets\?\.length \? record\.value\.text \|\| "" : text,\s*record\.value\?\.facets,\s*onOpenProfile,\s*onOpenTag,/s, "quoted posts should render rich-text facets for their body text");

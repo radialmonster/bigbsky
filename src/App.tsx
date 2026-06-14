@@ -64,6 +64,7 @@ import {
   getVideoEmbed,
   searchActors,
 } from "./api";
+import { segmentRichText } from "./richtext";
 import {
   type AuthSnapshot,
   type ListMember,
@@ -7067,70 +7068,35 @@ function renderRichText(
   if (!text) {
     return text;
   }
-  const usable = (facets ?? []).filter(
-    (facet) =>
-      typeof facet.index?.byteStart === "number" &&
-      typeof facet.index?.byteEnd === "number" &&
-      Array.isArray(facet.features) &&
-      facet.features.length > 0,
-  );
-  if (usable.length === 0) {
+  // Byte-range/facet-selection lives in the pure, tested segmentRichText helper
+  // (src/richtext.ts); here we only map segments to interactive React nodes.
+  const segments = segmentRichText(text, facets);
+  if (segments.length === 0) {
     return text;
   }
+  if (segments.length === 1 && segments[0].kind === "text") {
+    return segments[0].text;
+  }
 
-  const bytes = new TextEncoder().encode(text);
-  const decoder = new TextDecoder();
-  const sorted = [...usable].sort((a, b) => (a.index!.byteStart ?? 0) - (b.index!.byteStart ?? 0));
-  const nodes: ReactNode[] = [];
-  let cursor = 0;
-
-  sorted.forEach((facet, index) => {
-    const start = facet.index!.byteStart ?? 0;
-    const end = facet.index!.byteEnd ?? 0;
-    if (start < cursor || start >= end || end > bytes.length) {
-      return;
-    }
-    if (start > cursor) {
-      nodes.push(decoder.decode(bytes.slice(cursor, start)));
-    }
-    const segment = decoder.decode(bytes.slice(start, end));
-    // Docs allow multiple features on one range; prefer the first feature this
-    // renderer actually supports (link/mention/tag) rather than blindly taking
-    // the first typed feature, which could be an unknown $type that drops a
-    // usable link/mention/tag sharing the same range.
-    const features = facet.features ?? [];
-    const feature =
-      features.find(
-        (item) =>
-          (item.$type === "app.bsky.richtext.facet#link" && item.uri) ||
-          (item.$type === "app.bsky.richtext.facet#mention" && item.did) ||
-          (item.$type === "app.bsky.richtext.facet#tag" && (item.tag || segment)),
-      ) ?? features.find((item) => typeof item.$type === "string");
-    const type = feature?.$type;
-
-    if (type === "app.bsky.richtext.facet#link" && feature?.uri) {
-      const href = safeHttpUrl(feature.uri);
-      if (!href) {
-        nodes.push(segment);
-        cursor = end;
-        return;
-      }
-      nodes.push(
+  return segments.map((segment, index) => {
+    if (segment.kind === "link") {
+      return (
         <a
           key={index}
           className="post-link"
-          href={href}
+          href={segment.uri}
           target="_blank"
           rel="noreferrer"
           onClick={(event) => event.stopPropagation()}
         >
-          {segment}
-        </a>,
+          {segment.text}
+        </a>
       );
-    } else if (type === "app.bsky.richtext.facet#mention" && feature?.did && onOpenProfile) {
-      const did = feature.did;
-      const handle = segment.replace(/^@/, "");
-      nodes.push(
+    }
+    if (segment.kind === "mention" && onOpenProfile) {
+      const did = segment.did;
+      const handle = segment.text.replace(/^@/, "");
+      return (
         <button
           key={index}
           type="button"
@@ -7140,12 +7106,13 @@ function renderRichText(
             onOpenProfile({ did, handle });
           }}
         >
-          {segment}
-        </button>,
+          {segment.text}
+        </button>
       );
-    } else if (type === "app.bsky.richtext.facet#tag" && (feature?.tag || segment) && onOpenTag) {
-      const tag = feature?.tag || segment.replace(/^#/, "");
-      nodes.push(
+    }
+    if (segment.kind === "tag" && onOpenTag) {
+      const tag = segment.tag;
+      return (
         <button
           key={index}
           type="button"
@@ -7155,20 +7122,12 @@ function renderRichText(
             onOpenTag(tag);
           }}
         >
-          {segment}
-        </button>,
+          {segment.text}
+        </button>
       );
-    } else {
-      nodes.push(segment);
     }
-    cursor = end;
+    return segment.text;
   });
-
-  if (cursor < bytes.length) {
-    nodes.push(decoder.decode(bytes.slice(cursor)));
-  }
-
-  return nodes;
 }
 
 function AdditionalLinks({

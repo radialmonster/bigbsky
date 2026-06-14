@@ -126,13 +126,18 @@
     - `src/api.ts`: `RichTextFacet` type and `FeedPost.record.facets` / `RecordEmbedView.value.facets`.
     - `src/auth.ts`: `publishPost` facet production via `@atproto/api` `RichText.detectFacets`.
     - `src/App.tsx`: `renderRichText`, `extractFacetLinks`, `PostCard`, combined thread rendering, and `QuoteCard` consume facets.
-- [ ] Add a regression-test harness for `renderRichText` facet handling (follow-up).
+- [x] Add a regression-test harness for `renderRichText` facet handling (follow-up).
   - Follow-up from the rich-text facet audit.
-  - `renderRichText` in `src/App.tsx` is internal and untested. Either extract the byte-range/facet-selection logic into a small exported pure helper (e.g. `src/richtext.ts`) or add a Node-based verifier under `scripts/` like the existing `verify-*.mjs`.
-  - Cover: Unicode text and emoji/grapheme byte offsets, links, mentions, hashtags, overlapping facets (later one discarded), trailing punctuation, multi-feature facets (supported feature preferred over unknown `$type`), and out-of-bounds `byteEnd`.
+  - Done (both options from the task — extracted a pure helper *and* added an executable verifier):
+    - Extracted the byte-range / facet-selection logic out of `renderRichText` into a new pure, framework-free module `src/richtext.ts` (`segmentRichText(text, facets) -> RichTextSegment[]`, segment kinds `text`/`link`/`mention`/`tag`). It owns the UTF-8 byte slicing, sort-by-`byteStart`, overlap/zero-length/out-of-bounds guards, multi-feature selection (supported feature preferred over unknown `$type`), and the http(s) link-uri safety downgrade. Adjacent text runs are merged so there are no empty/stray text nodes.
+    - Refactored `renderRichText` in `src/App.tsx` to import `segmentRichText` and only map segments to interactive React nodes (anchor / mention button / tag button), preserving the previous behavior exactly — including mention/tag falling back to plain text when their `onOpenProfile`/`onOpenTag` callbacks are absent.
+    - Added `scripts/verify-richtext.mjs`: a real executable harness (not a static-source regex check). It transpiles `src/richtext.ts` with esbuild (a Vite dependency) into a `data:` module and runs `segmentRichText` against 14 cases — empty/plain text, link split, unsafe-uri downgrade, mention, hashtag, Unicode accent + emoji byte offsets, trailing punctuation, overlapping facet discarded, out-of-bounds `byteEnd`, zero-length range, multi-feature (supported over unknown `$type`), unknown-only fallback, and gapless adjacent facets.
+    - Wired `node scripts/verify-richtext.mjs` into `npm run build` after the existing verifiers, and updated `scripts/verify-reader-behavior.mjs` (the old check asserted the facet `$type` strings lived inside `renderRichText`; it now asserts the `segmentRichText` import and the segment-kind mapping).
+  - Verified: `npm run build` passes (tsc, vite, audit initial JS 113 kB gzip, reader + layout + rich-text verifiers all green). Remaining vite warnings (hls/main chunk size, mixed `api.ts` static+dynamic import) are pre-existing and tracked as their own tasks.
   - Relevant files/functions found:
-    - `src/App.tsx`: `renderRichText` (byte-aware slice, sort by `byteStart`, overlap guard, multi-feature selection).
-    - `scripts/verify-reader-behavior.mjs` / `scripts/verify-layout-behavior.mjs`: existing static-source verifier pattern to mirror.
+    - `src/richtext.ts`: `segmentRichText`, `RichTextSegment`, `safeHttpUri`.
+    - `src/App.tsx`: `renderRichText` (now a thin segment-to-node mapper).
+    - `scripts/verify-richtext.mjs`: executable esbuild-transpiled regression harness.
 - [x] Audit Bluesky timestamp handling.
   - Source: https://docs.bsky.app/docs/advanced-guides/timestamps
   - Done:
