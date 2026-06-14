@@ -168,6 +168,22 @@
     - `src/auth.ts`: `publishPost` already accepts `reply`, `langs`, and `images`; `publishThread` accepts images for composer posts.
     - `src/auth.ts`: `ComposerImage`, `MAX_POST_IMAGES`, and image embed/upload helpers cover picture upload.
     - `src/styles.css`: existing composer image styles use `.composer-media-*`; reply composer styles use `.reply-composer`.
+- [ ] Unify the post and reply composers into a single component (kill the duplicate composer code).
+  - Motivation: BigBsky currently has **two** separate composer components in `src/App.tsx` — `Composer` (new post, ~line 6901) and `ReplyComposer` (reply, ~line 9563). Every composer feature has had to be added to **both** by hand and they keep drifting (image attach, the `PostLanguagePicker`, grapheme char count, the action bar JSX/markup, taller textarea, draft persistence). This is the root cause of the repeated "also do it on the reply box" follow-ups.
+  - bsky reference (verified 2026-06-14 against `bluesky-social/social-app`): bsky has **one** composer. `src/state/shell/composer/index.tsx` exposes a single `openComposer(opts: ComposerOpts)` where the mode is just which option is set — `replyTo?: ComposerOptsPostRef`, `quote?: PostView`, `mention?`, `text?`, `imageUris?`, `videoUri?`. `src/view/com/composer/Composer.tsx` computes `isReply = !!replyTo` and branches in only ~6 small spots; everything else (text edit, char/grapheme limit, images, video, GIF, emoji, alt text, link cards, thread/multi-post, language picker) is one shared path.
+  - Proposed BigBsky shape: a single `PostComposer` component taking an optional `replyTo?: { root: PostRefValue; parent: { uri; cid } ; author?; langs? }` (and later `quote?`), with `isReply = !!replyTo`. Render one shared body + action bar; branch on `isReply` only for:
+    1. **Reply target preview** at the top (reply only) — the parent author/snippet.
+    2. **Placeholder + button label**: "What's on your mind?" / "Post"|"Post thread" vs "Reply to @handle" / "Reply".
+    3. **Draft key**: new post uses `composerDraftStorageKey` (`bigbsky:composer-draft`); reply uses `${replyDraftPrefix}${parent.uri}` (per-thread). Keep both schemes, selected by mode.
+    4. **Submit path**: new post → `splitTextForThread` + `publishThread(posts, langs)` (thread auto-split stays a new-post-only feature); reply → `publishPost({ text, reply, langs, images })`. Could fold both behind one `publishThread(posts, { langs, reply })` if `publishThread` learns to thread *under* a reply root (optional).
+    5. **Gating/flags**: reply has `canReply`, `Cancel`/`onClose`, inline styling (`.reply-composer.inline`); new post has the collapsed "Add New Post" banner + "Clear draft".
+    6. **Callbacks**: `onPosted` vs `onClose`+`onReplied`.
+  - bsky parity bonus to fold in while unifying: seed the **default language from the parent post's `langs`** for replies (bsky does `replyTo?.langs || []`), instead of always the user's saved default.
+  - Approach: keep it behavioral-no-op for the new-post path; migrate `ReplyComposer` call sites to render `<PostComposer replyTo={...} />`. Do it as its **own** change (large edit in a big file), verify both flows via CDP (open new post, open reply, attach image, language picker, char count, send paths), and run `npm run build` (reader/layout/rich-text verifiers). Watch `scripts/verify-reader-behavior.mjs` for any composer assertions.
+  - Relevant files/functions found:
+    - `src/App.tsx`: `Composer` (6901), `ReplyComposer` (9563), `PostLanguagePicker` (6727), `splitTextForThread`, `ComposerImageState`, draft keys (`composerDraftStorageKey`, `replyDraftPrefix`).
+    - `src/auth.ts`: `publishPost` (accepts `reply`/`langs`/`images`), `publishThread` (accepts `langs`; would need a `reply` root to fully unify), `ComposerImage`, `MAX_POST_IMAGES`.
+    - `src/styles.css`: `.composer*` (post) and `.reply-composer*` (reply) — would consolidate around the shared `.composer-*` classes.
 - [ ] Investigate Bluesky oEmbed / Post Embed Widget usage.
   - Source: https://docs.bsky.app/docs/advanced-guides/oembed
   - Current finding: no existing `embed.bsky.app/oembed`, post embed widget iframe, copied blockquote snippet, or `embed.bsky.app` integration was found in the BigBsky source.
