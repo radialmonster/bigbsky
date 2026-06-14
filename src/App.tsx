@@ -23,7 +23,6 @@ import {
   MoreHorizontal,
   Repeat2,
   Search,
-  Send,
   Settings,
   Share2,
   ShieldAlert,
@@ -115,7 +114,7 @@ import {
 import { getRouteState, type RouteState } from "./router";
 import { displayName, feedSources, navigationItems, type FeedSource } from "./sources";
 
-const navIcons = [Home, Compass, Search, Hash, List, Bookmark, User, Settings, Send];
+const navIcons = [Home, Hash, List, Bookmark, Search, Compass, User, Settings];
 const InfoPage = lazy(() => import("./InfoPage"));
 
 // Lets deeply-nested post cards open an in-app hashtag search without threading
@@ -392,6 +391,7 @@ const workspaceWidthStorageKey = "bigbsky:workspace-width";
 const widthByContextStorageKey = "bigbsky:width-by-context";
 const showNsfwStorageKey = "bigbsky:show-nsfw";
 const showMediaStorageKey = "bigbsky:show-media";
+const showMediaByFeedStorageKey = "bigbsky:show-media-by-feed";
 const pinnedFeedsStorageKey = "bigbsky:pinned-feeds";
 const pinnedFeedMetaStorageKey = "bigbsky:pinned-feed-meta";
 const pinnedSearchesStorageKey = "bigbsky:pinned-searches";
@@ -428,6 +428,21 @@ function countBigBskyLocalKeys() {
 function readDensityPreferences() {
   try {
     return JSON.parse(localStorage.getItem("bigbsky:density-by-context") || "{}") as Record<string, DensityMode>;
+  } catch {
+    return {};
+  }
+}
+
+function readShowMediaPreferences() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(showMediaByFeedStorageKey) || "{}") as Record<string, unknown>;
+    const result: Record<string, boolean> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === "boolean") {
+        result[key] = value;
+      }
+    }
+    return result;
   } catch {
     return {};
   }
@@ -625,6 +640,13 @@ function feedPreferenceKey(source: FeedSource) {
 function feedDensityOverride(source: FeedSource, preferences: Record<string, DensityMode>) {
   const value = preferences[feedPreferenceKey(source)];
   return densityModes.includes(value) ? value : undefined;
+}
+
+// Per-feed Show Media override: true (always on) / false (always off) / undefined
+// (inherit the global Settings preference). Mirrors feedDensityOverride.
+function feedShowMediaOverride(source: FeedSource, preferences: Record<string, boolean>) {
+  const value = preferences[feedPreferenceKey(source)];
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function postHasVisualMedia(post: FeedPost) {
@@ -1277,6 +1299,7 @@ export function App() {
   const [widthByContext, setWidthByContext] = useState<Record<string, string>>(() => readWidthPreferences());
   const [showNsfw, setShowNsfw] = useState<boolean>(() => readShowNsfw());
   const [showMedia, setShowMedia] = useState<boolean>(() => readShowMedia());
+  const [showMediaByFeed, setShowMediaByFeed] = useState<Record<string, boolean>>(() => readShowMediaPreferences());
   const [pinnedFeedMeta, setPinnedFeedMeta] = useState<FeedSource[]>(() => readPinnedFeedMeta());
   const [pinnedFeedIds, setPinnedFeedIds] = useState<string[]>(() => readPinnedFeedIds(pinnedFeedMeta));
   const [pinnedSearches, setPinnedSearches] = useState<string[]>(() => readPinnedSearches());
@@ -1749,7 +1772,13 @@ export function App() {
       ? densityByContext[densityKey]
       : undefined;
   const storedDensity = routeDensity || defaultDensity;
-  const density = storedDensity === "media" && !showMedia ? "comfortable" : storedDensity;
+  // A feed can override Show Media on/off; otherwise it inherits the global
+  // Settings preference. Media density needs media visible, so it falls back to
+  // comfortable when the effective preference is off.
+  const routeShowMediaOverride =
+    route.kind === "feed" ? feedShowMediaOverride(activeSource, showMediaByFeed) : undefined;
+  const effectiveShowMedia = routeShowMediaOverride ?? showMedia;
+  const density = storedDensity === "media" && !effectiveShowMedia ? "comfortable" : storedDensity;
   const storedWidth = widthByContext[densityKey] || widthByContext.default;
   const workspaceWidth = (
     widthModes.includes(storedWidth as (typeof widthModes)[number]) ? storedWidth : "balanced"
@@ -2485,6 +2514,26 @@ export function App() {
     safeLocalStorageSet("bigbsky:density-by-context", JSON.stringify(nextPreferences));
   }
 
+  function updateFeedShowMediaOverride(source: FeedSource, nextValue: boolean | null) {
+    const key = feedPreferenceKey(source);
+    const keysToClear = feedPreferenceKeys(source);
+    const nextPreferences = { ...showMediaByFeed };
+    // Drop any preference stored under a stale alias key (e.g. legacy id key)
+    // so the canonical uri key wins, mirroring updateFeedDensityOverride.
+    for (const staleKey of keysToClear) {
+      if (staleKey !== key) {
+        delete nextPreferences[staleKey];
+      }
+    }
+    if (nextValue === null) {
+      delete nextPreferences[key];
+    } else {
+      nextPreferences[key] = nextValue;
+    }
+    setShowMediaByFeed(nextPreferences);
+    safeLocalStorageSet(showMediaByFeedStorageKey, JSON.stringify(nextPreferences));
+  }
+
   function updateWorkspaceWidth(nextWidth: (typeof widthModes)[number]) {
     const nextPreferences = {
       ...widthByContext,
@@ -2520,6 +2569,7 @@ export function App() {
       .forEach((key) => safeSessionStorageRemove(key));
     await clearOAuthLocalSession();
     setDensityByContext({});
+    setShowMediaByFeed({});
     setWidthByContext({});
     setRecentItems([]);
     setComposerDraft({ posts: [""] });
@@ -2877,11 +2927,6 @@ export function App() {
       return;
     }
 
-    if (item === "New Post") {
-      openNewPostComposer();
-      return;
-    }
-
     const path = `/${item.toLowerCase()}`;
     const routeState = { kind: "surface", name: item.toLowerCase() } as const;
     remember({
@@ -2891,15 +2936,6 @@ export function App() {
       route: routeState,
     });
     navigate(routeState, path);
-  }
-
-  function openNewPostComposer() {
-    if (!authState.session) {
-      navigate({ kind: "surface", name: "profile" }, "/profile");
-      return;
-    }
-
-    openSelfTab("new-post");
   }
 
   const isProfileRoute = route.kind === "profile";
@@ -3162,7 +3198,7 @@ export function App() {
   return (
     <TagSearchContext.Provider value={openTag}>
       <ShowNsfwContext.Provider value={showNsfw}>
-      <ShowMediaContext.Provider value={showMedia}>
+      <ShowMediaContext.Provider value={effectiveShowMedia}>
       <DensityContext.Provider value={density}>
       <LikeContext.Provider value={likeContextValue}>
       <BookmarkContext.Provider value={bookmarkContextValue}>
@@ -3362,6 +3398,8 @@ export function App() {
             onCreateLocalList={createLocalList}
             onDensityChange={updateDensity}
             onFeedDensityOverrideChange={updateFeedDensityOverride}
+            showMediaByFeed={showMediaByFeed}
+            onFeedShowMediaOverrideChange={updateFeedShowMediaOverride}
             onDeleteLocalList={deleteLocalList}
             onOpenFeed={openFeedSource}
             onOpenProfile={openProfile}
@@ -4086,6 +4124,8 @@ function SurfaceView({
   onCreateLocalList,
   onDensityChange,
   onFeedDensityOverrideChange,
+  showMediaByFeed,
+  onFeedShowMediaOverrideChange,
   onDeleteLocalList,
   onOpenFeed,
   onOpenProfile,
@@ -4140,6 +4180,8 @@ function SurfaceView({
   onCreateLocalList: (name: string, description: string) => void;
   onDensityChange: (density: DensityMode) => void;
   onFeedDensityOverrideChange: (source: FeedSource, density: DensityMode | null) => void;
+  showMediaByFeed: Record<string, boolean>;
+  onFeedShowMediaOverrideChange: (source: FeedSource, value: boolean | null) => void;
   onDeleteLocalList: (id: string) => void;
   onOpenFeed: (source: FeedSource) => void;
   onOpenProfile: (profile: Profile) => void;
@@ -4564,6 +4606,8 @@ function SurfaceView({
               <div className="feed-directory-grid">
                 {subscribedFeeds.map((source) => {
                   const override = feedDensityOverride(source, densityByContext);
+                  const mediaOverride = feedShowMediaOverride(source, showMediaByFeed);
+                  const feedShowMedia = mediaOverride ?? showMedia;
                   return (
                     <article className="feed-directory-card" key={source.id}>
                       <button type="button" onClick={() => onOpenFeed(source)}>
@@ -4575,8 +4619,14 @@ function SurfaceView({
                         source={source}
                         defaultDensity={defaultDensity}
                         override={override}
-                        showMedia={showMedia}
+                        showMedia={feedShowMedia}
                         onChange={onFeedDensityOverrideChange}
+                      />
+                      <FeedShowMediaOverrideControl
+                        source={source}
+                        defaultShowMedia={showMedia}
+                        override={mediaOverride}
+                        onChange={onFeedShowMediaOverrideChange}
                       />
                       <div className="feed-directory-card-actions">
                         <button
@@ -4608,6 +4658,8 @@ function SurfaceView({
             <div className="feed-directory-grid">
               {builtInFeeds.map((source) => {
                 const override = feedDensityOverride(source, densityByContext);
+                const mediaOverride = feedShowMediaOverride(source, showMediaByFeed);
+                const feedShowMedia = mediaOverride ?? showMedia;
                 return (
                   <article className="feed-directory-card" key={source.id}>
                     <button type="button" onClick={() => onOpenFeed(source)}>
@@ -4619,8 +4671,14 @@ function SurfaceView({
                       source={source}
                       defaultDensity={defaultDensity}
                       override={override}
-                      showMedia={showMedia}
+                      showMedia={feedShowMedia}
                       onChange={onFeedDensityOverrideChange}
+                    />
+                    <FeedShowMediaOverrideControl
+                      source={source}
+                      defaultShowMedia={showMedia}
+                      override={mediaOverride}
+                      onChange={onFeedShowMediaOverrideChange}
                     />
                     <button
                       className={pinnedFeedIds.includes(source.id) ? "directory-pin pinned" : "directory-pin"}
@@ -4691,6 +4749,37 @@ function FeedDensityOverrideControl({
             {mode}
           </option>
         ))}
+      </select>
+    </label>
+  );
+}
+
+function FeedShowMediaOverrideControl({
+  source,
+  defaultShowMedia,
+  override,
+  onChange,
+}: {
+  source: FeedSource;
+  defaultShowMedia: boolean;
+  override?: boolean;
+  onChange: (source: FeedSource, value: boolean | null) => void;
+}) {
+  const value = override === undefined ? "default" : override ? "on" : "off";
+  const defaultLabel = defaultShowMedia ? "on" : "off";
+  return (
+    <label className="feed-density-control">
+      <span>Media</span>
+      <select
+        value={value}
+        onChange={(event) => {
+          const next = event.target.value;
+          onChange(source, next === "default" ? null : next === "on");
+        }}
+      >
+        <option value="default">Default ({defaultLabel})</option>
+        <option value="on">On</option>
+        <option value="off">Off</option>
       </select>
     </label>
   );

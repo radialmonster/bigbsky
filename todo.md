@@ -1,0 +1,185 @@
+# Todo
+
+## Working Rules
+
+- If a task needs an answer from the human, do not skip or abandon the task. Ask the specific question needed, then continue once answered.
+- If there is no human reply after 10 minutes, update this todo with the unanswered question(s) needed for next time, then move to a different task.
+- For browser checks, first see whether Chrome dev mode is already running on port 9222. Check processes for `chrome.exe` with `--remote-debugging-port=9222`, then verify `http://127.0.0.1:9222/json/version`. If it is running, use that browser instead of starting another one. If it is not running, start Chrome with:
+  `Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" -ArgumentList "--remote-debugging-port=9222 --user-data-dir=$env:LOCALAPPDATA\Codex\ChromeProfiles\fb-tools-test --start-maximized --auto-open-devtools-for-tabs --disable-first-run-ui --no-first-run about:blank" -WindowStyle Hidden`
+- To start the local BigBsky dev server, run `npm run dev` from the repo root. Vite serves it at `http://127.0.0.1:5173/` by default.
+
+- [ ] Define the next BigBsky viewer/reader improvements.
+  - Relevant files/functions found:
+    - `README.md`: product scope and positioning for BigBsky as a desktop-focused Bluesky reader.
+    - `docs/plan.md`: planning context if this is kept current.
+    - `src/App.tsx`: main reader shell in `App`, plus route-specific UI surfaces.
+    - `src/sources.ts`: built-in feed/navigation source definitions.
+- [ ] Capture known bugs or rough edges.
+  - Relevant files/functions found:
+    - `scripts/verify-reader-behavior.mjs`: existing reader behavior verification.
+    - `scripts/verify-layout-behavior.mjs`: existing layout verification.
+    - `scripts/audit-build.mjs`: build audit step.
+    - `src/App.tsx`: `DevInspector` surfaces runtime route/service-worker/cache metrics.
+- [ ] Prioritize the first small fix to ship.
+  - Relevant files/functions found:
+    - `package.json`: `npm run build` runs TypeScript, Vite build, audit, reader verification, and layout verification.
+    - `src/App.tsx`: focused changes are likely easiest around isolated components such as `FeedDensityControl`, `Composer`, or `ReplyComposer`.
+- [x] Add per-feed Show Media override on `/feeds`.
+  - Desired behavior: each feed on `/feeds` can choose Show Media on, off, or inherit the default setting. Done.
+  - Done:
+    - Added `showMediaByFeedStorageKey` (`bigbsky:show-media-by-feed`), `readShowMediaPreferences`, and `feedShowMediaOverride` helpers in `src/App.tsx`.
+    - Added `showMediaByFeed` state and `updateFeedShowMediaOverride` (sets/clears the per-feed key, clears stale alias keys like `updateFeedDensityOverride`).
+    - Effective per-route Show Media: `route.kind === "feed"` uses the feed override when present, else the global preference (`effectiveShowMedia`), and it feeds both `ShowMediaContext.Provider` and the Media-density downgrade.
+    - Added `FeedShowMediaOverrideControl` (Default/On/Off select) rendered next to the existing density control on both Your-feeds and Built-in feeds cards; per-card density control now receives the per-feed effective Show Media so its "media, paused" label and disabled Media option are accurate.
+    - `clearLocalReaderData` now resets `showMediaByFeed`.
+  - Verified via CDP against the running dev server: control renders, off override writes `{feed:<uri>:false}`, default clears the key, opening the discover feed hid media (7 reveal buttons) while global Show Media stayed on; tsc clean; no console errors.
+- [x] Rearrange the left rail menu order.
+  - Desired order: Home, Feeds, Lists, Bookmarks, Search, Explore, Profile, Settings, Info.
+  - Done: updated `navigationItems` and matching `navIcons`; removed the rail-only New Post item while keeping profile composer entry points.
+  - Relevant files/functions found:
+    - `src/sources.ts`: likely source for `navigationItems`.
+    - `src/App.tsx`: `navIcons` must stay aligned with `navigationItems`.
+- [ ] Refine the `/feeds` "Media view needs Show Media on." warning for per-feed overrides.
+  - Follow-up from the per-feed Show Media override work.
+  - Current behavior: the section-level `.feed-media-warning` at the top of "Your feeds" only checks the global `showMedia`, so it can be misleading now that a feed can turn media on/off independently (e.g. a feed forced Media density + Media override On while global is off, or vice versa).
+  - Desired behavior: make the warning per-card (or drop the section-level one) so it reflects each feed's effective Show Media when that feed uses Media density.
+  - Relevant files/functions found:
+    - `src/App.tsx`: section-level warning in `SurfaceView` feeds branch; `FeedDensityOverrideControl` already shows a "media, paused" label per card using the per-feed effective Show Media.
+    - `src/styles.css`: `.feed-media-warning`.
+- [ ] Review Vite chunk-size warnings from production build.
+  - Current finding: `npm run build` passes, but Vite warns that `assets/hls-*.js` and the main app chunk exceed 500 kB after minification.
+  - Consider whether `hls.js`, large route surfaces, or media/thread components should be lazy-loaded or manually chunked.
+  - Relevant files/functions found:
+    - `package.json`: `npm run build` runs the production Vite build and verification scripts.
+    - `src/App.tsx`: large shared app surface likely contributes to the main chunk.
+    - `src/App.tsx` / media playback code: likely source of the `hls.js` chunk.
+- [ ] Review mixed static and dynamic imports of `src/api.ts`.
+  - Current finding: `npm run build` passes, but Vite warns that `src/api.ts` is dynamically imported by `src/auth.ts` while also statically imported by `src/App.tsx`, so the dynamic import cannot move it into a separate chunk.
+  - Decide whether these auth fallback imports should become static imports for clarity or whether App-level imports should be split to preserve code-splitting.
+  - Relevant files/functions found:
+    - `src/auth.ts`: dynamic `import("./api")` fallback calls.
+    - `src/App.tsx`: static imports from `src/api.ts`.
+- [ ] Investigate editing a post or reply.
+  - Desired behavior: let signed-in users correct their own posts and replies from the reader.
+  - Confirm Bluesky/AppView support first; if true editing is not available, design a delete-and-repost or quote/correction workflow instead.
+  - Relevant files/functions found:
+    - `src/App.tsx`: `PostCard` renders post actions and ownership-specific delete menu behavior.
+    - `src/App.tsx`: `DeletePostContext`, `handleDeletePost`, and `deletePostContextValue` manage deleting own posts.
+    - `src/App.tsx`: `Composer` creates new posts/threads; `ReplyComposer` creates replies.
+    - `src/auth.ts`: `publishPost` creates posts/replies and `deletePost` deletes posts by URI.
+    - No edit-specific helper found yet; likely needs API research before UI design.
+- [ ] Standardize composer controls for posts and replies.
+  - Current behavior: replies are text-only and composer controls are not shared consistently between posts and replies.
+  - Desired behavior: the bottom of both the post composer and reply composer has a consistent bsky.app-style control row.
+  - Include controls for adding pictures, adding GIFs, adding emoji, and selecting the post language.
+  - Verify bsky.app's current behavior and API calls before implementation, especially media upload, GIF embeds, emoji handling, and language metadata.
+  - Relevant files/functions found:
+    - `src/App.tsx`: `Composer` already supports image attachment, previews, alt text, and sends images through `publishThread`.
+    - `src/App.tsx`: `ReplyComposer` currently publishes replies through `publishPost` with only text and reply refs.
+    - `src/auth.ts`: `publishPost` already accepts `reply`, `langs`, and `images`; `publishThread` accepts images for composer posts.
+    - `src/auth.ts`: `ComposerImage`, `MAX_POST_IMAGES`, and image embed/upload helpers cover picture upload.
+    - `src/styles.css`: existing composer image styles use `.composer-media-*`; reply composer styles use `.reply-composer`.
+- [ ] Investigate Bluesky oEmbed / Post Embed Widget usage.
+  - Source: https://docs.bsky.app/docs/advanced-guides/oembed
+  - Current finding: no existing `embed.bsky.app/oembed`, post embed widget iframe, copied blockquote snippet, or `embed.bsky.app` integration was found in the BigBsky source.
+  - Current behavior: BigBsky renders posts itself from AppView data, including `app.bsky.embed` images/gallery/video/external/record embeds.
+  - Check whether any feature should use official oEmbed instead of local rendering, especially when showing external Bluesky post links or generating share/embed HTML.
+  - If adding an "Embed Post" or "Copy embed HTML" action, use `https://embed.bsky.app/oembed?url=...` with supported bsky.app post URLs, respect `maxwidth` range `220`-`600`, and expect `height: null`.
+  - Preserve the docs' public-content behavior when relying on official embeds: adult-only content, deleted posts/accounts, and "no unauthenticated viewers" should be enforced by the official widget/API.
+  - Relevant files/functions found:
+    - `src/App.tsx`: `postBskyUrl` builds bsky.app post URLs for sharing/opening.
+    - `src/App.tsx`: `ExternalLinkCard`, `QuoteCard`, `PostCard`, and `PostImageVideoMedia` render local embed views from AppView data.
+    - `src/api.ts`: `getExternalEmbed`, `getRecordEmbed`, `getEmbedImages`, and `getVideoEmbed` normalize local embed rendering data.
+    - `src/styles.css`: quote/link/embed rendering styles include `.quote-card`, `.quote-link-card`, and link-card/media styles.
+- [ ] Audit Bluesky rich-text facet handling.
+  - Source: https://docs.bsky.app/docs/advanced-guides/post-richtext
+  - Current finding: publishing appears to use the recommended library path: `src/auth.ts` creates `new RichText({ text })` and calls `richText.detectFacets(agent)` before `agent.post`.
+  - Current finding: rendering appears byte-aware: `src/App.tsx` `renderRichText` uses `TextEncoder`/`TextDecoder` and facet `byteStart`/`byteEnd` instead of native string slicing.
+  - Verify renderer behavior against docs: sort by `byteStart`, discard overlapping facets, treat ranges as inclusive start / exclusive end, and validate `end <= UTF-8 byte length`.
+  - Review multi-feature facets: docs allow multiple features on one range, while `renderRichText` currently renders the first feature with a `$type`.
+  - Review unsupported/invalid features: they should fall back to plain text without breaking post layout.
+  - Add regression cases with Unicode text, emoji/graphemes, links, mentions, hashtags, overlapping facets, trailing punctuation, and quote-post facets.
+  - Relevant files/functions found:
+    - `src/api.ts`: `RichTextFacet` type and `FeedPost.record.facets` / `RecordEmbedView.value.facets`.
+    - `src/auth.ts`: `publishPost` facet production via `@atproto/api` `RichText.detectFacets`.
+    - `src/App.tsx`: `renderRichText`, `extractFacetLinks`, `PostCard`, combined thread rendering, and `QuoteCard` consume facets.
+- [ ] Audit Bluesky timestamp handling.
+  - Source: https://docs.bsky.app/docs/advanced-guides/timestamps
+  - Current finding: BigBsky creates records with `new Date().toISOString()`, which includes a UTC timezone marker and should satisfy the docs' timezone requirement.
+  - Current finding: display currently uses `record.createdAt || indexedAt` in several post surfaces.
+  - Current finding: `postSortTime` currently sorts/group-checks with `new Date(post.record.createdAt || post.indexedAt || 0).getTime()`, not the docs' recommended `sortAt` compromise.
+  - Verify whether reader-side grouping/sorting should use a local `sortAt` helper: prefer `createdAt` unless it is in the future beyond a clock-skew window, then use `indexedAt`; reject or clamp far-past/far-future timestamps.
+  - Use a `CLOCK_SKEW_WINDOW` around 2 minutes unless newer docs/API behavior says otherwise.
+  - Do not parse record key TIDs or repo revision TIDs as post timestamps.
+  - Relevant files/functions found:
+    - `src/auth.ts`: `publishPost`, list/listitem/listblock writes, and notification `updateSeen` all use `new Date().toISOString()`.
+    - `src/api.ts`: `FeedPost.record.createdAt`, `FeedPost.indexedAt`, `RecordEmbedView.value.createdAt`, and `RecordEmbedView.indexedAt` types.
+    - `src/App.tsx`: `postSortTime`, `formatPostTime`, `PostCard`, `MediaOnlyPostCard`, combined thread cards, thread detail, notifications.
+- [ ] Investigate whether BigBsky should use Firehose or JetStream.
+  - Source: https://docs.bsky.app/docs/advanced-guides/firehose
+  - Current finding: no app firehose, `com.atproto.sync.subscribeRepos`, JetStream, relay, or production WebSocket usage was found; the only WebSocket reference is `scripts/cdp.mjs` for local Chrome DevTools Protocol automation.
+  - Current architecture: BigBsky is currently an AppView/API-driven reader using REST-style XRPC calls, not a live sync consumer, feed generator, labeler, bot, or search indexer.
+  - If live updates are needed later, evaluate JetStream first for simpler JSON events and limited collections like `app.bsky.feed.post`.
+  - If full repository sync is needed later, use Sync 1.1 relay endpoints such as `wss://relay1.us-east.bsky.network/xrpc/com.atproto.sync.subscribeRepos`, and account for CBOR decoding, event scheduling, reconnect/backfill, and auth.
+  - Avoid adding firehose scope/architecture unless there is a concrete feature such as live timeline updates, notification streaming, moderation/indexing, or a backend worker.
+  - Relevant files/functions found:
+    - `src/api.ts`: current public AppView XRPC reads.
+    - `src/auth.ts`: current authenticated AppView/PDS reads and writes.
+    - `src/App.tsx`: feed, profile, search, notification, and thread loaders currently fetch/paginate instead of streaming.
+    - `scripts/cdp.mjs`: unrelated local WebSocket use for browser automation only.
+- [ ] Audit identity resolution and profile metadata handling.
+  - Source: https://docs.bsky.app/docs/advanced-guides/resolving-identities
+  - Current finding: BigBsky mostly relies on hydrated DID/handle/profile data returned by Bluesky AppView responses, which matches the docs' recommendation for client apps.
+  - Current finding: direct handle resolution exists through `com.atproto.identity.resolveHandle` for cases where the app must build an AT URI from a handle and rkey.
+  - Verify direct resolution call sites have reasonable failure handling, abort handling, and no unnecessary repeated lookups.
+  - Consider whether a short browser-local cache is useful for `resolveHandle`, while remembering handles can change and DIDs are the durable account identifiers.
+  - Keep browser-client identity resolution limited to AppView/PDS APIs; do not try DNS TXT or `/.well-known/` direct resolution from the browser.
+  - Relevant files/functions found:
+    - `src/api.ts`: `resolveHandle`, `getPostThread`, `getProfile`.
+    - `src/auth.ts`: `getPostThreadAuthed` resolves handles before reading signed-in thread data; `addAccountToList` resolves handle/DID input before creating list items.
+    - `src/App.tsx`: `entityCache.profiles` stores hydrated profiles keyed by DID and handle; `ProfileContextPanel`, pinned profiles, follow/block controls, and post author links use hydrated profile data.
+- [ ] Audit custom schema / unknown embed handling.
+  - Source: https://docs.bsky.app/docs/advanced-guides/custom-schemas
+  - Current finding: BigBsky does not define custom Lexicons or custom record namespaces; it is currently a Bluesky reader using `app.bsky.*` records and AppView APIs.
+  - Current finding: known post embeds are normalized locally by shape: images/gallery, external links, video, record/quote, and record-with-media-style media nesting.
+  - Add or verify a generic fallback for unknown post embed `$type`s so users know when a post contains context BigBsky does not render.
+  - Do not create BigBsky-specific record schemas unless there is a real decentralized data feature and a controlled domain namespace for the Lexicon.
+  - If future custom records/APIs are considered, require a separate design pass for schema stability, indexing/AppView needs, and migration/versioning.
+  - Relevant files/functions found:
+    - `src/api.ts`: `getEmbedImages`, `getExternalEmbed`, `getVideoEmbed`, and `getRecordEmbed` currently normalize known embed shapes from `unknown`.
+    - `src/App.tsx`: `PostEmbeds`, `PostCard`, `QuotedPostCard`, `ExternalLinkCard`, and media cards render known embed types.
+    - `src/auth.ts`: `buildImageEmbed` writes only official Bluesky image/gallery embed schemas.
+- [ ] Audit read-after-write behavior after signed-in writes.
+  - Source: https://docs.bsky.app/docs/advanced-guides/read-after-write
+  - Current finding: post/reply publishing clears local composer state and triggers route reloads (`onPosted`, `onReplied`), but AppView responses may still be eventually consistent immediately after a PDS write.
+  - Current finding: BigBsky authenticated reads already route many signed-in feed/thread/profile reads through the user's OAuth session, which is the path where PDS read-after-write smoothing can apply.
+  - Verify write flows refresh through supported routes where possible: `getProfile`, `getAuthorFeed`, `getListFeed`, `getPostThread`, and `getTimeline`.
+  - Consider optimistic insertion for newly-created posts/replies if immediate AppView/PDS read-after-write is still inconsistent in practice.
+  - Note that read-after-write only applies to records from the requesting user, not other users' records.
+  - Relevant files/functions found:
+    - `src/App.tsx`: `loadFeed`, `loadProfileFeed`, `reloadThread`, `reloadCurrentProfile`, `Composer` `onPosted`, and `ReplyComposer` `onReplied`.
+    - `src/auth.ts`: `getFollowingTimeline`, `getFeedAuthed`, `getAuthorFeedAuthed`, `getPostThreadAuthed`, `getPostThreadByUriAuthed`, `publishPost`, and `publishThread`.
+    - `src/api.ts`: public fallbacks do not provide the same signed-in PDS read-after-write path.
+- [ ] Confirm Service Auth is out of scope for the current browser client.
+  - Source: https://docs.bsky.app/docs/advanced-guides/service-auth
+  - Current finding: no `@atproto/xrpc-server`, `createServiceJwt`, `verifyServiceJwt`, service JWT, or service-to-service auth path was found.
+  - Current architecture: BigBsky uses browser OAuth/client-server auth and audience-scoped AppView RPC permissions, not PDS-to-service JWTs.
+  - Keep Service Auth out of the browser app; only revisit if BigBsky adds its own backend service/AppView, feed generator, labeler, or indexing worker.
+  - If a backend service is added later, verify service JWT `aud` strictly and resolve signing keys through DID documents as the docs require.
+  - Relevant files/functions found:
+    - `public/oauth-client-metadata.json`: browser OAuth scopes with AppView `aud=did:web:api.bsky.app#bsky_appview`.
+    - `src/auth.ts`: OAuth session restoration and AppView proxy usage.
+    - `src/scopes.ts`: `APPVIEW_AUD` and scope comments for client-server AppView RPC calls.
+- [ ] Audit Bluesky Developer Guidelines compliance.
+  - Source: https://docs.bsky.app/docs/support/developer-guidelines
+  - Current finding: BigBsky has public contact/issue-report links, user blocking, block-list/moderation-list tools, and delete support for the signed-in user's own posts/lists.
+  - Gap to verify: provide a clear method to report illegal content and abuse; decide whether to delegate to Bluesky reporting, add a BigBsky report contact flow, or both.
+  - Gap to verify: publish a regularly monitored email address, not only a Bluesky profile contact link.
+  - Gap to verify: document how user reports are tracked/responded to and how content deletion requests are handled.
+  - Keep anti-spam posture explicit: avoid automated/bulk follows, likes, replies, account generation, or notification-generating automation.
+  - Review security posture for local OAuth/session data, browser-local preferences, drafts, pins, and collections.
+  - Relevant files/functions found:
+    - `README.md`: public contact/issue report link currently points to `https://bsky.app/profile/radialmonster.com`.
+    - `src/InfoPage.tsx`: About page repeats the Bluesky contact link and states BigBsky has no server-side data store.
+    - `src/App.tsx`: block/unblock controls, moderation notices, list moderation UI, and own-post delete menu.
+    - `src/auth.ts`: `blockAccount`, `unblockAccount`, `deletePost`, `createModList`, `deleteModList`, `addAccountToList`, and list block subscription helpers.
