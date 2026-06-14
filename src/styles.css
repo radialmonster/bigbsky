@@ -1103,14 +1103,16 @@ button {
   background: transparent;
 }
 
-/* Single action bar below the textarea: media + language + count grouped on the
-   left, status + Clear draft + Post on the right (mirrors bsky's composer bar). */
+/* Single action bar inside the compose box, below the textarea: media +
+   language + count grouped on the left, status + Clear draft + Post on the
+   right. Sits at the bottom of the bordered box with a divider, like bsky. */
 .composer-footer {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-top: 12px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--app-border);
 }
 
 /* Status text pushes the Clear/Post buttons to the right edge. */

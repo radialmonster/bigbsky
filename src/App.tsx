@@ -6949,6 +6949,43 @@ function Composer({
               ))}
             </div>
           )}
+          <div className="composer-footer">
+            <div className="composer-tools">
+              <button
+                type="button"
+                title="Add image"
+                aria-label="Add image"
+                onClick={() => attachImage(0)}
+                disabled={(images[0]?.length ?? 0) >= MAX_POST_IMAGES}
+              >
+                <Image size={20} />
+              </button>
+            </div>
+            <div className="composer-meta">
+              <PostLanguageSelect
+                value={postLang}
+                disabled={posting}
+                onChange={(code) => {
+                  setPostLang(code);
+                  safeLocalStorageSet(postLanguageStorageKey, code);
+                }}
+              />
+              <span className="composer-count">
+                {draftText.trim() && generatedPostCount > 1
+                  ? `${generatedPostCount} posts`
+                  : POST_GRAPHEME_LIMIT - graphemeLength(draftText)}
+              </span>
+            </div>
+            <span className="composer-status">
+              {posting ? "Publishing…" : hasContent ? "Draft autosaved locally" : "No local draft"}
+            </span>
+            <button type="button" onClick={clearDraft} disabled={!hasContent || posting}>
+              Clear draft
+            </button>
+            <button type="button" onClick={handlePostAll} disabled={!hasContent || posting}>
+              {posting ? "Posting…" : draftText.trim() && generatedPostCount > 1 ? "Post thread" : "Post"}
+            </button>
+          </div>
         </div>
       </div>
       <input
@@ -6960,43 +6997,6 @@ function Composer({
         onChange={(event) => onFilesSelected(event.target.files)}
       />
       {postError && <p className="composer-error" role="alert">{postError}</p>}
-      <div className="composer-footer">
-        <div className="composer-tools">
-          <button
-            type="button"
-            title="Add image"
-            aria-label="Add image"
-            onClick={() => attachImage(0)}
-            disabled={(images[0]?.length ?? 0) >= MAX_POST_IMAGES}
-          >
-            <Image size={20} />
-          </button>
-        </div>
-        <div className="composer-meta">
-          <PostLanguageSelect
-            value={postLang}
-            disabled={posting}
-            onChange={(code) => {
-              setPostLang(code);
-              safeLocalStorageSet(postLanguageStorageKey, code);
-            }}
-          />
-          <span className="composer-count">
-            {draftText.trim() && generatedPostCount > 1
-              ? `${generatedPostCount} posts`
-              : POST_GRAPHEME_LIMIT - graphemeLength(draftText)}
-          </span>
-        </div>
-        <span className="composer-status">
-          {posting ? "Publishing…" : hasContent ? "Draft autosaved locally" : "No local draft"}
-        </span>
-        <button type="button" onClick={clearDraft} disabled={!hasContent || posting}>
-          Clear draft
-        </button>
-        <button type="button" onClick={handlePostAll} disabled={!hasContent || posting}>
-          {posting ? "Posting…" : draftText.trim() && generatedPostCount > 1 ? "Post thread" : "Post"}
-        </button>
-      </div>
     </section>
   );
 }
