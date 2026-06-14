@@ -2838,6 +2838,17 @@ button.surface-action {
   font-weight: 800;
 }
 
+/* The rule above is for the compact *placeholder* button, which is a direct
+   grid child of the post card and belongs in the content column (2). When the
+   reader reveals media, the "Hide Media" button is instead nested inside
+   .post-image-video-media — its own single-column grid — where grid-column: 2
+   spawns a phantom second column and shoves the button to the right of the
+   image. Keep the revealed button in column 1 so it sits below the media. */
+.timeline.compact .post-card.media-hidden .post-image-video-media .media-hidden-button {
+  grid-column: 1;
+  justify-self: start;
+}
+
 .timeline.compact .post-card.media-hidden .media-hidden-button svg {
   width: 13px;
   height: 13px;
