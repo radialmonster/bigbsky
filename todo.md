@@ -104,13 +104,18 @@
     - Added an accurate per-card warning inside `FeedDensityOverrideControl`: it now renders `"Media view paused — turn Media on for this feed."` only when that card's effective density is `media` and its effective Show Media (per-feed override ?? global) is off. This works for both Your feeds and Built-in feeds since both render through the same control with the per-feed effective Show Media.
     - Adjusted `.feed-media-warning` margin (was `-2px 0 12px`, tuned for the section heading) to `0` for the per-card context.
   - Verified: `tsc --noEmit` clean; `npm run build` passes including audit/reader/layout verification scripts.
-- [ ] Review Vite chunk-size warnings from production build.
-  - Current finding: `npm run build` passes, but Vite warns that `assets/hls-*.js` and the main app chunk exceed 500 kB after minification.
-  - Consider whether `hls.js`, large route surfaces, or media/thread components should be lazy-loaded or manually chunked.
+- [x] Review Vite chunk-size warnings from production build.
+  - Reviewed: `npm run build` warned that two chunks exceed Rollup's default 500 kB raw heuristic. Identified them precisely:
+    - The only entry chunk referenced by `dist/index.html` is `index-*.js` (~400 kB raw / **113 kB gzip**) — the initial reader shell, already well under the hard 250 kB-gzip budget enforced by `scripts/audit-build.mjs`.
+    - The two oversized chunks are **already lazy-loaded vendor libraries**, never part of the initial shell: `@atproto/api` Agent (~848 kB raw, dynamically imported in `src/auth.ts` for authenticated reads/writes) and `hls.js` (~525 kB raw, dynamically imported in `src/App.tsx` for HLS video playback). The `@atproto/oauth-client-browser` client (~226 kB) is also already its own lazy chunk.
+  - Decision: Rollup's automatic code-splitting already isolates these into separate lazy chunks and shares the common `@atproto/*` sub-packages between the API Agent and the OAuth client optimally. Forcing `manualChunks` to "fix" the warning would risk coupling those shared deps back together (e.g. making the lightweight OAuth-restore path pull the full 848 kB API chunk), which would be a regression, not an improvement. `hls.js` / media / route surfaces are already lazy — nothing further to split.
+  - Done: set `build.chunkSizeWarningLimit: 900` in `vite.config.ts` with an explanatory comment, raising the limit just above the two intentional lazy vendor chunks while leaving chunking automatic. The metric that actually matters — initial-shell gzip — stays guarded by `audit-build.mjs`.
+  - Verified: `npm run build` passes with **no chunk-size warning**; initial JS still 113 kB gzip, initial CSS 13 kB gzip; audit + reader + layout + rich-text verifiers all green.
   - Relevant files/functions found:
+    - `vite.config.ts`: `build.chunkSizeWarningLimit`.
     - `package.json`: `npm run build` runs the production Vite build and verification scripts.
-    - `src/App.tsx`: large shared app surface likely contributes to the main chunk.
-    - `src/App.tsx` / media playback code: likely source of the `hls.js` chunk.
+    - `src/auth.ts`: dynamic `import("@atproto/api")` / `import("@atproto/oauth-client-browser")` (lazy vendor chunks).
+    - `src/App.tsx`: dynamic `import("hls.js")` (lazy video chunk), `lazy(() => import("./InfoPage"))`.
 - [x] Review mixed static and dynamic imports of `src/api.ts`.
   - Decision: made the auth fallback imports static. `src/api.ts` is already in the main chunk (App.tsx imports it statically) and `api.ts` has no import of `auth.ts` (no circular dependency), so the dynamic `import("./api")` calls in `auth.ts` never actually code-split — they only produced Vite's "dynamically imported ... but also statically imported" warning.
   - Done:
