@@ -203,11 +203,14 @@
 - [ ] Composer follow-ups now that post + reply are unified in `PostComposer`.
   - These all now land **once** in `PostComposer` (`src/App.tsx`) instead of twice:
     - **GIFs** (Tenor embed flow) — still open from the "standardize composer controls" task; verify bsky.app's exact Tenor API calls / embed shape first.
-    - **Reply-target preview**: optionally render the parent author + snippet at the top of the reply skeleton (bsky shows one). Currently the reply composer relies on rendering directly beneath the post it replies to.
     - **Quote mode**: add an optional `quote?` (like bsky's `ComposerOpts.quote`) so quote-posting reuses the same composer.
     - **Video** attachment (bsky's `videoUri`) if/when BigBsky supports uploading video.
+  - Done (2026-06-14): **Reply-target preview** — the reply skeleton now renders the parent author (avatar + display name + handle) and a 2-line-clamped snippet of the parent post text at the top of `PostComposer`'s reply branch, above the textarea (mirrors bsky's reply composer; previously it relied only on rendering directly beneath the post).
+    - `src/App.tsx`: in the `if (isReply && replyTo)` branch, added a `.reply-target-preview` block (`<Avatar profile={replyTo.parent.author} />` + `.reply-target-name`/`.reply-target-handle`/`.reply-target-text` from `replyTo.parent.record.text`). Text is omitted when the parent has no text (e.g. media-only).
+    - `src/styles.css`: added `.reply-target-preview` (flex row, bottom divider), `.reply-target-preview .avatar` (28px), `.reply-target-body`/`-meta`/`-name`/`-handle`/`-text` (the snippet uses a 2-line `-webkit-line-clamp`).
+    - Verified: `npm run build` passes (tsc, vite, audit initial JS 116 kB gzip, reader + layout + rich-text verifiers all green). Drove the signed-in dev server via `scripts/cdp.mjs` on `/profile/monriatitans.bsky.social/post/3mo7bk477bs2m`: opening Reply renders the preview with name `MonriaTitans`, handle `@monriatitans.bsky.social`, the 294-char parent snippet (clamped to 2 lines), and the avatar; screenshot confirmed the divider + tool row layout. No console errors; no draft artifacts left behind.
   - Relevant files/functions found:
-    - `src/App.tsx`: `PostComposer` (`replyTo`, `isReply`, `toolsAndMeta`, `handleSubmit`), `EmojiPicker`, `PostLanguagePicker`.
+    - `src/App.tsx`: `PostComposer` (`replyTo`, `isReply`, `toolsAndMeta`, `handleSubmit`, reply-target preview), `EmojiPicker`, `PostLanguagePicker`, `Avatar`.
     - `src/auth.ts`: `publishPost`, `publishThread`, `buildImageEmbed`, `MAX_POST_IMAGES`.
 - [ ] Investigate Bluesky oEmbed / Post Embed Widget usage.
   - Source: https://docs.bsky.app/docs/advanced-guides/oembed

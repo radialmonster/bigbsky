@@ -7346,8 +7346,19 @@ function PostComposer({
   );
 
   if (isReply && replyTo) {
+    const parentText = replyTo.parent.record.text?.trim() || "";
     return (
       <section className="reply-composer inline" aria-label={`Reply to ${displayName(replyTo.parent.author)}`}>
+        <div className="reply-target-preview">
+          <Avatar profile={replyTo.parent.author} />
+          <div className="reply-target-body">
+            <div className="reply-target-meta">
+              <span className="reply-target-name">{displayName(replyTo.parent.author)}</span>
+              <span className="reply-target-handle">@{replyTo.parent.author.handle}</span>
+            </div>
+            {parentText && <p className="reply-target-text">{parentText}</p>}
+          </div>
+        </div>
         <textarea
           ref={textareaRef}
           autoFocus
