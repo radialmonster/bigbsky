@@ -5363,9 +5363,19 @@ button.surface-action {
   }
 
   .workspace-header {
-    position: relative;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
     z-index: 6;
     height: 55px;
+    transition: transform 160ms ease;
+    will-change: transform;
+  }
+
+  .workspace-header.mobile-hidden {
+    pointer-events: none;
+    transform: translateY(-100%);
   }
 
   .nav-toggle {
@@ -5412,6 +5422,7 @@ button.surface-action {
 
   .workspace {
     min-height: calc(100vh - 64px);
+    padding-top: 55px;
   }
 
   .segmented {

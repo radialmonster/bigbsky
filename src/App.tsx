@@ -1270,6 +1270,7 @@ export function App() {
   // The primary nav icon bar is hidden by default and revealed with the
   // hamburger control in the feed-title header.
   const [navOpen, setNavOpen] = useState<boolean>(false);
+  const [mobileHeaderVisible, setMobileHeaderVisible] = useState<boolean>(true);
   const [densityByContext, setDensityByContext] = useState<Record<string, DensityMode>>(() => readDensityPreferences());
   const [widthByContext, setWidthByContext] = useState<Record<string, string>>(() => readWidthPreferences());
   const [showNsfw, setShowNsfw] = useState<boolean>(() => readShowNsfw());
@@ -2938,6 +2939,50 @@ export function App() {
       : Math.ceil((route.kind === "search" ? searchState.posts.length + actorSearchState.actors.length : feedState.items.length) / 30);
 
   useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 720px)");
+    const timeline = timelineRef.current;
+    let lastScrollY = Math.max(window.scrollY, timeline?.scrollTop ?? 0);
+    let frame = 0;
+
+    const updateHeader = () => {
+      frame = 0;
+      const currentScrollY = Math.max(window.scrollY, timeline?.scrollTop ?? 0);
+      const delta = currentScrollY - lastScrollY;
+
+      if (!mediaQuery.matches || navOpen || currentScrollY < 24) {
+        setMobileHeaderVisible(true);
+      } else if (delta > 6 && currentScrollY > 80) {
+        setMobileHeaderVisible(false);
+      } else if (delta < -4) {
+        setMobileHeaderVisible(true);
+      }
+
+      lastScrollY = currentScrollY;
+    };
+
+    const onScroll = () => {
+      if (!frame) {
+        frame = requestAnimationFrame(updateHeader);
+      }
+    };
+
+    setMobileHeaderVisible(true);
+    updateHeader();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    timeline?.addEventListener("scroll", onScroll, { passive: true });
+    mediaQuery.addEventListener("change", updateHeader);
+
+    return () => {
+      if (frame) {
+        cancelAnimationFrame(frame);
+      }
+      window.removeEventListener("scroll", onScroll);
+      timeline?.removeEventListener("scroll", onScroll);
+      mediaQuery.removeEventListener("change", updateHeader);
+    };
+  }, [activeSource.id, navOpen, profileTab, route.kind]);
+
+  useEffect(() => {
     const timeline = timelineRef.current;
     if (!timeline || !activeScrollKey) {
       return undefined;
@@ -3229,7 +3274,7 @@ export function App() {
       </aside>
 
       <main className="workspace">
-        <header className="workspace-header">
+        <header className={mobileHeaderVisible ? "workspace-header" : "workspace-header mobile-hidden"}>
           <h1>{workspaceTitle}</h1>
           <button
             className="nav-toggle"
