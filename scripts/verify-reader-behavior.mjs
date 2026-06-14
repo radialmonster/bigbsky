@@ -22,6 +22,7 @@ requirePattern(/function navigate\(nextRoute: RouteState[\s\S]*window\.history\.
 requirePattern(/const submitSearch = \(query: string\) => \{[\s\S]*const path = `\/search\?q=\$\{encodeURIComponent\(trimmed\)\}`;[\s\S]*const routeState = \{ kind: "search", query: trimmed \} as const;[\s\S]*navigate\(routeState, path\);[\s\S]*\};/s, "search should fetch only after explicit search navigation");
 requirePattern(/onQueryChange=\{setGlobalSearchText\}/, "search input should edit draft query state without direct fetch callbacks");
 requirePattern(/scrollCacheRef\.current\[activeScrollKey\] = timeline\.scrollTop/, "timeline scroll should be cached per active feed/profile key");
+requirePattern(/`profile:\$\{route\.actor\}:\$\{profileFeedFilterForTab\(profileTab\)\}`/, "profile timeline scroll keys should match the per-tab author-feed cache key");
 requirePattern(/scrollCacheRef\.current\[cacheKey\] \|\| 0/, "cached feed/profile loads should restore cached scroll offset");
 requirePattern(/const timelineScrollStorageKey = "bigbsky:timeline-scroll"/, "timeline scroll offsets should use a browser-local session cache key");
 requirePattern(/sessionStorage\.setItem\(timelineScrollStorageKey, JSON\.stringify\(cache\)\)/, "timeline scroll offsets should persist across browser reloads");

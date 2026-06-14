@@ -1102,8 +1102,11 @@ function VideoEmbedCard({ video, compact = false }: { video: VideoEmbedView; com
   const [unsupported, setUnsupported] = useState(false);
   const aspectRatio =
     video.aspectRatio?.width && video.aspectRatio?.height
-      ? { aspectRatio: `${video.aspectRatio.width} / ${video.aspectRatio.height}` }
+      ? `${video.aspectRatio.width} / ${video.aspectRatio.height}`
       : undefined;
+  const videoFrameStyle = aspectRatio
+    ? ({ "--video-aspect": aspectRatio } as CSSProperties)
+    : undefined;
 
   useEffect(() => {
     const element = videoRef.current;
@@ -1152,7 +1155,7 @@ function VideoEmbedCard({ video, compact = false }: { video: VideoEmbedView; com
   }, [playlist]);
 
   return (
-    <div className={compact ? "video-card quote-video-card" : "video-card"}>
+    <div className={compact ? "video-card quote-video-card" : "video-card"} style={videoFrameStyle}>
       {playlist && !unsupported ? (
         <video
           ref={videoRef}
@@ -1161,11 +1164,10 @@ function VideoEmbedCard({ video, compact = false }: { video: VideoEmbedView; com
           preload="metadata"
           poster={thumbnail}
           aria-label={video.alt ? `${kind}: ${video.alt}` : kind}
-          style={aspectRatio}
         />
       ) : thumbnail ? (
         <a className="video-fallback-link" href={thumbnail} target="_blank" rel="noreferrer">
-          <img alt={video.alt || ""} src={thumbnail} loading="lazy" decoding="async" style={aspectRatio} />
+          <img alt={video.alt || ""} src={thumbnail} loading="lazy" decoding="async" />
         </a>
       ) : (
         <span className="video-placeholder" />
@@ -2914,8 +2916,8 @@ export function App() {
           ? displayName(profile ?? undefined)
           : feedMetadata?.displayName || activeSource.label;
   const activeScrollKey =
-    route.kind === "profile"
-      ? `profile:${route.actor}`
+    route.kind === "profile" && profileTab !== "feeds" && profileTab !== "lists" && profileTab !== "new-post"
+      ? `profile:${route.actor}:${profileFeedFilterForTab(profileTab)}`
       : route.kind === "feed"
         ? `feed:${activeSource.id}`
         : route.kind === "surface" && (route.name === "bookmarks" || route.name === "lists")

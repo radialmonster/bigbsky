@@ -27,14 +27,18 @@ requirePattern(app, /function VirtualPostList\([\s\S]*const findRowIndex = useCa
 requirePattern(app, /data-total-rows=\{items\.length\}[\s\S]*data-rendered-rows=\{visibleItems\.length\}/s, "virtual list should expose loaded and rendered row counts");
 requirePattern(app, /topSpacerHeight > 0[\s\S]*bottomSpacerHeight > 0/s, "virtual list should use top and bottom spacers instead of mounting all rows");
 requirePattern(app, /rowTop \+ previousHeight <= container\.scrollTop[\s\S]*container\.scrollTop \+= height - previousHeight/s, "measured row updates should compensate scroll position above the viewport");
+requirePattern(css, /\.virtual-list \{[\s\S]*overflow-anchor: none;/s, "virtual list should disable native scroll anchoring so measured row compensation is not doubled");
 requirePattern(app, /onRenderedRowsChange\(visibleItems\.length\)/, "development inspector should receive rendered row counts");
 
 requirePattern(app, /image\.aspectRatio\?\.width && image\.aspectRatio\?\.height[\s\S]*aspectRatio: `\$\{image\.aspectRatio\.width\} \/ \$\{image\.aspectRatio\.height\}`/s, "image embeds should use Bluesky aspect-ratio metadata");
-requirePattern(app, /video\.aspectRatio\?\.width && video\.aspectRatio\?\.height[\s\S]*aspectRatio: `\$\{video\.aspectRatio\.width\} \/ \$\{video\.aspectRatio\.height\}`/s, "video embeds should use Bluesky aspect-ratio metadata");
+requirePattern(app, /video\.aspectRatio\?\.width && video\.aspectRatio\?\.height[\s\S]*`\$\{video\.aspectRatio\.width\} \/ \$\{video\.aspectRatio\.height\}`/s, "video embeds should use Bluesky aspect-ratio metadata");
+requirePattern(app, /const videoFrameStyle = aspectRatio[\s\S]*"--video-aspect": aspectRatio/s, "video embeds should put aspect ratio on the stable card frame");
 requirePattern(css, /\.post-card \{[\s\S]*contain: content;/s, "post cards should use containment to limit repaint scope");
 requirePattern(css, /\.post-card\.has-media,[\s\S]*--post-embed-min: 220px;/s, "rich post cards should reserve stable embed space");
 requirePattern(css, /\.link-card \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto;/s, "link cards should have stable desktop grid sizing");
 requirePattern(css, /\.media \.post-card\.has-media \.image-grid\.count-1 img,[\s\S]*min-height: min\(46vh, 420px\);/s, "media density should reserve larger media height");
+requirePattern(css, /\.video-card \{[\s\S]*width: 100%;[\s\S]*aspect-ratio: var\(--video-aspect, 16 \/ 9\);[\s\S]*max-height: calc\(100vh - 140px\);/s, "video card should reserve the playback frame before media metadata loads and use the image viewport cap");
+requirePattern(css, /\.video-card video,[\s\S]*\.video-card img,[\s\S]*\.video-placeholder \{[\s\S]*height: 100%;/s, "video media elements should fill the stable card frame");
 
 requirePattern(css, /\.width-wide \{[\s\S]*grid-template-columns: 76px 260px minmax\(780px, 1\.35fr\) 280px;/s, "wide mode should allocate more width to the reader before rails");
 requirePattern(css, /\.width-focus \{[\s\S]*grid-template-columns: 76px 228px minmax\(860px, 1\.5fr\) 0;/s, "focus mode should allocate reader width and collapse the right rail");
