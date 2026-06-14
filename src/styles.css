@@ -341,10 +341,6 @@ button {
   color: var(--app-text);
 }
 
-.account-switcher-add input:focus {
-  border-color: rgba(117, 175, 255, 0.72);
-}
-
 .feed-map {
   overflow: auto;
   padding: 18px 14px;
@@ -378,10 +374,6 @@ button {
   outline: 0;
   background: #0f1724;
   color: var(--app-text);
-}
-
-.feed-search:focus {
-  border-color: rgba(117, 175, 255, 0.72);
 }
 
 .feed-group {
@@ -600,11 +592,6 @@ button {
   text-transform: capitalize;
 }
 
-.segmented .selected {
-  background: var(--bsky-blue);
-  color: #fff;
-}
-
 .width-wide {
   grid-template-columns: 76px 260px minmax(780px, 1.35fr) 280px;
 }
@@ -787,11 +774,6 @@ button {
   text-decoration: none;
 }
 
-.composer-footer button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
 .composer textarea {
   width: 100%;
   min-height: 84px;
@@ -967,11 +949,6 @@ button {
   font-weight: 700;
 }
 
-.reauth-banner-actions button.reauth-primary {
-  background: var(--bsky-blue);
-  color: #fff;
-}
-
 /* Standalone re-auth button (notifications error, list sub-error). */
 .surface-retry button.reauth-primary,
 .bsky-list-suberror button.reauth-primary {
@@ -1037,11 +1014,6 @@ button {
   color: var(--app-text-soft);
   font-size: 12px;
   font-weight: 700;
-}
-
-.composer-footer button:last-child {
-  background: var(--bsky-blue);
-  color: #fff;
 }
 
 .post-card {
@@ -1217,7 +1189,8 @@ button {
   font-weight: 800;
 }
 
-.surface-grid {
+.surface-grid,
+.feed-directory-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
   gap: 12px;
@@ -1233,7 +1206,8 @@ button {
   background: var(--app-surface);
 }
 
-.surface-card span {
+.surface-card span,
+.settings-panel span {
   display: inline-flex;
   min-height: 24px;
   align-items: center;
@@ -1272,19 +1246,6 @@ button {
   border: 1px solid var(--app-border);
   border-radius: 8px;
   background: var(--app-surface);
-}
-
-.settings-panel span {
-  display: inline-flex;
-  min-height: 24px;
-  align-items: center;
-  padding: 0 8px;
-  border: 1px solid var(--app-border);
-  border-radius: 999px;
-  color: var(--app-text-muted);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
 }
 
 .settings-panel h3 {
@@ -1331,11 +1292,6 @@ button {
   background: var(--app-surface-2);
   color: var(--app-text);
   font-weight: 700;
-}
-
-.settings-panel button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 
 .settings-select {
@@ -1498,11 +1454,6 @@ button {
   text-transform: capitalize;
 }
 
-.settings-control-group .selected-setting {
-  background: var(--bsky-blue);
-  color: #fff;
-}
-
 .settings-warning,
 .account-warning {
   color: var(--app-danger) !important;
@@ -1608,16 +1559,6 @@ button {
   text-decoration: none;
 }
 
-.self-profile-actions .self-profile-primary {
-  background: var(--bsky-blue);
-  color: #fff;
-}
-
-.self-profile-actions button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
 .self-profile-tabs {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
@@ -1687,10 +1628,6 @@ button {
   outline: 0;
   background: #0f1724;
   color: var(--app-text);
-}
-
-.sign-in-form input:focus {
-  border-color: rgba(117, 175, 255, 0.72);
 }
 
 .sign-in-form button {
@@ -1764,11 +1701,6 @@ button.surface-action {
   background: transparent;
   color: var(--app-text-muted);
   font-weight: 700;
-}
-
-.notification-tabs .selected {
-  background: var(--bsky-blue);
-  color: #fff;
 }
 
 .notification-list {
@@ -1939,10 +1871,6 @@ button.surface-action {
   color: var(--app-text);
 }
 
-.local-list-form input:focus {
-  border-color: rgba(117, 175, 255, 0.72);
-}
-
 .local-list-form button,
 .local-list-card button {
   min-height: 38px;
@@ -2064,11 +1992,6 @@ button.surface-action {
   font-size: 13px;
   font-weight: 700;
   text-decoration: none;
-}
-
-.bsky-list-actions button:first-child {
-  background: var(--bsky-blue);
-  color: #fff;
 }
 
 .surface-retry {
@@ -2279,14 +2202,6 @@ button.surface-action {
   color: var(--app-text-muted);
   font-size: 13px;
   line-height: 1.42;
-}
-
-.feed-directory-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
-  gap: 12px;
-  width: 100%;
-  margin-top: 14px;
 }
 
 .feed-directory-card {
@@ -2710,11 +2625,6 @@ button.surface-action {
   text-decoration: none;
 }
 
-.profile-detail-actions button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
 .profile-detail-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2752,11 +2662,6 @@ button.surface-action {
   color: var(--app-text-muted);
   font-weight: 700;
   text-transform: capitalize;
-}
-
-.profile-tabs .selected {
-  background: var(--bsky-blue);
-  color: #fff;
 }
 
 .search-results-list {
@@ -4268,9 +4173,32 @@ button.surface-action {
   font-weight: 800;
 }
 
+.segmented .selected,
+.reauth-banner-actions button.reauth-primary,
+.composer-footer button:last-child,
+.settings-control-group .selected-setting,
+.self-profile-actions .self-profile-primary,
+.notification-tabs .selected,
+.bsky-list-actions button:first-child,
+.profile-tabs .selected,
 .thread-view-mode button.selected {
   background: var(--bsky-blue);
   color: #fff;
+}
+
+.composer-footer button:disabled,
+.settings-panel button:disabled,
+.self-profile-actions button:disabled,
+.profile-detail-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.account-switcher-add input:focus,
+.feed-search:focus,
+.sign-in-form input:focus,
+.local-list-form input:focus {
+  border-color: rgba(117, 175, 255, 0.72);
 }
 
 .thread-stat-button {
