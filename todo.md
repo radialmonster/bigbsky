@@ -39,13 +39,13 @@
   - Relevant files/functions found:
     - `src/sources.ts`: likely source for `navigationItems`.
     - `src/App.tsx`: `navIcons` must stay aligned with `navigationItems`.
-- [ ] Refine the `/feeds` "Media view needs Show Media on." warning for per-feed overrides.
+- [x] Refine the `/feeds` "Media view needs Show Media on." warning for per-feed overrides.
   - Follow-up from the per-feed Show Media override work.
-  - Current behavior: the section-level `.feed-media-warning` at the top of "Your feeds" only checks the global `showMedia`, so it can be misleading now that a feed can turn media on/off independently (e.g. a feed forced Media density + Media override On while global is off, or vice versa).
-  - Desired behavior: make the warning per-card (or drop the section-level one) so it reflects each feed's effective Show Media when that feed uses Media density.
-  - Relevant files/functions found:
-    - `src/App.tsx`: section-level warning in `SurfaceView` feeds branch; `FeedDensityOverrideControl` already shows a "media, paused" label per card using the per-feed effective Show Media.
-    - `src/styles.css`: `.feed-media-warning`.
+  - Done:
+    - Removed the misleading section-level `.feed-media-warning` at the top of "Your feeds" (it only checked the global `showMedia` and ignored per-feed Media overrides).
+    - Added an accurate per-card warning inside `FeedDensityOverrideControl`: it now renders `"Media view paused — turn Media on for this feed."` only when that card's effective density is `media` and its effective Show Media (per-feed override ?? global) is off. This works for both Your feeds and Built-in feeds since both render through the same control with the per-feed effective Show Media.
+    - Adjusted `.feed-media-warning` margin (was `-2px 0 12px`, tuned for the section heading) to `0` for the per-card context.
+  - Verified: `tsc --noEmit` clean; `npm run build` passes including audit/reader/layout verification scripts.
 - [ ] Review Vite chunk-size warnings from production build.
   - Current finding: `npm run build` passes, but Vite warns that `assets/hls-*.js` and the main app chunk exceed 500 kB after minification.
   - Consider whether `hls.js`, large route surfaces, or media/thread components should be lazy-loaded or manually chunked.

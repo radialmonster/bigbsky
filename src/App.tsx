@@ -4587,11 +4587,6 @@ function SurfaceView({
         <>
           <section className="bsky-list-section" aria-label="Your feeds">
             <h3 className="bsky-list-section-heading">Your feeds</h3>
-            {!showMedia && (
-              <p className="feed-media-warning">
-                Media view needs Show Media on.
-              </p>
-            )}
             {!auth.session ? (
               <EmptyState
                 title="Sign in to see your feeds"
@@ -4732,25 +4727,31 @@ function FeedDensityOverrideControl({
   onChange: (source: FeedSource, density: DensityMode | null) => void;
 }) {
   const effective = override || defaultDensity;
-  const effectiveLabel = effective === "media" && !showMedia ? "media, paused" : effective;
+  const mediaPaused = effective === "media" && !showMedia;
+  const effectiveLabel = mediaPaused ? "media, paused" : effective;
   return (
-    <label className="feed-density-control">
-      <span>View</span>
-      <select
-        value={override || "default"}
-        onChange={(event) => {
-          const value = event.target.value;
-          onChange(source, value === "default" ? null : (value as DensityMode));
-        }}
-      >
-        <option value="default">Default ({effectiveLabel})</option>
-        {densityModes.map((mode) => (
-          <option value={mode} key={mode} disabled={mode === "media" && !showMedia}>
-            {mode}
-          </option>
-        ))}
-      </select>
-    </label>
+    <>
+      <label className="feed-density-control">
+        <span>View</span>
+        <select
+          value={override || "default"}
+          onChange={(event) => {
+            const value = event.target.value;
+            onChange(source, value === "default" ? null : (value as DensityMode));
+          }}
+        >
+          <option value="default">Default ({effectiveLabel})</option>
+          {densityModes.map((mode) => (
+            <option value={mode} key={mode} disabled={mode === "media" && !showMedia}>
+              {mode}
+            </option>
+          ))}
+        </select>
+      </label>
+      {mediaPaused && (
+        <p className="feed-media-warning">Media view paused — turn Media on for this feed.</p>
+      )}
+    </>
   );
 }
 
