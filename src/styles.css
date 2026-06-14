@@ -4077,11 +4077,9 @@ button.surface-action {
   white-space: nowrap;
 }
 
-.compact .post-card.media-hidden .quote-card > .media-hidden-button,
-.compact .post-card.media-hidden .quote-card > .sensitive-media-gate,
-.compact .post-card.media-hidden .quote-card > .quote-link-card,
-.compact .post-card.media-hidden .quote-card > .image-grid,
-.compact .post-card.media-hidden .quote-card > .video-card {
+.compact .post-card.media-hidden .quote-card:not(.revealed) > .quote-link-card,
+.compact .post-card.media-hidden .quote-card:not(.revealed) > .image-grid,
+.compact .post-card.media-hidden .quote-card:not(.revealed) > .video-card {
   display: none;
 }
 
@@ -5418,7 +5416,7 @@ button.surface-action {
 
   .compact .post-text {
     margin: 4px 0;
-    font-size: 15px;
+    font-size: 17px;
     line-height: 1.22;
   }
 

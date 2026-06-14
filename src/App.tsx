@@ -312,7 +312,8 @@ type AuthState = {
   message?: string;
 };
 
-const densityModes = ["comfortable", "compact", "media"];
+const densityModes = ["comfortable", "compact", "media"] as const;
+type DensityMode = (typeof densityModes)[number];
 // Bluesky's newer gallery embed allows up to 10 authored images per post.
 const maxPostImages = 10;
 
@@ -426,7 +427,7 @@ function countBigBskyLocalKeys() {
 
 function readDensityPreferences() {
   try {
-    return JSON.parse(localStorage.getItem("bigbsky:density-by-context") || "{}") as Record<string, string>;
+    return JSON.parse(localStorage.getItem("bigbsky:density-by-context") || "{}") as Record<string, DensityMode>;
   } catch {
     return {};
   }
@@ -621,7 +622,7 @@ function feedPreferenceKey(source: FeedSource) {
   return `feed:${source.uri}`;
 }
 
-function feedDensityOverride(source: FeedSource, preferences: Record<string, string>) {
+function feedDensityOverride(source: FeedSource, preferences: Record<string, DensityMode>) {
   const value = preferences[feedPreferenceKey(source)];
   return densityModes.includes(value) ? value : undefined;
 }
@@ -1233,7 +1234,7 @@ export function App() {
   // The primary nav icon bar is hidden by default and revealed with the
   // hamburger control in the feed-title header.
   const [navOpen, setNavOpen] = useState<boolean>(false);
-  const [densityByContext, setDensityByContext] = useState<Record<string, string>>(() => readDensityPreferences());
+  const [densityByContext, setDensityByContext] = useState<Record<string, DensityMode>>(() => readDensityPreferences());
   const [widthByContext, setWidthByContext] = useState<Record<string, string>>(() => readWidthPreferences());
   const [showNsfw, setShowNsfw] = useState<boolean>(() => readShowNsfw());
   const [showMedia, setShowMedia] = useState<boolean>(() => readShowMedia());
@@ -1702,9 +1703,14 @@ export function App() {
   }, [subscribedFeeds, myLists]);
   const feedRoutePath = (source: FeedSource) => `/feed/${encodeURIComponent(source.id)}`;
   const densityKey = route.kind === "feed" ? feedPreferenceKey(activeSource) : route.kind;
-  const storedDensity = (route.kind === "feed" ? feedDensityOverride(activeSource, densityByContext) : densityByContext[densityKey]) || densityByContext.default || "comfortable";
+  const defaultDensity = densityModes.includes(densityByContext.default) ? densityByContext.default : "comfortable";
+  const routeDensity = route.kind === "feed"
+    ? feedDensityOverride(activeSource, densityByContext)
+    : densityModes.includes(densityByContext[densityKey])
+      ? densityByContext[densityKey]
+      : undefined;
+  const storedDensity = routeDensity || defaultDensity;
   const density = storedDensity === "media" && !showMedia ? "comfortable" : storedDensity;
-  const defaultDensity = densityByContext.default || "comfortable";
   const storedWidth = widthByContext[densityKey] || widthByContext.default;
   const workspaceWidth = (
     widthModes.includes(storedWidth as (typeof widthModes)[number]) ? storedWidth : "balanced"
@@ -2400,7 +2406,7 @@ export function App() {
       });
   }
 
-  function updateDensity(nextDensity: string) {
+  function updateDensity(nextDensity: DensityMode) {
     if (nextDensity === "media") {
       setShowMedia(true);
       safeLocalStorageSet(showMediaStorageKey, "true");
@@ -2413,7 +2419,7 @@ export function App() {
     safeLocalStorageSet("bigbsky:density-by-context", JSON.stringify(nextPreferences));
   }
 
-  function updateFeedDensityOverride(source: FeedSource, nextDensity: string | null) {
+  function updateFeedDensityOverride(source: FeedSource, nextDensity: DensityMode | null) {
     if (nextDensity === "media") {
       setShowMedia(true);
       safeLocalStorageSet(showMediaStorageKey, "true");
@@ -3511,7 +3517,7 @@ function VirtualPostList({
   children?: React.ReactNode;
   containerRef: RefObject<HTMLDivElement | null>;
   currentDid?: string;
-  density: string;
+  density: DensityMode;
   items: FeedItem[];
   localLists: LocalList[];
   mediaOnly?: boolean;
@@ -4025,8 +4031,8 @@ function SurfaceView({
   containerRef: RefObject<HTMLDivElement | null>;
   auth: AuthState;
   name: string;
-  defaultDensity: string;
-  densityByContext: Record<string, string>;
+  defaultDensity: DensityMode;
+  densityByContext: Record<string, DensityMode>;
   recentCount: number;
   savedPreferenceCount: number;
   localDataKeyCount: number;
@@ -4046,8 +4052,8 @@ function SurfaceView({
   workspaceWidth: (typeof widthModes)[number];
   onClearLocalData: () => void | Promise<void>;
   onCreateLocalList: (name: string, description: string) => void;
-  onDensityChange: (density: string) => void;
-  onFeedDensityOverrideChange: (source: FeedSource, density: string | null) => void;
+  onDensityChange: (density: DensityMode) => void;
+  onFeedDensityOverrideChange: (source: FeedSource, density: DensityMode | null) => void;
   onDeleteLocalList: (id: string) => void;
   onOpenFeed: (source: FeedSource) => void;
   onOpenProfile: (profile: Profile) => void;
@@ -4181,7 +4187,7 @@ function SurfaceView({
                 <dd>{savedPreferenceCount.toLocaleString()}</dd>
               </div>
             </dl>
-            <p>Default density is stored locally and applies to feeds without their own view override.</p>
+            <p>Default density applies to feeds without their own view override.</p>
             <div className="settings-control-group" aria-label="Default reading density setting">
               {densityModes.map((mode) => (
                 <button
@@ -4190,13 +4196,12 @@ function SurfaceView({
                   type="button"
                   disabled={mode === "media" && !showMedia}
                   onClick={() => onDensityChange(mode)}
-                  title={mode === "media" && !showMedia ? "Turn on Show Media to use media density" : undefined}
                 >
                   {mode}
                 </button>
               ))}
             </div>
-            {!showMedia && <p className="settings-note">Media density requires Show Media to be on.</p>}
+            {!showMedia && <p className="settings-note">Media density needs Show Media on.</p>}
             <p className="settings-note">Per-feed view overrides are managed on the Feeds page.</p>
             <p>Feed width is stored locally and changes how much desktop space the reader claims from side context.</p>
             <div className="settings-control-group" aria-label="Feed width setting">
@@ -4233,7 +4238,7 @@ function SurfaceView({
           <article className="settings-panel">
             <span>{showMedia ? "On" : "Off"}</span>
             <h3>Show Media</h3>
-            <p>When on (default), posts show their images and videos. Turn off to read text-only: posts and link previews still appear, but images and videos are replaced by a small control you can click to reveal the media per post.</p>
+            <p>On by default. Turn off for text-only reading: media becomes a per-post reveal control.</p>
             <button
               type="button"
               className={showMedia ? "settings-toggle on" : "settings-toggle"}
@@ -4244,7 +4249,7 @@ function SurfaceView({
               <span className="settings-toggle-track" aria-hidden="true">
                 <span className="settings-toggle-thumb" />
               </span>
-              <span>{showMedia ? "Showing images & videos" : "Hiding images & videos"}</span>
+              <span>{showMedia ? "Showing media" : "Hiding media"}</span>
             </button>
             <p>This preference is stored locally in this browser only.</p>
           </article>
@@ -4456,7 +4461,7 @@ function SurfaceView({
             <h3 className="bsky-list-section-heading">Your feeds</h3>
             {!showMedia && (
               <p className="feed-media-warning">
-                Feed views cannot be set to Media while Show Media is off.
+                Media view needs Show Media on.
               </p>
             )}
             {!auth.session ? (
@@ -4577,10 +4582,10 @@ function FeedDensityOverrideControl({
   onChange,
 }: {
   source: FeedSource;
-  defaultDensity: string;
-  override?: string;
+  defaultDensity: DensityMode;
+  override?: DensityMode;
   showMedia: boolean;
-  onChange: (source: FeedSource, density: string | null) => void;
+  onChange: (source: FeedSource, density: DensityMode | null) => void;
 }) {
   const effective = override || defaultDensity;
   const effectiveLabel = effective === "media" && !showMedia ? "media, paused" : effective;
@@ -4589,7 +4594,10 @@ function FeedDensityOverrideControl({
       <span>View</span>
       <select
         value={override || "default"}
-        onChange={(event) => onChange(source, event.target.value === "default" ? null : event.target.value)}
+        onChange={(event) => {
+          const value = event.target.value;
+          onChange(source, value === "default" ? null : (value as DensityMode));
+        }}
       >
         <option value="default">Default ({effectiveLabel})</option>
         {densityModes.map((mode) => (
@@ -8089,6 +8097,8 @@ function QuotedPostCard({
   const embeddedExternalThumb = safeHttpUrl(embeddedExternal?.thumb);
   const embeddedImages = safeEmbedImages(getEmbedImages(record.embeds?.[0] ?? record.value?.embed));
   const embeddedVideo = getVideoEmbed(record.embeds?.[0] ?? record.value?.embed);
+  const hasHiddenPreviewMedia = embeddedImages.length > 0 || !!embeddedVideo || !!embeddedExternalThumb;
+  const hiddenPreviewMediaKind = embeddedImages.length > 0 || embeddedExternalThumb ? "image" : "video";
   const text = record.value?.text?.trim() || "";
   const mediaWarningValues = sensitiveMediaValues([
     ...((record.labels as Array<{ val?: string }> | undefined) ?? []),
@@ -8116,7 +8126,7 @@ function QuotedPostCard({
     : null;
 
   return (
-    <div className="quote-card">
+    <div className={mediaRevealed ? "quote-card revealed" : "quote-card"}>
       {record.author && (
         <header className="quote-header">
           <Avatar profile={record.author} />
@@ -8144,8 +8154,8 @@ function QuotedPostCard({
       )}
       {gateMedia ? (
         <SensitiveMediaGate values={mediaWarningValues} onReveal={() => setMediaRevealed(true)} />
-      ) : hideMediaForSetting && (embeddedImages.length > 0 || !!embeddedVideo) ? (
-        <MediaHiddenButton kind={embeddedImages.length > 0 ? "image" : "video"} onReveal={() => setMediaRevealed(true)} />
+      ) : hideMediaForSetting && hasHiddenPreviewMedia ? (
+        <MediaHiddenButton kind={hiddenPreviewMediaKind} onReveal={() => setMediaRevealed(true)} />
       ) : (
         <>
           {embeddedImages.length > 0 && (
