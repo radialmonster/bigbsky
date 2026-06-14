@@ -7083,7 +7083,18 @@ function renderRichText(
       nodes.push(decoder.decode(bytes.slice(cursor, start)));
     }
     const segment = decoder.decode(bytes.slice(start, end));
-    const feature = facet.features?.find((item) => typeof item.$type === "string");
+    // Docs allow multiple features on one range; prefer the first feature this
+    // renderer actually supports (link/mention/tag) rather than blindly taking
+    // the first typed feature, which could be an unknown $type that drops a
+    // usable link/mention/tag sharing the same range.
+    const features = facet.features ?? [];
+    const feature =
+      features.find(
+        (item) =>
+          (item.$type === "app.bsky.richtext.facet#link" && item.uri) ||
+          (item.$type === "app.bsky.richtext.facet#mention" && item.did) ||
+          (item.$type === "app.bsky.richtext.facet#tag" && (item.tag || segment)),
+      ) ?? features.find((item) => typeof item.$type === "string");
     const type = feature?.$type;
 
     if (type === "app.bsky.richtext.facet#link" && feature?.uri) {

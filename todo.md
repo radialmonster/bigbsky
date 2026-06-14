@@ -91,18 +91,31 @@
     - `src/App.tsx`: `ExternalLinkCard`, `QuoteCard`, `PostCard`, and `PostImageVideoMedia` render local embed views from AppView data.
     - `src/api.ts`: `getExternalEmbed`, `getRecordEmbed`, `getEmbedImages`, and `getVideoEmbed` normalize local embed rendering data.
     - `src/styles.css`: quote/link/embed rendering styles include `.quote-card`, `.quote-link-card`, and link-card/media styles.
-- [ ] Audit Bluesky rich-text facet handling.
+- [x] Audit Bluesky rich-text facet handling.
   - Source: https://docs.bsky.app/docs/advanced-guides/post-richtext
-  - Current finding: publishing appears to use the recommended library path: `src/auth.ts` creates `new RichText({ text })` and calls `richText.detectFacets(agent)` before `agent.post`.
-  - Current finding: rendering appears byte-aware: `src/App.tsx` `renderRichText` uses `TextEncoder`/`TextDecoder` and facet `byteStart`/`byteEnd` instead of native string slicing.
-  - Verify renderer behavior against docs: sort by `byteStart`, discard overlapping facets, treat ranges as inclusive start / exclusive end, and validate `end <= UTF-8 byte length`.
-  - Review multi-feature facets: docs allow multiple features on one range, while `renderRichText` currently renders the first feature with a `$type`.
-  - Review unsupported/invalid features: they should fall back to plain text without breaking post layout.
-  - Add regression cases with Unicode text, emoji/graphemes, links, mentions, hashtags, overlapping facets, trailing punctuation, and quote-post facets.
+  - Confirmed correct (no change needed):
+    - Publishing uses the recommended library path: `src/auth.ts` creates `new RichText({ text })` and calls `richText.detectFacets(agent)` before `agent.post`.
+    - Rendering is byte-aware: `renderRichText` encodes with `TextEncoder`, slices on facet `byteStart`/`byteEnd`, and decodes — no native string slicing.
+    - Sort by `byteStart`: `sorted` sorts ascending by `byteStart`.
+    - Discard overlapping/invalid facets: the `start < cursor || start >= end || end > bytes.length` guard drops overlaps, zero/negative ranges, and out-of-bounds ends (`end <= UTF-8 byte length`).
+    - Inclusive start / exclusive end: `bytes.slice(start, end)` is start-inclusive, end-exclusive.
+    - Unsupported/invalid features fall back to plain text via the trailing `else { nodes.push(segment) }` branch without breaking layout.
+  - Done (the actionable gap — multi-feature facets):
+    - Docs allow multiple features on one range. `renderRichText` previously selected `features.find(item => typeof item.$type === "string")` — the first *typed* feature, which could be an unknown `$type` sharing the range with a usable link/mention/tag and would silently drop the link.
+    - Now it first looks for a feature this renderer actually supports (`#link` with `uri`, `#mention` with `did`, `#tag` with `tag`/segment) and only falls back to "first typed feature" when none is supported, so the plain-text fallback still applies to genuinely unknown features.
+  - Verified: `npm run build` passes (tsc, vite, audit initial JS 113 kB gzip, reader + layout verifiers all green). Remaining vite warnings (hls/main chunk size, mixed `api.ts` static+dynamic import) are pre-existing and tracked as their own tasks.
+  - Follow-up (optional, captured below): `renderRichText` is an internal (non-exported) function with no unit-test harness, so the docs' suggested regression cases (Unicode/emoji graphemes, overlapping facets, trailing punctuation, quote-post facets) are not yet codified as tests.
   - Relevant files/functions found:
     - `src/api.ts`: `RichTextFacet` type and `FeedPost.record.facets` / `RecordEmbedView.value.facets`.
     - `src/auth.ts`: `publishPost` facet production via `@atproto/api` `RichText.detectFacets`.
     - `src/App.tsx`: `renderRichText`, `extractFacetLinks`, `PostCard`, combined thread rendering, and `QuoteCard` consume facets.
+- [ ] Add a regression-test harness for `renderRichText` facet handling (follow-up).
+  - Follow-up from the rich-text facet audit.
+  - `renderRichText` in `src/App.tsx` is internal and untested. Either extract the byte-range/facet-selection logic into a small exported pure helper (e.g. `src/richtext.ts`) or add a Node-based verifier under `scripts/` like the existing `verify-*.mjs`.
+  - Cover: Unicode text and emoji/grapheme byte offsets, links, mentions, hashtags, overlapping facets (later one discarded), trailing punctuation, multi-feature facets (supported feature preferred over unknown `$type`), and out-of-bounds `byteEnd`.
+  - Relevant files/functions found:
+    - `src/App.tsx`: `renderRichText` (byte-aware slice, sort by `byteStart`, overlap guard, multi-feature selection).
+    - `scripts/verify-reader-behavior.mjs` / `scripts/verify-layout-behavior.mjs`: existing static-source verifier pattern to mirror.
 - [x] Audit Bluesky timestamp handling.
   - Source: https://docs.bsky.app/docs/advanced-guides/timestamps
   - Done:
