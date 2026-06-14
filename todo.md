@@ -150,17 +150,20 @@
     - `src/api.ts`: `resolveHandle`, `getPostThread`, `getProfile`.
     - `src/auth.ts`: `getPostThreadAuthed` resolves handles before reading signed-in thread data; `addAccountToList` resolves handle/DID input before creating list items.
     - `src/App.tsx`: `entityCache.profiles` stores hydrated profiles keyed by DID and handle; `ProfileContextPanel`, pinned profiles, follow/block controls, and post author links use hydrated profile data.
-- [ ] Audit custom schema / unknown embed handling.
+- [x] Audit custom schema / unknown embed handling.
   - Source: https://docs.bsky.app/docs/advanced-guides/custom-schemas
-  - Current finding: BigBsky does not define custom Lexicons or custom record namespaces; it is currently a Bluesky reader using `app.bsky.*` records and AppView APIs.
-  - Current finding: known post embeds are normalized locally by shape: images/gallery, external links, video, record/quote, and record-with-media-style media nesting.
-  - Add or verify a generic fallback for unknown post embed `$type`s so users know when a post contains context BigBsky does not render.
-  - Do not create BigBsky-specific record schemas unless there is a real decentralized data feature and a controlled domain namespace for the Lexicon.
-  - If future custom records/APIs are considered, require a separate design pass for schema stability, indexing/AppView needs, and migration/versioning.
+  - Finding (confirmed): BigBsky does not define custom Lexicons or custom record namespaces; it is a Bluesky reader using `app.bsky.*` records and AppView APIs. No BigBsky-specific schemas were added (correctly out of scope per the docs — there is no decentralized data feature or controlled NSID domain to justify one).
+  - Done (the actionable gap — generic fallback for unknown embed `$type`s):
+    - Added `getUnknownEmbedType(embed)` in `src/api.ts` with a `KNOWN_EMBED_VIEW_TYPES` set (`app.bsky.embed.images#view`, `video#view`, `external#view`, `record#view`, `recordWithMedia#view`). It returns the embed's `$type` only when it is a typed-but-unrecognized embed view, else `null`.
+    - `PostEmbeds` in `src/App.tsx` now computes `renderedEmbed` (images/video/external/record) and only flags an unknown embed when none of the known extractors produced output — so a future shape reusing a known field (e.g. `images`) is not double-flagged, and a truly unknown `$type` is surfaced.
+    - Added an inline `UnsupportedEmbedNotice` component + `formatUnsupportedEmbedType` helper: renders "This post includes embedded <kind> content that BigBsky can't display yet." with an "Open on Bluesky" link (`postBskyUrl`). Inline note only — no popup/preview/modal, per operator directives.
+    - Added `.unsupported-embed` styles in `src/styles.css` (dashed-border inline notice matching `.additional-links`/quote-card visual language).
+  - Verified: `npm run build` passes (tsc, vite, audit initial JS 113 kB gzip, reader + layout verifiers all green). Remaining vite warnings (hls/main chunk size, mixed `api.ts` static+dynamic import) are pre-existing and tracked as their own tasks.
   - Relevant files/functions found:
-    - `src/api.ts`: `getEmbedImages`, `getExternalEmbed`, `getVideoEmbed`, and `getRecordEmbed` currently normalize known embed shapes from `unknown`.
-    - `src/App.tsx`: `PostEmbeds`, `PostCard`, `QuotedPostCard`, `ExternalLinkCard`, and media cards render known embed types.
+    - `src/api.ts`: `getEmbedImages`, `getExternalEmbed`, `getVideoEmbed`, `getRecordEmbed`, and new `getUnknownEmbedType`.
+    - `src/App.tsx`: `PostEmbeds`, `UnsupportedEmbedNotice`, `formatUnsupportedEmbedType`, `PostCard`, `QuotedPostCard`, `ExternalLinkCard`.
     - `src/auth.ts`: `buildImageEmbed` writes only official Bluesky image/gallery embed schemas.
+  - Follow-up (optional, captured below): the fallback is wired into `PostEmbeds` (feed/thread post cards). `QuotedPostCard` and the media-only card path do not render unknown nested embeds; consider whether a quoted post carrying an unknown embed should also show the notice.
 - [ ] Audit read-after-write behavior after signed-in writes.
   - Source: https://docs.bsky.app/docs/advanced-guides/read-after-write
   - Current finding: post/reply publishing clears local composer state and triggers route reloads (`onPosted`, `onReplied`), but AppView responses may still be eventually consistent immediately after a PDS write.
@@ -195,3 +198,9 @@
     - `src/InfoPage.tsx`: About page repeats the Bluesky contact link and states BigBsky has no server-side data store.
     - `src/App.tsx`: block/unblock controls, moderation notices, list moderation UI, and own-post delete menu.
     - `src/auth.ts`: `blockAccount`, `unblockAccount`, `deletePost`, `createModList`, `deleteModList`, `addAccountToList`, and list block subscription helpers.
+- [ ] Extend the unknown-embed fallback to quoted posts (follow-up).
+  - Follow-up from the custom-schema / unknown-embed audit.
+  - Current behavior: `getUnknownEmbedType` + `UnsupportedEmbedNotice` only run inside `PostEmbeds` for top-level feed/thread post cards. A quoted post (`QuotedPostCard`) that itself carries an unrecognized embed `$type`, and the `MediaOnlyPostCard` path, do not surface the notice.
+  - Desired: decide whether a quoted/nested post with an unknown embed should also show a small "can't display — open on Bluesky" affordance, or whether the existing quote-card "open on Bluesky" link is sufficient.
+  - Relevant files/functions found:
+    - `src/App.tsx`: `QuotedPostCard`, `MediaOnlyPostCard`, `PostEmbeds`, `UnsupportedEmbedNotice`, `getUnknownEmbedType`.

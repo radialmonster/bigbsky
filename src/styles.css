@@ -3436,6 +3436,38 @@ button.surface-action {
   color: var(--app-text);
 }
 
+.unsupported-embed {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--app-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--app-text-muted);
+  font-size: 14px;
+}
+
+.unsupported-embed a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 7px;
+  background: rgba(5, 96, 255, 0.08);
+  color: var(--bsky-blue-soft);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.unsupported-embed a:hover {
+  border-color: rgba(117, 175, 255, 0.48);
+  color: var(--app-text);
+}
+
 .quote-card {
   margin: 12px 0;
   padding: 12px;

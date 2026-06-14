@@ -506,3 +506,33 @@ export function getRecordEmbed(embed: unknown) {
 
   return record as RecordEmbedView;
 }
+
+// Hydrated AppView embed view types that BigBsky renders locally. Used to detect
+// posts that carry an embed shape we don't know how to display, so we can show a
+// generic fallback notice instead of silently dropping the content.
+const KNOWN_EMBED_VIEW_TYPES = new Set([
+  "app.bsky.embed.images#view",
+  "app.bsky.embed.video#view",
+  "app.bsky.embed.external#view",
+  "app.bsky.embed.record#view",
+  "app.bsky.embed.recordWithMedia#view",
+]);
+
+// Returns the embed's `$type` when it is a recognizable-but-unsupported embed
+// view, or null when the embed is absent, untyped, or a type we already render.
+// The caller should still confirm none of the known extractors produced output
+// before showing a fallback, so a future/unknown shape that happens to reuse a
+// known field (e.g. `images`) is not double-flagged.
+export function getUnknownEmbedType(embed: unknown): string | null {
+  if (!embed || typeof embed !== "object") {
+    return null;
+  }
+  const type = (embed as { $type?: unknown }).$type;
+  if (typeof type !== "string" || type.length === 0) {
+    return null;
+  }
+  if (KNOWN_EMBED_VIEW_TYPES.has(type)) {
+    return null;
+  }
+  return type;
+}
