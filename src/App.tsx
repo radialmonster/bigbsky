@@ -3242,6 +3242,17 @@ export function App() {
       <div className={`app-shell width-${workspaceWidth} ${navOpen ? "nav-open" : "nav-hidden"}`}>
       <aside className="left-rail" aria-label="Primary">
         <nav className="rail-nav">
+          {authState.session && (
+            <button
+              className="rail-button rail-compose"
+              type="button"
+              title="New post"
+              onClick={() => openSelfTab("new-post")}
+            >
+              <Plus size={20} />
+              <span>New post</span>
+            </button>
+          )}
           {navigationItems.map((item, index) => {
             const Icon = navIcons[index];
             // The Profile entry opens the account hub. It uses the same line icon

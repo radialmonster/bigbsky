@@ -106,6 +106,18 @@ button {
   color: var(--app-text);
 }
 
+/* The compose entry point stays filled so it reads as the primary action,
+   distinct from the muted navigation icons below it. */
+.rail-button.rail-compose {
+  background: var(--bsky-blue);
+  color: #fff;
+}
+
+.rail-button.rail-compose:hover {
+  background: var(--bsky-blue-strong, var(--bsky-blue));
+  color: #fff;
+}
+
 .plain-info-icon {
   position: relative;
   display: inline-block;

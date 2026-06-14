@@ -20,10 +20,27 @@
     - `scripts/verify-layout-behavior.mjs`: existing layout verification.
     - `scripts/audit-build.mjs`: build audit step.
     - `src/App.tsx`: `DevInspector` surfaces runtime route/service-worker/cache metrics.
+- [x] Investigate missing New Post button in the left rail.
+  - Confirmed: the rail-only New Post item had been intentionally removed in the earlier left-rail reorder, leaving the composer reachable only via the self-profile "New post" tab / account-hub shortcut. Restored a dedicated rail entry point.
+  - Done:
+    - Added a prominent "New post" compose button at the top of `.rail-nav` in `src/App.tsx`, rendered only when `authState.session` is present (composing requires auth). It uses the `Plus` icon and the same hover-tooltip span pattern as the other rail buttons, and calls `openSelfTab("new-post")` so it reuses the existing self-profile composer entry point (no new composer surface).
+    - Added `.rail-button.rail-compose` styles in `src/styles.css`: filled `--bsky-blue` background (white icon) so it reads as the primary action, distinct from the muted nav icons; hover uses `--bsky-blue-strong` with a `--bsky-blue` fallback.
+  - Verified: `tsc --noEmit` clean; `npm run build` passes (audit, reader + layout verifiers all green). Drove the running dev server via `scripts/cdp.mjs`: the `.rail-compose` button renders with title "New post", and clicking it navigates to the signed-in user's profile and opens the expanded composer ("What's on your mind?"). Remaining vite warnings (hls/main chunk size, mixed `api.ts` static+dynamic import) are pre-existing and tracked as their own tasks.
+  - Relevant files/functions found:
+    - `src/App.tsx`: `navIcons`, `.rail-nav` rendering, `openSelfTab`, `Composer` (self-profile `new-post` tab).
+    - `src/styles.css`: `.rail-button` / `.rail-compose` styles.
+    - `src/sources.ts`: `navigationItems` ordering (unchanged — compose is a distinct action, not a nav surface).
 - [ ] Prioritize the first small fix to ship.
   - Relevant files/functions found:
     - `package.json`: `npm run build` runs TypeScript, Vite build, audit, reader verification, and layout verification.
     - `src/App.tsx`: focused changes are likely easiest around isolated components such as `FeedDensityControl`, `Composer`, or `ReplyComposer`.
+- [ ] Allow users to reorder feeds from `/feeds`.
+  - Desired behavior: on `/feeds` (`http://127.0.0.1:5173/feeds` in local dev), signed-in users can change the order of their feeds, preferably by drag-and-drop with accessible fallback controls.
+  - The saved order should drive the desktop feed-selector column beside the left rail, so feeds appear there in the same user-defined order.
+  - Relevant files/functions found:
+    - `docs/plan.md`: broader planning item added under TODO.
+    - `src/App.tsx`: likely owns the `/feeds` surface and desktop feed-selector rendering.
+    - `src/sources.ts`: likely owns feed source definitions and ordering inputs.
 - [x] Add per-feed Show Media override on `/feeds`.
   - Desired behavior: each feed on `/feeds` can choose Show Media on, off, or inherit the default setting. Done.
   - Done:
