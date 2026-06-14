@@ -4,7 +4,6 @@ import {
   Compass,
   EyeOff,
   Film,
-  Globe,
   Hash,
   Heart,
   Home,
@@ -6660,7 +6659,6 @@ function PostLanguageSelect({
 }) {
   return (
     <label className="composer-language" title="Post language">
-      <Globe size={16} aria-hidden="true" />
       <select
         aria-label="Post language"
         value={value}
@@ -6951,34 +6949,6 @@ function Composer({
               ))}
             </div>
           )}
-          <div className="composer-actions">
-            <div className="composer-tools">
-              <button
-                type="button"
-                title="Add image"
-                aria-label="Add image"
-                onClick={() => attachImage(0)}
-                disabled={(images[0]?.length ?? 0) >= MAX_POST_IMAGES}
-              >
-                <Image size={20} />
-              </button>
-            </div>
-            <div className="composer-meta">
-              <PostLanguageSelect
-                value={postLang}
-                disabled={posting}
-                onChange={(code) => {
-                  setPostLang(code);
-                  safeLocalStorageSet(postLanguageStorageKey, code);
-                }}
-              />
-              <span className="composer-count">
-                {draftText.trim() && generatedPostCount > 1
-                  ? `${generatedPostCount} posts`
-                  : POST_GRAPHEME_LIMIT - graphemeLength(draftText)}
-              </span>
-            </div>
-          </div>
         </div>
       </div>
       <input
@@ -6991,7 +6961,35 @@ function Composer({
       />
       {postError && <p className="composer-error" role="alert">{postError}</p>}
       <div className="composer-footer">
-        <span>{posting ? "Publishing…" : hasContent ? "Draft autosaved locally" : "No local draft"}</span>
+        <div className="composer-tools">
+          <button
+            type="button"
+            title="Add image"
+            aria-label="Add image"
+            onClick={() => attachImage(0)}
+            disabled={(images[0]?.length ?? 0) >= MAX_POST_IMAGES}
+          >
+            <Image size={20} />
+          </button>
+        </div>
+        <div className="composer-meta">
+          <PostLanguageSelect
+            value={postLang}
+            disabled={posting}
+            onChange={(code) => {
+              setPostLang(code);
+              safeLocalStorageSet(postLanguageStorageKey, code);
+            }}
+          />
+          <span className="composer-count">
+            {draftText.trim() && generatedPostCount > 1
+              ? `${generatedPostCount} posts`
+              : POST_GRAPHEME_LIMIT - graphemeLength(draftText)}
+          </span>
+        </div>
+        <span className="composer-status">
+          {posting ? "Publishing…" : hasContent ? "Draft autosaved locally" : "No local draft"}
+        </span>
         <button type="button" onClick={clearDraft} disabled={!hasContent || posting}>
           Clear draft
         </button>
