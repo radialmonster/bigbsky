@@ -224,15 +224,20 @@
     - `src/auth.ts`: current authenticated AppView/PDS reads and writes.
     - `src/App.tsx`: feed, profile, search, notification, and thread loaders currently fetch/paginate instead of streaming.
     - `scripts/cdp.mjs`: unrelated local WebSocket use for browser automation only.
-- [ ] Audit identity resolution and profile metadata handling.
+- [x] Audit identity resolution and profile metadata handling.
   - Source: https://docs.bsky.app/docs/advanced-guides/resolving-identities
-  - Current finding: BigBsky mostly relies on hydrated DID/handle/profile data returned by Bluesky AppView responses, which matches the docs' recommendation for client apps.
-  - Current finding: direct handle resolution exists through `com.atproto.identity.resolveHandle` for cases where the app must build an AT URI from a handle and rkey.
-  - Verify direct resolution call sites have reasonable failure handling, abort handling, and no unnecessary repeated lookups.
-  - Consider whether a short browser-local cache is useful for `resolveHandle`, while remembering handles can change and DIDs are the durable account identifiers.
-  - Keep browser-client identity resolution limited to AppView/PDS APIs; do not try DNS TXT or `/.well-known/` direct resolution from the browser.
+  - Findings (confirmed correct, no change needed):
+    - BigBsky relies primarily on hydrated DID/handle/profile data returned by Bluesky AppView responses, matching the docs' recommendation for client apps.
+    - Direct handle resolution exists only through `com.atproto.identity.resolveHandle` (AppView/PDS API) for the case where the app must build an AT URI from a handle + rkey; no DNS TXT or `/.well-known/` browser-side resolution is attempted (correctly out of scope for a browser client).
+    - Call sites pass an `AbortSignal` through (`getPostThread`, `getPostThreadAuthed`), and DIDs passed in short-circuit without any lookup.
+  - Done (the actionable gap — unnecessary repeated lookups):
+    - Added a short browser-local cache to `resolveHandle` in `src/api.ts`. Opening posts by handle (`/profile/<handle>/post/<rkey>`) re-resolved the same handle on every thread load while navigating; the cache removes those repeats.
+    - `RESOLVE_HANDLE_TTL_MS = 5 * 60 * 1000` (5 min) — intentionally short because handles can be reassigned, while DIDs are the durable identifiers. Only successful resolutions are cached; DIDs passed in are returned without a lookup and never cached.
+    - Deliberately did NOT share an in-flight promise across callers, so one caller's `AbortSignal` cancellation can't reject another caller's lookup (keeps abort semantics clean). The TTL cache covers the real repeat case (sequential navigation).
+    - The cache lives in `src/api.ts`'s `resolveHandle`, so both the public path and the authed paths in `src/auth.ts` (which import this function) benefit.
+  - Verified: `npm run build` passes (tsc, vite, audit initial JS 113 kB gzip, reader + layout + rich-text verifiers all green). Drove the running dev server via CDP (`/profile/monriatitans.bsky.social/post/...`): on a full load `resolveHandle` fired exactly once (thread rendered), and after an in-SPA navigation to the author's profile and into a *different* post by the same handle, `resolveHandle` fired **0 times** — the cached DID served the lookup with no network round-trip.
   - Relevant files/functions found:
-    - `src/api.ts`: `resolveHandle`, `getPostThread`, `getProfile`.
+    - `src/api.ts`: `resolveHandle` (now TTL-cached), `getPostThread`, `getProfile`.
     - `src/auth.ts`: `getPostThreadAuthed` resolves handles before reading signed-in thread data; `addAccountToList` resolves handle/DID input before creating list items.
     - `src/App.tsx`: `entityCache.profiles` stores hydrated profiles keyed by DID and handle; `ProfileContextPanel`, pinned profiles, follow/block controls, and post author links use hydrated profile data.
 - [x] Audit custom schema / unknown embed handling.
@@ -293,3 +298,8 @@
   - Verified: `npm run build` passes (tsc, vite, audit initial JS 113 kB gzip, reader + layout verifiers all green). Remaining vite warnings (hls/main chunk size, mixed `api.ts` static+dynamic import) are pre-existing and tracked as their own tasks.
   - Relevant files/functions found:
     - `src/App.tsx`: `QuotedPostCard`, `MediaOnlyPostCard`, `PostEmbeds`, `UnsupportedEmbedNotice`, `getUnknownEmbedType`.
+
+- [ ] Review/commit the uncommitted `src/styles.css` mobile compact-media change.
+  - Found an uncommitted working-tree change in `src/styles.css` at the start of the 2026-06-14 identity-resolution session that was NOT made in that session (the session-start git snapshot reported the tree clean, so its provenance is unknown — likely a prior session's unstaged edit).
+  - The diff adds `grid-column: auto; justify-self: start;` to `.timeline.compact .post-card.media-hidden .media-hidden-button` and a new `.compact .post-card.media-hidden .link-card { grid-template-columns: minmax(0, 1fr); }` rule — i.e. a mobile/compact layout fix for the media-hidden "Show media" button and link-card grid.
+  - It was intentionally left out of the identity-resolution commit (only `src/api.ts` was committed). Decide whether the change is correct/intended, then commit it (with a real description of the visual fix) or discard it.

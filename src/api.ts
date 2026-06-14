@@ -367,9 +367,25 @@ export function searchActors(query: string, cursor?: string, signal?: AbortSigna
   );
 }
 
+// Short-lived browser-local cache for handle -> DID resolution. Opening posts by
+// handle (e.g. /profile/<handle>/post/<rkey>) re-resolves the same handle on
+// every thread/profile load, so a brief cache removes repeated identical lookups
+// while navigating. Handles can be reassigned, so the TTL is intentionally short
+// (DIDs are the durable identifiers); DIDs passed in are returned without a
+// lookup and never cached. Only successful resolutions are cached, and each call
+// keeps its own AbortSignal (we deliberately don't share an in-flight promise
+// across callers, so one caller's abort can't reject another's lookup).
+const RESOLVE_HANDLE_TTL_MS = 5 * 60 * 1000;
+const resolvedHandleCache = new Map<string, { did: string; expires: number }>();
+
 export async function resolveHandle(handleOrDid: string, signal?: AbortSignal) {
   if (handleOrDid.startsWith("did:")) {
     return handleOrDid;
+  }
+
+  const cached = resolvedHandleCache.get(handleOrDid);
+  if (cached && cached.expires > Date.now()) {
+    return cached.did;
   }
 
   const result = await getJson<{ did: string }>(
@@ -377,6 +393,10 @@ export async function resolveHandle(handleOrDid: string, signal?: AbortSignal) {
     { handle: handleOrDid },
     signal,
   );
+  resolvedHandleCache.set(handleOrDid, {
+    did: result.did,
+    expires: Date.now() + RESOLVE_HANDLE_TTL_MS,
+  });
   return result.did;
 }
 
