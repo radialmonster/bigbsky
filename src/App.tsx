@@ -1201,24 +1201,6 @@ function postBskyUrl(post: FeedPost) {
   return rkey ? `https://bsky.app/profile/${post.author.handle}/post/${rkey}` : `https://bsky.app/profile/${post.author.handle}`;
 }
 
-// Build the official Bluesky oEmbed endpoint URL for a post. We pass the post's
-// at:// URI directly: the endpoint resolves DIDs reliably, whereas handle-based
-// bsky.app URLs can 404 against it. maxwidth is clamped to the documented
-// 220–600 range. The endpoint sends CORS `Access-Control-Allow-Origin: *`, so a
-// browser fetch works, and it enforces the public-content policy (adult/deleted/
-// private posts are redacted or rejected). Docs: docs.bsky.app/.../oembed
-function postEmbedOembedUrl(post: FeedPost, maxwidth = 600) {
-  const width = Math.min(600, Math.max(220, Math.round(maxwidth)));
-  return `https://embed.bsky.app/oembed?url=${encodeURIComponent(post.uri)}&maxwidth=${width}&format=json`;
-}
-
-// Embed-copy button states. Bluesky enforces a public-content policy on embeds:
-// a post whose author requires logged-in viewers (the `!no-unauthenticated`
-// label) is refused with 403 even though the AppView API still returns the post
-// to a reader, and a deleted/missing post returns 404 — surfaced as distinct,
-// explained states rather than a generic copy error.
-type EmbedCopyState = "idle" | "copying" | "copied" | "not-public" | "not-found" | "error";
-
 function extractHashtags(text?: string) {
   if (!text) {
     return [];
@@ -8607,7 +8589,6 @@ function PostActionBar({
   const blockView = blockCtx?.getState(post.author);
   const deletePostCtx = useContext(DeletePostContext);
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
-  const [embedState, setEmbedState] = useState<EmbedCopyState>("idle");
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const moreMenuRef = useRef<HTMLDetailsElement | null>(null);
   const { showReplyLimited, handleReplyClick } = useReplyGate(post, onReply);
@@ -8667,63 +8648,6 @@ function PostActionBar({
 
     window.setTimeout(() => setShareState("idle"), 1800);
   };
-
-  // Copy the official Bluesky embed snippet (blockquote + embed.js script) so the
-  // post can be embedded on another site. We fetch the snippet from the public
-  // oEmbed endpoint rather than hand-building it, so it tracks Bluesky's embed
-  // markup and content policy. Keep the menu open so the status label is visible.
-  const handleCopyEmbed = async () => {
-    if (embedState === "copying") {
-      return;
-    }
-    setEmbedState("copying");
-    // Fetch the snippet first so we can classify the result before copying. The
-    // fetch is sub-second, well within the browser's ~5s transient-activation
-    // window, so the subsequent clipboard write still counts as user-initiated
-    // (no prompt). Bluesky's embed endpoint enforces a public-content policy, so
-    // 403/404 mean the post can't be embedded — surface that distinctly from a
-    // genuine copy/network error.
-    let next: EmbedCopyState = "error";
-    try {
-      const response = await fetch(postEmbedOembedUrl(post), { headers: { Accept: "application/json" } });
-      if (response.status === 403) {
-        next = "not-public";
-      } else if (response.status === 404) {
-        next = "not-found";
-      } else if (!response.ok) {
-        next = "error";
-      } else {
-        const data = (await response.json()) as { html?: string };
-        if (data.html) {
-          await navigator.clipboard?.writeText(data.html);
-          next = "copied";
-        }
-      }
-    } catch {
-      next = "error";
-    }
-    setEmbedState(next);
-    window.setTimeout(() => setEmbedState("idle"), next === "copied" ? 2400 : 4000);
-  };
-
-  const embedLabel =
-    embedState === "copying"
-      ? "Copying embed code…"
-      : embedState === "copied"
-        ? "Embed code copied"
-        : embedState === "not-public"
-          ? "Can't embed — post isn't public"
-          : embedState === "not-found"
-            ? "Can't embed — post not found"
-            : embedState === "error"
-              ? "Couldn't copy embed code"
-              : "Copy embed code";
-  const embedTitle =
-    embedState === "not-public"
-      ? "Bluesky won't generate an embed: this post's author requires viewers to be logged in (no logged-out / public visibility)."
-      : embedState === "not-found"
-        ? "Bluesky couldn't find this post to embed — it may have been deleted."
-        : "Copy HTML to embed this post on a website";
 
   return (
     <>
@@ -8807,9 +8731,6 @@ function PostActionBar({
             <a href={postBskyUrl(post)} target="_blank" rel="noreferrer" onClick={() => setMoreMenuOpen(false)}>
               Open on Bluesky
             </a>
-            <button type="button" onClick={handleCopyEmbed} disabled={embedState === "copying"} title={embedTitle}>
-              {embedLabel}
-            </button>
             {canDeletePost && (
               <button
                 type="button"

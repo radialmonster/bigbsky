@@ -212,26 +212,19 @@
   - Relevant files/functions found:
     - `src/App.tsx`: `PostComposer` (`replyTo`, `isReply`, `toolsAndMeta`, `handleSubmit`, reply-target preview), `EmojiPicker`, `PostLanguagePicker`, `Avatar`.
     - `src/auth.ts`: `publishPost`, `publishThread`, `buildImageEmbed`, `MAX_POST_IMAGES`.
-- [x] Investigate Bluesky oEmbed / Post Embed Widget usage.
+- [ ] Investigate Bluesky oEmbed / Post Embed Widget usage.
   - Source: https://docs.bsky.app/docs/advanced-guides/oembed
-  - Decision: keep local AppView rendering for *displaying* posts (the official widget is an iframe and would be a heavier, less integrated render than BigBsky's own cards), but **add a "Copy embed code" action** so users can embed a BigBsky/Bluesky post on their own site using the official snippet. Display rendering unchanged.
-  - Done (2026-06-14):
-    - Added `postEmbedOembedUrl(post, maxwidth=600)` in `src/App.tsx` next to `postBskyUrl`. It calls `https://embed.bsky.app/oembed?url=<post.uri>&maxwidth=<w>&format=json`, passing the post's `at://` URI directly. **Verified empirically** that the endpoint resolves `at://did/...` and DID-based bsky.app URLs but **404s on handle-based** `bsky.app/profile/<handle>/post/<rkey>` URLs — so using `post.uri` (which already carries the DID) is the reliable form. `maxwidth` is clamped to the documented `220`–`600` range.
-    - Added a "Copy embed code" item to the `PostActionBar` "More" (⋯) menu, after "Open on Bluesky". On click it fetches the oEmbed JSON **first** (so it can classify the HTTP status), then copies `data.html` (the `<blockquote class="bluesky-embed">` + `embed.bsky.app/static/embed.js` `<script>`) to the clipboard. The menu stays open so the status is visible. No modal/popup/panel (per operator rules) — clipboard-only, like the existing Share action.
-    - **Distinct, explained failure states** (`EmbedCopyState` + `embedLabel`/`embedTitle`): `Copying embed code…` → `Embed code copied`; `Can't embed — post isn't public` (HTTP 403, with tooltip "this post's author requires viewers to be logged in"); `Can't embed — post not found` (HTTP 404, deleted/missing); `Couldn't copy embed code` (network or clipboard failure). Non-error states clear after 2.4s, explained ones after 4s.
-    - **Why a viewable post can be non-embeddable** (operator asked): Bluesky's embed endpoint enforces a public-content policy. A post whose author sets `!no-unauthenticated` ("require viewers to be logged in") is **still returned by the public AppView API** (the label is advisory; clients enforce it), so BigBsky displays it — but the embed endpoint *enforces* it and returns 403, since embeds are a logged-out/public surface. Confirmed empirically: `monriatitans.bsky.social` profile carries `!no-unauthenticated` and its post 403s on oEmbed while `getPostThread` returns 200; `alexbenzer.com` has no such label and embeds fine.
-    - **Clipboard approach**: fetch-first then `navigator.clipboard.writeText` (the fetch is sub-second, within the browser's ~5s transient-activation window, so the write stays user-initiated — no permission prompt; writing to the clipboard never prompts, only *reading* does). An earlier `ClipboardItem(Promise<Blob>)` attempt was reverted because the write call could **hang** (never settling) when the inner fetch rejected, leaving the button stuck on "Copying…", and it hid the HTTP status needed for the explained errors. `height` is always `null` (irrelevant — we only copy `html`).
-  - Verified: `npm run build` passes (tsc, vite, audit initial JS 117 kB gzip, reader + layout + rich-text verifiers all green). Drove the running dev server via `scripts/cdp.mjs`: the More menu renders `Open on Bluesky` / **`Copy embed code`** / `Block @…`; on the non-public `monriatitans` post the button resolved to **`Can't embed — post isn't public`** with the explanatory tooltip (the classification fetch needs no clipboard, so this is fully verified headless); on the public `alexbenzer.com` post it reached the clipboard write and showed `Couldn't copy embed code` — i.e. it did **not** mis-classify as not-public/not-found, proving the fetch returned 200 + html and it reached `writeText`, which throws `NotAllowedError` only in the unfocused headless CDP context (same documented limitation as the Share button; it shows `Embed code copied` in a real focused browser). No console errors; no hang.
+  - NOTE (2026-06-14): a "Copy embed code" action was built and then **reverted at the operator's request**. It copied the oEmbed snippet via the Clipboard API, which triggered a browser permission popup. Do NOT re-add a clipboard-based embed-copy action. If revisited, deliver the snippet without the Clipboard API (e.g. an inline read-only, pre-selected text field) and only if the operator wants the feature at all.
+  - Current finding: no existing `embed.bsky.app/oembed`, post embed widget iframe, copied blockquote snippet, or `embed.bsky.app` integration was found in the BigBsky source.
+  - Current behavior: BigBsky renders posts itself from AppView data, including `app.bsky.embed` images/gallery/video/external/record embeds.
+  - Check whether any feature should use official oEmbed instead of local rendering, especially when showing external Bluesky post links or generating share/embed HTML.
+  - If adding an "Embed Post" or "Copy embed HTML" action, use `https://embed.bsky.app/oembed?url=...` with supported bsky.app post URLs, respect `maxwidth` range `220`-`600`, and expect `height: null`.
+  - Preserve the docs' public-content behavior when relying on official embeds: adult-only content, deleted posts/accounts, and "no unauthenticated viewers" should be enforced by the official widget/API.
   - Relevant files/functions found:
-    - `src/App.tsx`: `postEmbedOembedUrl`, `EmbedCopyState`, `postBskyUrl`, `PostActionBar` (`handleCopyEmbed`, `embedState`, `embedLabel`/`embedTitle`, the More menu).
-  - Follow-up (optional, captured below): expose `maxwidth` as a choice and/or add an "Embed post" preview if users want to size the embed before copying — current action copies the default 600px-wide snippet.
-
-- [ ] Decide whether BigBsky should honor `!no-unauthenticated` for logged-out viewers.
-  - Surfaced while building the oEmbed "Copy embed code" action. Accounts with the `!no-unauthenticated` label ("require viewers to be logged in") are returned by the public AppView API but are meant to be hidden from logged-out users; bsky.app's logged-out web requires sign-in to view them. BigBsky currently renders them regardless of session state (the label is advisory and the API still serves the data).
-  - Question: when there is **no** signed-in session, should BigBsky redact/gate `!no-unauthenticated` posts/profiles (matching bsky.app's logged-out behavior), or is it acceptable to show what the public API returns? This affects feeds, threads, profiles, and search — not just embeds. The embed action already fails correctly for these (Bluesky's endpoint enforces it), so this task is specifically about BigBsky's own display.
-  - Relevant files/functions found:
-    - `src/App.tsx`: `isSensitiveLabel`, `moderationLabelText`, `PostCard` moderation notices, profile rendering; would need a logged-out gate keyed on the `!no-unauthenticated` label.
-    - `src/api.ts` / `src/auth.ts`: public vs. authed read paths (the label rides along on profile/author `labels`).
+    - `src/App.tsx`: `postBskyUrl` builds bsky.app post URLs for sharing/opening.
+    - `src/App.tsx`: `ExternalLinkCard`, `QuoteCard`, `PostCard`, and `PostImageVideoMedia` render local embed views from AppView data.
+    - `src/api.ts`: `getExternalEmbed`, `getRecordEmbed`, `getEmbedImages`, and `getVideoEmbed` normalize local embed rendering data.
+    - `src/styles.css`: quote/link/embed rendering styles include `.quote-card`, `.quote-link-card`, and link-card/media styles.
 - [x] Audit Bluesky rich-text facet handling.
   - Source: https://docs.bsky.app/docs/advanced-guides/post-richtext
   - Confirmed correct (no change needed):
@@ -383,9 +376,3 @@
   - Relevant files/functions found:
     - `src/auth.ts`: `getSubscribedFeeds`, `followFeed`, `unfollowFeed` (saved-feeds preference read/write).
     - `src/App.tsx`: `orderedSubscribedFeeds`, `feedOrder`, `persistFeedOrder`.
-
-- [ ] Optionally let users size the post embed snippet (follow-up from the oEmbed "Copy embed code" action).
-  - Current behavior: "Copy embed code" in the post More menu copies the default 600px-wide snippet (`postEmbedOembedUrl(post, 600)`).
-  - Possible improvement: let users pick a `maxwidth` within the documented 220–600 range before copying, and/or show a small inline "Embed post" preview so they can see the rendered size. Keep it inline (no modal/popup, per operator rules) — e.g. a width control in the same menu, or a dedicated embed section on the post detail.
-  - Relevant files/functions found:
-    - `src/App.tsx`: `postEmbedOembedUrl`, `PostActionBar` (`handleCopyEmbed`, `embedState`).
