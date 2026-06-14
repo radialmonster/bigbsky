@@ -2915,15 +2915,13 @@ button.surface-action {
 }
 
 .timeline.compact .post-card.media-hidden .media-hidden-button {
-  position: absolute;
-  left: 44px;
-  top: 42px;
-  z-index: 1;
-  width: auto;
+  grid-column: 2;
+  width: max-content;
+  max-width: 100%;
   min-width: 0;
   height: auto;
   min-height: 24px;
-  margin: 0;
+  margin: 3px 0;
   padding: 0 9px;
   border-radius: 6px;
   border-style: solid;
@@ -3179,8 +3177,12 @@ button.surface-action {
 /* When the link thumbnail is hidden the card has no media column, so collapse
    it to a single text column instead of leaving an empty gap. */
 .link-card.no-media,
-.link-card.no-media a {
+.link-card.no-media > a {
   grid-template-columns: 1fr;
+}
+
+.link-card.no-media {
+  min-height: 92px;
 }
 
 .avatar {
@@ -3403,14 +3405,9 @@ button.surface-action {
   color: var(--bsky-blue-soft);
 }
 
-.link-card,
-.link-card a {
+.link-card {
   display: grid;
-  /* In the very wide content column a 148px thumbnail left a thin, empty
-     stretched strip. A larger proportional thumbnail (bounded) makes the
-     card a substantial banner that fills the width pleasingly. */
-  grid-template-columns: clamp(220px, 24%, 440px) 1fr;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
   min-height: 168px;
   margin: 12px 0;
   overflow: hidden;
@@ -3420,15 +3417,19 @@ button.surface-action {
   text-decoration: none;
 }
 
-.link-card {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.link-card a {
+.link-card > a {
+  display: grid;
+  /* In the very wide content column a 148px thumbnail left a thin, empty
+     stretched strip. A larger proportional thumbnail (bounded) makes the
+     card a substantial banner that fills the width pleasingly. */
+  grid-template-columns: clamp(220px, 24%, 440px) minmax(0, 1fr);
+  gap: 16px;
   min-height: 100%;
   margin: 0;
   overflow: hidden;
   border: 0;
+  color: inherit;
+  text-decoration: none;
 }
 
 .link-card button {
@@ -3459,11 +3460,13 @@ button.surface-action {
   padding: 10px 12px 10px 0;
 }
 
-/* Link-card text sized to read with the post body: title matches post text
-   (17px), description one step smaller (16px), instead of the small browser
-   defaults (16px / 13px) that looked cramped in the wide column. */
+.link-card.no-media span {
+  padding: 12px;
+}
+
 .link-card strong {
   font-size: 17px;
+  line-height: 1.25;
 }
 
 .link-card em {
@@ -3471,7 +3474,7 @@ button.surface-action {
   overflow: hidden;
   margin-top: 4px;
   color: var(--bsky-blue-soft);
-  font-size: 17px;
+  font-size: 16px;
   font-style: normal;
   font-weight: 700;
   text-overflow: ellipsis;
@@ -3482,10 +3485,47 @@ button.surface-action {
   display: -webkit-box;
   overflow: hidden;
   margin-top: 5px;
-  font-size: 16px;
+  font-size: 15px;
+  line-height: 1.35;
   color: var(--app-text-muted);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.additional-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+  margin: 8px 0 12px;
+  color: var(--app-text-muted);
+  font-size: 15px;
+}
+
+.additional-links span {
+  font-weight: 700;
+}
+
+.additional-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  max-width: 100%;
+  padding: 0 8px;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: 7px;
+  background: rgba(5, 96, 255, 0.08);
+  color: var(--bsky-blue-soft);
+  font-weight: 700;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.additional-links a:hover {
+  border-color: rgba(117, 175, 255, 0.48);
+  color: var(--app-text);
 }
 
 .quote-card {
@@ -3551,17 +3591,27 @@ button.surface-action {
 }
 
 .quote-link-card {
-  grid-template-columns: 112px 1fr;
   min-height: 86px;
   margin: 10px 0;
 }
 
-.quote-link-card {
-  border: 1px solid var(--app-border);
+.quote-link-card > a {
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 10px;
 }
 
 .quote-link-card img {
   min-height: 86px;
+}
+
+.quote-link-card strong,
+.quote-link-card em {
+  font-size: 15px;
+}
+
+.quote-link-card small {
+  font-size: 15px;
+  -webkit-line-clamp: 1;
 }
 
 .quote-video-card {
@@ -3580,7 +3630,8 @@ button.surface-action {
 .post-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 24px;
+  column-gap: 18px;
+  row-gap: 8px;
   color: var(--app-text-muted);
   font-size: 14px;
 }
@@ -3926,7 +3977,7 @@ button.surface-action {
 .compact .post-card.text-only,
 .compact .post-card.media-hidden {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: minmax(190px, 280px) minmax(0, 1fr);
   column-gap: 10px;
   align-items: start;
 }
@@ -3950,6 +4001,7 @@ button.surface-action {
 .compact .post-card.media-hidden .post-text,
 .compact .post-card.media-hidden .post-image-video-media,
 .compact .post-card.media-hidden .link-card,
+.compact .post-card.media-hidden .additional-links,
 .compact .post-card.media-hidden .quote-card,
 .compact .post-card.media-hidden .post-actions,
 .compact .thread-combined-card .combined-thread-text,
@@ -3963,7 +4015,7 @@ button.surface-action {
 }
 
 .compact .post-card.media-hidden .link-card,
-.compact .post-card.media-hidden .link-card a {
+.compact .post-card.media-hidden .link-card > a {
   min-height: 0;
 }
 
@@ -3973,7 +4025,7 @@ button.surface-action {
   margin: 4px 0;
 }
 
-.compact .post-card.media-hidden .link-card a {
+.compact .post-card.media-hidden .link-card > a {
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -4003,6 +4055,11 @@ button.surface-action {
   margin-right: 6px;
   padding: 0 8px;
   font-size: 12px;
+}
+
+.compact .post-card.media-hidden .additional-links {
+  margin: 3px 0;
+  font-size: 15px;
 }
 
 .compact .post-card.media-hidden .quote-card {
@@ -4361,7 +4418,7 @@ button.surface-action {
   height: 100%;
   min-height: 0;
   max-height: none;
-  object-fit: contain;
+  object-fit: cover;
 }
 
 .post-image-video-media + .post-actions {
@@ -5392,7 +5449,7 @@ button.surface-action {
   }
 
   .link-card,
-  .link-card a {
+  .link-card > a {
     grid-template-columns: 1fr;
   }
 

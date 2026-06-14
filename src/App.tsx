@@ -989,6 +989,42 @@ function safeEmbedImages(images: ReturnType<typeof getEmbedImages>) {
     .filter((image) => image.thumb || image.fullsize);
 }
 
+function normalizeLinkHref(value?: string | null) {
+  const href = safeHttpUrl(value);
+  if (!href) {
+    return undefined;
+  }
+  try {
+    const url = new URL(href);
+    url.hash = "";
+    return url.href;
+  } catch {
+    return href;
+  }
+}
+
+function extractFacetLinks(facets: RichTextFacet[] | undefined): string[] {
+  if (!facets?.length) {
+    return [];
+  }
+
+  const links: string[] = [];
+  const seen = new Set<string>();
+
+  for (const facet of facets) {
+    const feature = facet.features?.find((item) => item.$type === "app.bsky.richtext.facet#link" && item.uri);
+    const href = normalizeLinkHref(feature?.uri);
+    if (!href || seen.has(href)) {
+      continue;
+    }
+
+    links.push(href);
+    seen.add(href);
+  }
+
+  return links;
+}
+
 function hasPostImages(post: FeedPost) {
   return safeEmbedImages(getEmbedImages(post.embed)).length > 0;
 }
@@ -1789,6 +1825,9 @@ export function App() {
       const external = getExternalEmbed(post.embed);
       if (external?.uri) {
         linkUrls.push(external.uri);
+      }
+      for (const link of extractFacetLinks(post.record.facets)) {
+        linkUrls.push(link);
       }
     }
 
@@ -6938,6 +6977,107 @@ function renderRichText(
   return nodes;
 }
 
+function AdditionalLinks({
+  externalHref,
+  links,
+  onOpenLinkPreview,
+  sourcePost,
+}: {
+  externalHref?: string;
+  links: string[];
+  onOpenLinkPreview?: (link: NonNullable<LinkPreviewState>) => void;
+  sourcePost?: FeedPost;
+}) {
+  const externalNormalized = normalizeLinkHref(externalHref);
+  const additional = links.filter((link) => normalizeLinkHref(link) !== externalNormalized);
+
+  if (additional.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="additional-links" aria-label="Additional links in post">
+      <span>{externalHref ? "Also linked" : additional.length === 1 ? "Linked" : "Links"}</span>
+      {additional.map((link) => (
+        <a
+          key={link}
+          href={link}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => {
+            event.stopPropagation();
+            if (!onOpenLinkPreview) {
+              return;
+            }
+            event.preventDefault();
+            onOpenLinkPreview({
+              uri: link,
+              title: formatExternalUrlLabel(link),
+              sourcePost,
+            });
+          }}
+        >
+          {formatExternalUrlLabel(link)}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function ExternalLinkCard({
+  className = "",
+  external,
+  hideThumbnail = false,
+  onOpenLinkPreview,
+  sourcePost,
+}: {
+  className?: string;
+  external: NonNullable<ReturnType<typeof getExternalEmbed>>;
+  hideThumbnail?: boolean;
+  onOpenLinkPreview?: (link: NonNullable<LinkPreviewState>) => void;
+  sourcePost?: FeedPost;
+}) {
+  const href = safeHttpUrl(external.uri);
+  const thumb = safeHttpUrl(external.thumb);
+  if (!href) {
+    return null;
+  }
+
+  const noMedia = hideThumbnail || !thumb;
+  const classes = ["link-card", className, noMedia ? "no-media" : ""].filter(Boolean).join(" ");
+
+  return (
+    <div className={classes}>
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(event) => {
+          event.stopPropagation();
+          if (!onOpenLinkPreview) {
+            return;
+          }
+          event.preventDefault();
+          onOpenLinkPreview({
+            uri: href,
+            title: external.title,
+            description: external.description,
+            thumb,
+            sourcePost,
+          });
+        }}
+      >
+        {thumb && !hideThumbnail && <img alt="" src={thumb} loading="lazy" decoding="async" />}
+        <span>
+          <strong>{external.title || external.uri}</strong>
+          <em>Open {formatExternalUrlLabel(external.uri || external.title || "")}</em>
+          {external.description && <small>{external.description}</small>}
+        </span>
+      </a>
+    </div>
+  );
+}
+
 function threadMarkerMatch(text: string) {
   const markerPattern = /(?:^|\s)[\t\u200e\u200f\u202a-\u202e\u2066-\u2069]*(\d{1,3})\s*\/\s*(\d{1,3})(?:\s*🧵)?[\t\u200e\u200f\u202a-\u202e\u2066-\u2069]*$/u;
   const match = text.match(markerPattern);
@@ -7727,6 +7867,7 @@ function CombinedThreadViewCard({
   activeReplyParentUri,
   canReply,
   onOpenImage,
+  onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
   onShowReplies,
@@ -7739,6 +7880,7 @@ function CombinedThreadViewCard({
   activeReplyParentUri: string | null;
   canReply: boolean;
   onOpenImage: (image: ImageViewerState) => void;
+  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
   onShowReplies?: () => void;
@@ -7825,8 +7967,13 @@ function CombinedThreadViewCard({
         {parts.map((part, index) => {
           const post = part.node.post;
           const text = combinedThreadText(post, hideThreadMarkers);
-          const hasMedia = getEmbedImages(post.embed).length > 0 || !!getVideoEmbed(post.embed);
-          if (!text && !hasMedia) {
+          const hasEmbeds =
+            getEmbedImages(post.embed).length > 0 ||
+            !!getVideoEmbed(post.embed) ||
+            !!getExternalEmbed(post.embed) ||
+            !!getRecordEmbed(post.embed) ||
+            extractFacetLinks(post.record.facets).length > 0;
+          if (!text && !hasEmbeds) {
             return null;
           }
           return (
@@ -7837,7 +7984,13 @@ function CombinedThreadViewCard({
                   ? renderRichText(text, post.record.facets, onOpenProfile, onOpenTag)
                   : `Post ${index + 1} has no plain text.`}
               </p>
-              <PostImageVideoMedia post={post} onOpenImage={onOpenImage} />
+              <PostEmbeds
+                post={post}
+                onOpenImage={onOpenImage}
+                onOpenLinkPreview={onOpenLinkPreview}
+                onOpenPost={onOpenPost}
+                onOpenProfile={onOpenProfile}
+              />
             </section>
           );
         })}
@@ -7906,11 +8059,61 @@ function CombinedThreadViewCard({
   );
 }
 
+function PostEmbeds({
+  post,
+  onOpenImage,
+  onOpenLinkPreview,
+  onOpenPost,
+  onOpenProfile,
+}: {
+  post: FeedPost;
+  onOpenImage?: (image: ImageViewerState) => void;
+  onOpenLinkPreview?: (link: NonNullable<LinkPreviewState>) => void;
+  onOpenPost?: (post: FeedPost) => void;
+  onOpenProfile?: (profile: Profile) => void;
+}) {
+  const showMedia = useContext(ShowMediaContext);
+  const [linkMediaRevealed, setLinkMediaRevealed] = useState(false);
+  const external = getExternalEmbed(post.embed);
+  const externalHref = safeHttpUrl(external?.uri);
+  const externalThumb = safeHttpUrl(external?.thumb);
+  const recordEmbed = getRecordEmbed(post.embed);
+  const linkMediaHidden = !showMedia && !linkMediaRevealed && !!externalThumb;
+  const facetLinks = extractFacetLinks(post.record.facets);
+
+  return (
+    <>
+      <PostImageVideoMedia post={post} onOpenImage={onOpenImage} />
+      {!showMedia && externalThumb && (
+        <MediaHiddenButton kind="image" revealed={linkMediaRevealed} onReveal={() => setLinkMediaRevealed((current) => !current)} />
+      )}
+      {external && (
+        <ExternalLinkCard
+          external={external}
+          hideThumbnail={linkMediaHidden}
+          onOpenLinkPreview={onOpenLinkPreview}
+          sourcePost={post}
+        />
+      )}
+      <AdditionalLinks externalHref={externalHref} links={facetLinks} onOpenLinkPreview={onOpenLinkPreview} sourcePost={post} />
+      {recordEmbed && (
+        <QuotedPostCard
+          record={recordEmbed}
+          onOpenLinkPreview={onOpenLinkPreview}
+          onOpenPost={onOpenPost}
+          onOpenProfile={onOpenProfile}
+        />
+      )}
+    </>
+  );
+}
+
 function PostCard({
   currentDid,
   item,
   localLists = [],
   onOpenImage,
+  onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
   onReply,
@@ -7937,11 +8140,8 @@ function PostCard({
   const blockCtx = useContext(BlockContext);
   const deletePostCtx = useContext(DeletePostContext);
   const canBlockAuthor = !!blockCtx?.canBlock && post.author.did !== blockCtx?.selfDid;
-  const [linkMediaRevealed, setLinkMediaRevealed] = useState(false);
   const images = safeEmbedImages(getEmbedImages(post.embed));
   const external = getExternalEmbed(post.embed);
-  const externalHref = safeHttpUrl(external?.uri);
-  const externalThumb = safeHttpUrl(external?.thumb);
   const recordEmbed = getRecordEmbed(post.embed);
   const video = getVideoEmbed(post.embed);
   const text = post.record.text?.trim() || "";
@@ -7958,7 +8158,6 @@ function PostCard({
   // Adult content is often labeled at the account level, not the post, so check
   // the author's labels too when deciding whether to hide media.
   const sensitiveLabels = [...labels, ...(post.author.labels ?? [])].filter(isSensitiveLabel);
-  const linkMediaHidden = !showMedia && !linkMediaRevealed && !!externalThumb;
   const moderationNotes = [
     ...(post.viewer?.threadMuted ? ["Thread muted"] : []),
     ...sensitiveLabels.map(moderationLabelText),
@@ -8042,29 +8241,13 @@ function PostCard({
       ) : (
         !hasRichContent && <p className="post-text muted">Post has no plain text.</p>
       )}
-      <PostImageVideoMedia post={post} onOpenImage={onOpenImage} />
-      {!showMedia && externalThumb && (
-        <MediaHiddenButton kind="image" revealed={linkMediaRevealed} onReveal={() => setLinkMediaRevealed((current) => !current)} />
-      )}
-      {external && externalHref && (
-        <div className={linkMediaHidden ? "link-card no-media" : "link-card"}>
-          <a href={externalHref} target="_blank" rel="noreferrer">
-            {externalThumb && !linkMediaHidden && <img alt="" src={externalThumb} loading="lazy" decoding="async" />}
-            <span>
-              <strong>{external.title || external.uri}</strong>
-              <em>Open {formatExternalUrlLabel(external.uri || external.title || "")}</em>
-              <small>{external.description}</small>
-            </span>
-          </a>
-        </div>
-      )}
-      {recordEmbed && (
-        <QuotedPostCard
-          record={recordEmbed}
-          onOpenPost={onOpenPost}
-          onOpenProfile={onOpenProfile}
-        />
-      )}
+      <PostEmbeds
+        post={post}
+        onOpenImage={onOpenImage}
+        onOpenLinkPreview={onOpenLinkPreview}
+        onOpenPost={onOpenPost}
+        onOpenProfile={onOpenProfile}
+      />
       <PostActionBar
         post={post}
         onOpenPost={onOpenPost}
@@ -8081,10 +8264,12 @@ function PostCard({
 
 function QuotedPostCard({
   record,
+  onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
 }: {
   record: RecordEmbedView;
+  onOpenLinkPreview?: (link: NonNullable<LinkPreviewState>) => void;
   onOpenPost?: (post: FeedPost) => void;
   onOpenProfile?: (profile: Profile) => void;
 }) {
@@ -8093,7 +8278,6 @@ function QuotedPostCard({
   const showMedia = useContext(ShowMediaContext);
   const [mediaRevealed, setMediaRevealed] = useState(false);
   const embeddedExternal = getExternalEmbed(record.embeds?.[0] ?? record.value?.embed);
-  const embeddedExternalHref = safeHttpUrl(embeddedExternal?.uri);
   const embeddedExternalThumb = safeHttpUrl(embeddedExternal?.thumb);
   const embeddedImages = safeEmbedImages(getEmbedImages(record.embeds?.[0] ?? record.value?.embed));
   const embeddedVideo = getVideoEmbed(record.embeds?.[0] ?? record.value?.embed);
@@ -8152,6 +8336,12 @@ function QuotedPostCard({
       ) : (
         <p className="quote-text muted">Quoted post has no plain text.</p>
       )}
+      <AdditionalLinks
+        externalHref={embeddedExternal?.uri}
+        links={extractFacetLinks(record.value?.facets)}
+        onOpenLinkPreview={onOpenLinkPreview}
+        sourcePost={quotedPost ?? undefined}
+      />
       {gateMedia ? (
         <SensitiveMediaGate values={mediaWarningValues} onReveal={() => setMediaRevealed(true)} />
       ) : hideMediaForSetting && hasHiddenPreviewMedia ? (
@@ -8179,15 +8369,14 @@ function QuotedPostCard({
           {embeddedVideo && <VideoEmbedCard video={embeddedVideo} compact />}
         </>
       )}
-      {embeddedExternal && embeddedExternalHref && (
-        <a className={hideMediaForSetting && embeddedExternalThumb ? "link-card quote-link-card no-media" : "link-card quote-link-card"} href={embeddedExternalHref} target="_blank" rel="noreferrer">
-          {embeddedExternalThumb && !hideMediaForSetting && <img alt="" src={embeddedExternalThumb} loading="lazy" decoding="async" />}
-          <span>
-            <strong>{embeddedExternal.title || embeddedExternal.uri}</strong>
-            <em>Open {formatExternalUrlLabel(embeddedExternal.uri || embeddedExternal.title || "")}</em>
-            <small>{embeddedExternal.description}</small>
-          </span>
-        </a>
+      {embeddedExternal && (
+        <ExternalLinkCard
+          className="quote-link-card"
+          external={embeddedExternal}
+          hideThumbnail={hideMediaForSetting && !!embeddedExternalThumb}
+          onOpenLinkPreview={onOpenLinkPreview}
+          sourcePost={quotedPost ?? undefined}
+        />
       )}
       {quotedPost && (
         <button className="quote-open-button" type="button" onClick={() => onOpenPost?.(quotedPost)}>
@@ -8487,6 +8676,7 @@ function ThreadView({
           activeReplyParentUri={activeReplyParentUri}
           canReply={canReply}
           onOpenImage={onOpenImage}
+          onOpenLinkPreview={onOpenLinkPreview}
           onOpenPost={onOpenPost}
           onOpenProfile={onOpenProfile}
           onShowReplies={() => setThreadDisplayMode("separated")}
@@ -8691,7 +8881,13 @@ function LongThreadCard({
               ) : (
                 <p className="post-text muted">Thread post {part.partNumber} has no plain text.</p>
               )}
-              <PostImageVideoMedia post={post} onOpenImage={handlers.onOpenImage} />
+              <PostEmbeds
+                post={post}
+                onOpenImage={handlers.onOpenImage}
+                onOpenLinkPreview={onOpenLinkPreview}
+                onOpenPost={handlers.onOpenPost}
+                onOpenProfile={handlers.onOpenProfile}
+              />
               <PostActionBar
                 post={post}
                 commentCount={commentCount}
