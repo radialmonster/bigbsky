@@ -625,6 +625,103 @@ function writeTimelineScrollCache(cache: Record<string, number>) {
   }
 }
 
+// The scroll container differs by breakpoint: on desktop the bounded
+// `.timeline` element scrolls, but on mobile `<html>` stays overflow:hidden
+// while `body`/`#root` become height:auto + overflow-y:auto, so the document
+// body is the real scroller and `timeline.scrollTop` (and often
+// `window.scrollY`) stays 0. These helpers read/write whichever container is
+// actually active so scroll restoration, back-to-top, and the header-hide
+// logic all agree about the live offset.
+const MOBILE_SCROLL_QUERY = "(max-width: 720px)";
+
+function isMobileScroller() {
+  return typeof window !== "undefined" && window.matchMedia(MOBILE_SCROLL_QUERY).matches;
+}
+
+// Live scroll offset of whichever element is actually scrolling. Only one
+// candidate is non-zero at a time, so the max always picks the live offset
+// regardless of which element scrolls.
+function readScrollOffset(timeline: HTMLElement | null): number {
+  if (typeof window === "undefined") {
+    return 0;
+  }
+  return Math.max(
+    window.scrollY,
+    document.scrollingElement?.scrollTop ?? 0,
+    document.body?.scrollTop ?? 0,
+    timeline?.scrollTop ?? 0,
+  );
+}
+
+// Scroll the active container to `top`. Targets the document on mobile and the
+// `.timeline` element on desktop, mirroring `readScrollOffset`.
+function scrollOffsetTo(timeline: HTMLElement | null, top: number, behavior?: ScrollBehavior) {
+  if (isMobileScroller()) {
+    window.scrollTo({ top, behavior });
+  } else {
+    timeline?.scrollTo({ top, behavior });
+  }
+}
+
+// While a saved offset is being restored, the document briefly sits near the
+// top before the scroll lands. Suppress save-on-scroll during that window so a
+// transient ~0 offset doesn't clobber the value we're trying to restore.
+let scrollRestoreGuard: { target: number; until: number } | null = null;
+
+function nowMs(): number {
+  return typeof performance !== "undefined" ? performance.now() : 0;
+}
+
+// Arm (or refresh) the suppression window for an offset we intend to restore.
+function armScrollRestore(target: number) {
+  if (target <= 0) {
+    return;
+  }
+  scrollRestoreGuard = { target, until: nowMs() + 2000 };
+}
+
+function shouldSuppressScrollSave(currentOffset: number): boolean {
+  if (!scrollRestoreGuard) {
+    return false;
+  }
+  if (nowMs() > scrollRestoreGuard.until) {
+    scrollRestoreGuard = null;
+    return false;
+  }
+  // Once the document has reached (or passed) the target the restore is done;
+  // let real user scrolls — including an intentional scroll back to the top —
+  // be saved again.
+  return currentOffset < scrollRestoreGuard.target - 1;
+}
+
+// Restore a saved scroll offset after a navigation/cache hit. A single
+// post-render scroll often lands short because the feed content (virtualized
+// rows, images, embeds) is still growing, so the early offset clamps to a
+// shorter document and any stray scroll event would then overwrite the saved
+// value with ~0. Re-apply across a few frames until the target is reachable.
+// Takes the ref (not its current value) because the destination route's
+// `.timeline` element usually has not mounted yet at the synchronous call site
+// — it appears a frame or two later. Re-resolving inside each frame targets the
+// live element instead of a stale/detached one.
+function restoreScrollOffset(timelineRef: { readonly current: HTMLElement | null }, top: number) {
+  if (top <= 0) {
+    return;
+  }
+  armScrollRestore(top);
+  let frames = 0;
+  const apply = () => {
+    const timeline = timelineRef.current;
+    scrollOffsetTo(timeline, top);
+    frames += 1;
+    if (frames < 16 && readScrollOffset(timeline) < top - 1) {
+      requestAnimationFrame(apply);
+    } else {
+      scrollRestoreGuard = null;
+    }
+  };
+  requestAnimationFrame(apply);
+}
+
 function feedPreferenceKeys(source: FeedSource) {
   const keys = new Set([`feed:${source.uri}`, `feed:${source.id}`]);
   for (const known of feedSources) {
@@ -1964,7 +2061,7 @@ export function App() {
       if (cached?.status === "ready") {
         setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
         setFeedState(cached);
-        requestAnimationFrame(() => timelineRef.current?.scrollTo({ top: scrollCacheRef.current[cacheKey] || 0 }));
+        restoreScrollOffset(timelineRef, scrollCacheRef.current[cacheKey] || 0);
         return;
       }
     }
@@ -1995,7 +2092,7 @@ export function App() {
         return next;
       });
       if (!cursor) {
-        requestAnimationFrame(() => timelineRef.current?.scrollTo({ top: scrollCacheRef.current[cacheKey] || 0 }));
+        restoreScrollOffset(timelineRef, scrollCacheRef.current[cacheKey] || 0);
       }
     } catch (error) {
       if (!signal?.aborted) {
@@ -2016,7 +2113,7 @@ export function App() {
         setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
         setProfile(cached.profile);
         setFeedState(cached.feed);
-        requestAnimationFrame(() => timelineRef.current?.scrollTo({ top: scrollCacheRef.current[cacheKey] || 0 }));
+        restoreScrollOffset(timelineRef, scrollCacheRef.current[cacheKey] || 0);
         return;
       }
     }
@@ -2074,7 +2171,7 @@ export function App() {
         return next;
       });
       if (!cursor) {
-        requestAnimationFrame(() => timelineRef.current?.scrollTo({ top: scrollCacheRef.current[cacheKey] || 0 }));
+        restoreScrollOffset(timelineRef, scrollCacheRef.current[cacheKey] || 0);
       }
     } else {
       const error = feedResult.reason;
@@ -3013,27 +3110,14 @@ export function App() {
       : Math.ceil((route.kind === "search" ? searchState.posts.length + actorSearchState.actors.length : feedState.items.length) / 30);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(max-width: 720px)");
+    const mediaQuery = window.matchMedia(MOBILE_SCROLL_QUERY);
     const timeline = timelineRef.current;
-    // The scroll container differs by breakpoint: on desktop the bounded
-    // `.timeline` element scrolls, but on mobile `<html>` stays overflow:hidden
-    // while `body`/`#root` become height:auto + overflow-y:auto, so the document
-    // body is the real scroller and `timeline.scrollTop` (and often
-    // `window.scrollY`) stays 0. Read whichever candidate is actually moving —
-    // only one is non-zero at a time, so the max picks the live offset.
-    const readScrollTop = () =>
-      Math.max(
-        window.scrollY,
-        document.scrollingElement?.scrollTop ?? 0,
-        document.body?.scrollTop ?? 0,
-        timeline?.scrollTop ?? 0,
-      );
-    let lastScrollY = readScrollTop();
+    let lastScrollY = readScrollOffset(timeline);
     let frame = 0;
 
     const updateHeader = () => {
       frame = 0;
-      const currentScrollY = readScrollTop();
+      const currentScrollY = readScrollOffset(timeline);
       const delta = currentScrollY - lastScrollY;
 
       if (!mediaQuery.matches || navOpen || currentScrollY < 24) {
@@ -3075,19 +3159,37 @@ export function App() {
       return undefined;
     }
 
+    // Arm the restore guard from the persisted offset as soon as this key
+    // becomes active, before the feed finishes loading. Otherwise a transient
+    // near-top scroll event during load saves ~0 over the persisted value, and
+    // the later restore reads 0 and no-ops.
+    armScrollRestore(scrollCacheRef.current[activeScrollKey] || 0);
+
     const rememberScroll = () => {
-      scrollCacheRef.current[activeScrollKey] = timeline.scrollTop;
+      const offset = readScrollOffset(timeline);
+      if (shouldSuppressScrollSave(offset)) {
+        return;
+      }
+      scrollCacheRef.current[activeScrollKey] = offset;
     };
     const persistScroll = () => {
       rememberScroll();
       writeTimelineScrollCache(scrollCacheRef.current);
     };
+    // On mobile the document scrolls (timeline stays at 0), so also listen on
+    // window; on desktop the timeline element is the scroller.
     timeline.addEventListener("scroll", rememberScroll, { passive: true });
+    window.addEventListener("scroll", rememberScroll, { passive: true });
     window.addEventListener("pagehide", persistScroll);
     return () => {
-      persistScroll();
       timeline.removeEventListener("scroll", rememberScroll);
+      window.removeEventListener("scroll", rememberScroll);
       window.removeEventListener("pagehide", persistScroll);
+      // Flush the last live offset captured by the scroll handlers. Do NOT
+      // re-read scroll here: on navigation this cleanup runs after the timeline
+      // element has detached, and a detached element reports scrollTop 0, which
+      // would clobber the saved offset and break restoration on return.
+      writeTimelineScrollCache(scrollCacheRef.current);
     };
   }, [activeScrollKey]);
 
@@ -3096,10 +3198,8 @@ export function App() {
       return undefined;
     }
 
-    const frame = requestAnimationFrame(() => {
-      timelineRef.current?.scrollTo({ top: scrollCacheRef.current[activeScrollKey] || 0 });
-    });
-    return () => cancelAnimationFrame(frame);
+    restoreScrollOffset(timelineRef, scrollCacheRef.current[activeScrollKey] || 0);
+    return undefined;
   }, [activeScrollKey]);
 
   const loadMore = () => {
@@ -9919,14 +10019,16 @@ function BackToTopButton({ containerRef, watchKey }: { containerRef: RefObject<H
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     const el = containerRef.current;
-    if (!el) {
-      setVisible(false);
-      return;
-    }
-    const onScroll = () => setVisible(el.scrollTop > 600);
+    // On mobile the document scrolls (el.scrollTop stays ~0), so read the
+    // active offset and listen on window too; on desktop el is the scroller.
+    const onScroll = () => setVisible(readScrollOffset(el) > 600);
     onScroll();
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    el?.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      el?.removeEventListener("scroll", onScroll);
+    };
   }, [containerRef, watchKey]);
   if (!visible) {
     return null;
@@ -9935,7 +10037,7 @@ function BackToTopButton({ containerRef, watchKey }: { containerRef: RefObject<H
     <button
       type="button"
       className="back-to-top"
-      onClick={() => containerRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
+      onClick={() => scrollOffsetTo(containerRef.current, 0, "smooth")}
       aria-label="Scroll to top of feed"
       title="Back to top"
     >
