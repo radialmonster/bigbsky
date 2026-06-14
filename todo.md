@@ -132,9 +132,9 @@
   - Relevant files/functions found:
     - `src/auth.ts`: static `./api` import; fallback call sites.
     - `src/App.tsx`: static imports from `src/api.ts`.
-- [ ] Investigate editing a post or reply.
+- [ ] Investigate editing a post or reply. (BLOCKED — wait for native Bluesky support.)
   - Desired behavior: let signed-in users correct their own posts and replies from the reader.
-  - Confirm Bluesky/AppView support first; if true editing is not available, design a delete-and-repost or quote/correction workflow instead.
+  - Decision (2026-06-14): **Do not implement until Bluesky supports post editing natively.** Research confirmed there is no native edit in the atproto lexicon / AppView as of mid-2026 — `app.bsky.feed.post` has no edit/update path; Bluesky's product team only began *discussing* an edit feature (with a ~5-minute edit window) in May 2026, with no lexicon changes published yet. The only workaround is a third-party delete-and-repost ("atomic swap"), which is destructive: it loses likes/reposts/replies (or orphans child replies) and changes the post identity. That is not an acceptable "edit" for a reader, so BigBsky will not ship a delete-and-repost or quote/correction stand-in. Revisit and implement the real edit flow once Bluesky ships a native lexicon for it.
   - Relevant files/functions found:
     - `src/App.tsx`: `PostCard` renders post actions and ownership-specific delete menu behavior.
     - `src/App.tsx`: `DeletePostContext`, `handleDeletePost`, and `deletePostContextValue` manage deleting own posts.
