@@ -5442,12 +5442,18 @@ button.surface-action {
 
   .timeline.compact .post-card.media-hidden .media-hidden-button {
     position: static;
+    grid-column: auto;
+    justify-self: start;
     width: max-content;
     max-width: 100%;
     min-height: 22px;
     margin: 4px 0;
     padding: 1px 8px;
     font-size: 11px;
+  }
+
+  .compact .post-card.media-hidden .link-card {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .image-viewer {
