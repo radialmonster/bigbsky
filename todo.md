@@ -70,11 +70,15 @@
     - `package.json`: `npm run build` runs the production Vite build and verification scripts.
     - `src/App.tsx`: large shared app surface likely contributes to the main chunk.
     - `src/App.tsx` / media playback code: likely source of the `hls.js` chunk.
-- [ ] Review mixed static and dynamic imports of `src/api.ts`.
-  - Current finding: `npm run build` passes, but Vite warns that `src/api.ts` is dynamically imported by `src/auth.ts` while also statically imported by `src/App.tsx`, so the dynamic import cannot move it into a separate chunk.
-  - Decide whether these auth fallback imports should become static imports for clarity or whether App-level imports should be split to preserve code-splitting.
+- [x] Review mixed static and dynamic imports of `src/api.ts`.
+  - Decision: made the auth fallback imports static. `src/api.ts` is already in the main chunk (App.tsx imports it statically) and `api.ts` has no import of `auth.ts` (no circular dependency), so the dynamic `import("./api")` calls in `auth.ts` never actually code-split — they only produced Vite's "dynamically imported ... but also statically imported" warning.
+  - Done:
+    - Added a single static `import { getAuthorFeed, getFeed, getPostThread, getPostThreadByUri, getProfile, resolveHandle, searchPosts } from "./api";` at the top of `src/auth.ts` (with an explaining comment).
+    - Removed all 8 `const { X } = await import("./api");` sites in `getFeedAuthed`, `getProfileAuthed`, `getAuthorFeedAuthed`, `getPostThreadByUriAuthed`, `getPostThreadAuthed` (2: `getPostThread` + `resolveHandle`), `searchPostsAuthed`, and `addAccountToList` (`resolveHandle`), calling the now-statically-imported functions directly.
+    - Left the `@atproto/api` `Agent` calls as dynamic imports — that is a genuinely lazy/large dependency and not part of this warning.
+  - Verified: `npm run build` passes (tsc, vite, audit initial JS 113 kB gzip, reader + layout + rich-text verifiers all green) and the `src/api.ts` mixed-import warning is gone. The `hls`/main chunk-size warning remains (separate task below).
   - Relevant files/functions found:
-    - `src/auth.ts`: dynamic `import("./api")` fallback calls.
+    - `src/auth.ts`: static `./api` import; fallback call sites.
     - `src/App.tsx`: static imports from `src/api.ts`.
 - [ ] Investigate editing a post or reply.
   - Desired behavior: let signed-in users correct their own posts and replies from the reader.

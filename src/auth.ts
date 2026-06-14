@@ -1,5 +1,17 @@
 import type { BrowserOAuthClient, OAuthSession } from "@atproto/oauth-client-browser";
 import type { AuthorFeedFilter, FeedResponse, ListView, Profile, SearchPostsResponse, ThreadNode } from "./api";
+// Static import: api.ts is already in the main chunk (App.tsx imports it
+// statically), so dynamically importing these public fallbacks cannot split
+// them into a separate chunk — it only triggers Vite's mixed-import warning.
+import {
+  getAuthorFeed,
+  getFeed,
+  getPostThread,
+  getPostThreadByUri,
+  getProfile,
+  resolveHandle,
+  searchPosts,
+} from "./api";
 
 const productionClientId = "https://bigbsky.com/oauth-client-metadata.json";
 const handleResolver = "https://bsky.social";
@@ -246,7 +258,6 @@ export async function getFollowingTimeline(cursor?: string, signal?: AbortSignal
 export async function getFeedAuthed(feedUri: string, cursor?: string, signal?: AbortSignal): Promise<FeedResponse> {
   const session = await ensureSession();
   if (!session) {
-    const { getFeed } = await import("./api");
     return getFeed(feedUri, cursor, signal);
   }
   const { Agent } = await import("@atproto/api");
@@ -464,7 +475,6 @@ export async function unfollowFeed(feedUri: string): Promise<void> {
 export async function getProfileAuthed(actor: string, signal?: AbortSignal): Promise<Profile> {
   const session = await ensureSession();
   if (!session) {
-    const { getProfile } = await import("./api");
     return getProfile(actor, signal);
   }
   const { Agent } = await import("@atproto/api");
@@ -482,7 +492,6 @@ export async function getProfileAuthed(actor: string, signal?: AbortSignal): Pro
 export async function getAuthorFeedAuthed(actor: string, cursor?: string, signal?: AbortSignal, filter?: AuthorFeedFilter): Promise<FeedResponse> {
   const session = await ensureSession();
   if (!session) {
-    const { getAuthorFeed } = await import("./api");
     return getAuthorFeed(actor, cursor, signal, filter);
   }
   const { Agent } = await import("@atproto/api");
@@ -503,7 +512,6 @@ export async function getAuthorFeedAuthed(actor: string, cursor?: string, signal
 export async function getPostThreadByUriAuthed(uri: string, signal?: AbortSignal): Promise<{ thread: ThreadNode }> {
   const session = await ensureSession();
   if (!session) {
-    const { getPostThreadByUri } = await import("./api");
     return getPostThreadByUri(uri, signal);
   }
   const { Agent } = await import("@atproto/api");
@@ -520,10 +528,8 @@ export async function getPostThreadByUriAuthed(uri: string, signal?: AbortSignal
 export async function getPostThreadAuthed(handleOrDid: string, rkey: string, signal?: AbortSignal): Promise<{ thread: ThreadNode }> {
   const session = await ensureSession();
   if (!session) {
-    const { getPostThread } = await import("./api");
     return getPostThread(handleOrDid, rkey, signal);
   }
-  const { resolveHandle } = await import("./api");
   const did = await resolveHandle(handleOrDid, signal);
   const uri = `at://${did}/app.bsky.feed.post/${rkey}`;
   return getPostThreadByUriAuthed(uri, signal);
@@ -540,7 +546,6 @@ export async function searchPostsAuthed(
 ): Promise<SearchPostsResponse> {
   const session = await ensureSession();
   if (!session) {
-    const { searchPosts } = await import("./api");
     return searchPosts(query, sort, lang, cursor, signal);
   }
   const { Agent } = await import("@atproto/api");
@@ -932,7 +937,6 @@ export async function addAccountToList(listUri: string, handleOrDid: string): Pr
   if (!repo) {
     throw new Error("No active account.");
   }
-  const { resolveHandle } = await import("./api");
   const did = await resolveHandle(handleOrDid.trim().replace(/^@/, ""));
   const { data } = await agent.com.atproto.repo.createRecord({
     repo,
