@@ -59,13 +59,18 @@
     - `src/App.tsx`: `navIcons`, `.rail-nav` rendering, `openSelfTab`, `Composer` (self-profile `new-post` tab).
     - `src/styles.css`: `.rail-button` / `.rail-compose` styles.
     - `src/sources.ts`: `navigationItems` ordering (unchanged — compose is a distinct action, not a nav surface).
-- [ ] Make post/comment links open directly instead of using the right-rail link preview.
-  - Current issue: clicking an external link in a post/comment does not open the target URL directly. Example: a YouTube link in `https://bigbsky.com/profile/monriatitans.bsky.social/post/3mo7bk477bs2m` opens a right-rail link preview box instead.
-  - Desired behavior: clicking the link text/card in the post or comment should open the external URL directly.
-  - Remove/delete the right-rail link preview box flow with its "Open link" and "Open source post" detour.
+- [x] Make post/comment links open directly instead of using the right-rail link preview.
+  - Issue: clicking an external link card / "Also linked" link in a post intercepted the click and opened a right-rail "Link Preview" panel (with "Open link" / "Open source post" buttons) instead of opening the target URL. (Inline rich-text facet links already opened directly via `renderRichText`.)
+  - Done — removed the entire link-preview flow so the anchors open their target URL directly via their existing `href` + `target="_blank" rel="noreferrer"`:
+    - `ExternalLinkCard` and `AdditionalLinks` anchor `onClick` now only `event.stopPropagation()` (no `preventDefault`/preview dispatch); removed their `onOpenLinkPreview` and `sourcePost` props (props + types).
+    - Removed all `onOpenLinkPreview` prop plumbing across `src/App.tsx` — named JSX pass-throughs, props-type lines (required and optional), destructure entries, and the positional `onOpenLinkPreview` parameter + call arguments in the two `renderThreadNode`/`renderThreadContextNode` signatures and their recursive call sites.
+    - Deleted the `LinkPreviewState` type, the `linkPreview`/`setLinkPreview` state, the `openLinkPreview` handler, the `<LinkPreviewPanel>` right-rail render, and the `LinkPreviewPanel` component.
+    - Removed the dead `sourcePost={post}` / `sourcePost={quotedPost ?? undefined}` pass-throughs and the now-dead `.link-preview-panel` CSS rules (4 selectors) in `src/styles.css`; shared `.context-panel` styles left intact.
+    - `docs/PLAN.md` already updated to state external links/link cards open directly (no right-rail preview panel).
+  - Verified: `grep` for `onOpenLinkPreview|LinkPreviewState|LinkPreviewPanel|linkPreview|sourcePost|link-preview` across `src/` returns 0 matches. `npm run build` passes (tsc, vite, audit initial JS 113 kB gzip, reader + layout + rich-text verifiers all green). Drove the running dev server via `scripts/cdp.mjs` against the example post `/profile/monriatitans.bsky.social/post/3mo7bk477bs2m`: the link card anchor now has `href="https://www.youtube.com/watch?v=dhj0uNlnWqo"` `target="_blank" rel="noreferrer"`, `.link-preview-panel` no longer exists in the DOM, and no console errors. (Remaining vite hls/main chunk-size warning is pre-existing, tracked as its own task.)
   - Relevant files/functions found:
-    - `src/App.tsx`: likely owns post rendering, link click handling, right-rail preview state, and `onOpenLinkPreview` callbacks.
-    - `src/styles.css`: likely contains styles for the right-rail link preview box that may become dead after removal.
+    - `src/App.tsx`: `ExternalLinkCard`, `AdditionalLinks`, `renderRichText` (inline facet links, already direct), `PostEmbeds`, thread renderers.
+    - `src/styles.css`: removed `.link-preview-panel` rules.
 - [ ] Prioritize the first small fix to ship.
   - Relevant files/functions found:
     - `package.json`: `npm run build` runs TypeScript, Vite build, audit, reader verification, and layout verification.

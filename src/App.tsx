@@ -269,14 +269,6 @@ type ImageViewerState = {
   index: number;
 } | null;
 
-type LinkPreviewState = {
-  uri: string;
-  title?: string;
-  description?: string;
-  thumb?: string;
-  sourcePost?: FeedPost;
-} | null;
-
 type RecentItem = {
   label: string;
   path: string;
@@ -1423,7 +1415,6 @@ export function App() {
   const [myListsStatus, setMyListsStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [imageViewer, setImageViewer] = useState<ImageViewerState>(null);
   const imageViewerHistoryRef = useRef(false);
-  const [linkPreview, setLinkPreview] = useState<LinkPreviewState>(null);
   // The primary nav icon bar is hidden by default and revealed with the
   // hamburger control in the feed-title header.
   const [navOpen, setNavOpen] = useState<boolean>(false);
@@ -3335,9 +3326,6 @@ export function App() {
     navigate({ kind: "search" }, "/search");
   };
 
-  const openLinkPreview = (link: NonNullable<LinkPreviewState>) => {
-    setLinkPreview(link);
-  };
   const isViewingSelfProfile =
     route.kind === "profile" &&
     !!authState.session &&
@@ -3511,7 +3499,6 @@ export function App() {
             onOpenImage={openImageViewer}
             onOpenPost={openPost}
             onOpenProfile={openProfile}
-            onOpenLinkPreview={openLinkPreview}
             onLoadBranch={loadThreadBranch}
             localLists={localLists}
             onToggleListPost={togglePostInLocalList}
@@ -3526,7 +3513,6 @@ export function App() {
             onOpenImage={openImageViewer}
             onOpenPost={openPost}
             onOpenProfile={openProfile}
-            onOpenLinkPreview={openLinkPreview}
             localLists={localLists}
             onToggleListPost={togglePostInLocalList}
           />
@@ -3604,7 +3590,6 @@ export function App() {
             onOpenImage={openImageViewer}
             onOpenPost={openPost}
             onOpenProfile={openProfile}
-            onOpenLinkPreview={openLinkPreview}
             localLists={localLists}
             onToggleListPost={togglePostInLocalList}
             onQueryChange={setGlobalSearchText}
@@ -3673,7 +3658,6 @@ export function App() {
                     onOpenImage={openImageViewer}
                     onOpenPost={openPost}
                     onOpenProfile={openProfile}
-                    onOpenLinkPreview={openLinkPreview}
                     currentDid={authState.session?.did}
                     localLists={localLists}
                     onToggleListPost={togglePostInLocalList}
@@ -3705,7 +3689,6 @@ export function App() {
                 onOpenImage={openImageViewer}
                 onOpenPost={openPost}
                 onOpenProfile={openProfile}
-                onOpenLinkPreview={openLinkPreview}
                 currentDid={authState.session?.did}
                 localLists={localLists}
                 onToggleListPost={togglePostInLocalList}
@@ -3739,11 +3722,6 @@ export function App() {
         )}
         <PinnedSearchesPanel searches={pinnedSearches} onOpen={submitSearch} onToggle={togglePinnedSearch} />
         <PinnedProfilesPanel profiles={pinnedProfiles} onOpen={openProfile} onToggle={togglePinnedProfile} />
-        <LinkPreviewPanel
-          preview={linkPreview}
-          onClose={() => setLinkPreview(null)}
-          onOpenPost={openPost}
-        />
         <RecentPanel
           items={recentItems}
           onClear={clearRecentItems}
@@ -3792,7 +3770,6 @@ function VirtualPostList({
   localLists,
   mediaOnly = false,
   onOpenImage,
-  onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
   onToggleListPost,
@@ -3806,7 +3783,6 @@ function VirtualPostList({
   localLists: LocalList[];
   mediaOnly?: boolean;
   onOpenImage: (image: ImageViewerState) => void;
-  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
   onToggleListPost: (listId: string, post: FeedPost) => void;
@@ -3954,7 +3930,6 @@ function VirtualPostList({
                     item={row}
                     currentDid={currentDid}
                     onOpenImage={onOpenImage}
-                    onOpenLinkPreview={onOpenLinkPreview}
                     onOpenPost={onOpenPost}
                     onOpenProfile={onOpenProfile}
                     onReply={canReply ? (post) => setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)) : undefined}
@@ -6819,7 +6794,6 @@ function BookmarksView({
   localLists,
   signedIn,
   onOpenImage,
-  onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
   onToggleListPost,
@@ -6829,7 +6803,6 @@ function BookmarksView({
   localLists: LocalList[];
   signedIn: boolean;
   onOpenImage: (image: ImageViewerState) => void;
-  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
   onToggleListPost: (listId: string, post: FeedPost) => void;
@@ -6913,7 +6886,6 @@ function BookmarksView({
           items={items}
           localLists={localLists}
           onOpenImage={onOpenImage}
-          onOpenLinkPreview={onOpenLinkPreview}
           onOpenPost={onOpenPost}
           onOpenProfile={onOpenProfile}
           onToggleListPost={onToggleListPost}
@@ -6943,7 +6915,6 @@ function SearchView({
   onLanguageChange,
   onOpenFeed,
   onOpenImage,
-  onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
   onQueryChange,
@@ -6970,7 +6941,6 @@ function SearchView({
   onToggleListPost: (listId: string, post: FeedPost) => void;
   onOpenFeed: (source: FeedSource) => void;
   onOpenImage: (image: ImageViewerState) => void;
-  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
   onQueryChange: (query: string) => void;
@@ -7154,7 +7124,6 @@ function SearchView({
                   currentDid={currentDid}
                   key={post.uri}
                   onOpenImage={onOpenImage}
-                  onOpenLinkPreview={onOpenLinkPreview}
                   onOpenPost={onOpenPost}
                   onOpenProfile={onOpenProfile}
                   localLists={localLists}
@@ -7246,13 +7215,9 @@ function renderRichText(
 function AdditionalLinks({
   externalHref,
   links,
-  onOpenLinkPreview,
-  sourcePost,
 }: {
   externalHref?: string;
   links: string[];
-  onOpenLinkPreview?: (link: NonNullable<LinkPreviewState>) => void;
-  sourcePost?: FeedPost;
 }) {
   const externalNormalized = normalizeLinkHref(externalHref);
   const additional = links.filter((link) => normalizeLinkHref(link) !== externalNormalized);
@@ -7272,15 +7237,6 @@ function AdditionalLinks({
           rel="noreferrer"
           onClick={(event) => {
             event.stopPropagation();
-            if (!onOpenLinkPreview) {
-              return;
-            }
-            event.preventDefault();
-            onOpenLinkPreview({
-              uri: link,
-              title: formatExternalUrlLabel(link),
-              sourcePost,
-            });
           }}
         >
           {formatExternalUrlLabel(link)}
@@ -7294,14 +7250,10 @@ function ExternalLinkCard({
   className = "",
   external,
   hideThumbnail = false,
-  onOpenLinkPreview,
-  sourcePost,
 }: {
   className?: string;
   external: NonNullable<ReturnType<typeof getExternalEmbed>>;
   hideThumbnail?: boolean;
-  onOpenLinkPreview?: (link: NonNullable<LinkPreviewState>) => void;
-  sourcePost?: FeedPost;
 }) {
   const href = safeHttpUrl(external.uri);
   const thumb = safeHttpUrl(external.thumb);
@@ -7320,17 +7272,6 @@ function ExternalLinkCard({
         rel="noreferrer"
         onClick={(event) => {
           event.stopPropagation();
-          if (!onOpenLinkPreview) {
-            return;
-          }
-          event.preventDefault();
-          onOpenLinkPreview({
-            uri: href,
-            title: external.title,
-            description: external.description,
-            thumb,
-            sourcePost,
-          });
         }}
       >
         {thumb && !hideThumbnail && <img alt="" src={thumb} loading="lazy" decoding="async" />}
@@ -8133,7 +8074,6 @@ function CombinedThreadViewCard({
   activeReplyParentUri,
   canReply,
   onOpenImage,
-  onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
   onShowReplies,
@@ -8146,7 +8086,6 @@ function CombinedThreadViewCard({
   activeReplyParentUri: string | null;
   canReply: boolean;
   onOpenImage: (image: ImageViewerState) => void;
-  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
   onShowReplies?: () => void;
@@ -8253,7 +8192,6 @@ function CombinedThreadViewCard({
               <PostEmbeds
                 post={post}
                 onOpenImage={onOpenImage}
-                onOpenLinkPreview={onOpenLinkPreview}
                 onOpenPost={onOpenPost}
                 onOpenProfile={onOpenProfile}
               />
@@ -8328,13 +8266,11 @@ function CombinedThreadViewCard({
 function PostEmbeds({
   post,
   onOpenImage,
-  onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
 }: {
   post: FeedPost;
   onOpenImage?: (image: ImageViewerState) => void;
-  onOpenLinkPreview?: (link: NonNullable<LinkPreviewState>) => void;
   onOpenPost?: (post: FeedPost) => void;
   onOpenProfile?: (profile: Profile) => void;
 }) {
@@ -8363,15 +8299,12 @@ function PostEmbeds({
         <ExternalLinkCard
           external={external}
           hideThumbnail={linkMediaHidden}
-          onOpenLinkPreview={onOpenLinkPreview}
-          sourcePost={post}
         />
       )}
-      <AdditionalLinks externalHref={externalHref} links={facetLinks} onOpenLinkPreview={onOpenLinkPreview} sourcePost={post} />
+      <AdditionalLinks externalHref={externalHref} links={facetLinks} />
       {recordEmbed && (
         <QuotedPostCard
           record={recordEmbed}
-          onOpenLinkPreview={onOpenLinkPreview}
           onOpenPost={onOpenPost}
           onOpenProfile={onOpenProfile}
         />
@@ -8414,7 +8347,6 @@ function PostCard({
   item,
   localLists = [],
   onOpenImage,
-  onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
   onReply,
@@ -8426,7 +8358,6 @@ function PostCard({
   item: FeedItem;
   localLists?: LocalList[];
   onOpenImage?: (image: ImageViewerState) => void;
-  onOpenLinkPreview?: (link: NonNullable<LinkPreviewState>) => void;
   onOpenPost?: (post: FeedPost) => void;
   onOpenProfile?: (profile: Profile) => void;
   onReply?: (post: FeedPost) => void;
@@ -8545,7 +8476,6 @@ function PostCard({
       <PostEmbeds
         post={post}
         onOpenImage={onOpenImage}
-        onOpenLinkPreview={onOpenLinkPreview}
         onOpenPost={onOpenPost}
         onOpenProfile={onOpenProfile}
       />
@@ -8565,12 +8495,10 @@ function PostCard({
 
 function QuotedPostCard({
   record,
-  onOpenLinkPreview,
   onOpenPost,
   onOpenProfile,
 }: {
   record: RecordEmbedView;
-  onOpenLinkPreview?: (link: NonNullable<LinkPreviewState>) => void;
   onOpenPost?: (post: FeedPost) => void;
   onOpenProfile?: (profile: Profile) => void;
 }) {
@@ -8646,8 +8574,6 @@ function QuotedPostCard({
       <AdditionalLinks
         externalHref={embeddedExternal?.uri}
         links={extractFacetLinks(record.value?.facets)}
-        onOpenLinkPreview={onOpenLinkPreview}
-        sourcePost={quotedPost ?? undefined}
       />
       {gateMedia ? (
         <SensitiveMediaGate values={mediaWarningValues} onReveal={() => setMediaRevealed(true)} />
@@ -8681,8 +8607,6 @@ function QuotedPostCard({
           className="quote-link-card"
           external={embeddedExternal}
           hideThumbnail={hideMediaForSetting && !!embeddedExternalThumb}
-          onOpenLinkPreview={onOpenLinkPreview}
-          sourcePost={quotedPost ?? undefined}
         />
       )}
       {unknownQuoteEmbedType && quotedPost && (
@@ -8842,7 +8766,6 @@ function ThreadView({
   loadingBranches,
   branchResults,
   onOpenImage,
-  onOpenLinkPreview,
   onLoadBranch,
   onOpenPost,
   onOpenProfile,
@@ -8856,7 +8779,6 @@ function ThreadView({
   loadingBranches: Record<string, boolean>;
   branchResults: Record<string, BranchLoadResult>;
   onOpenImage: (image: ImageViewerState) => void;
-  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
   onLoadBranch: (uri: string) => void;
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
@@ -8974,7 +8896,6 @@ function ThreadView({
               index,
               parentNodes.length,
               { loadingBranches, branchResults, onLoadBranch, onOpenImage, onOpenPost, onOpenProfile },
-              onOpenLinkPreview,
               { currentDid, localLists, onToggleListPost },
             ),
           )}
@@ -8986,7 +8907,6 @@ function ThreadView({
           activeReplyParentUri={activeReplyParentUri}
           canReply={canReply}
           onOpenImage={onOpenImage}
-          onOpenLinkPreview={onOpenLinkPreview}
           onOpenPost={onOpenPost}
           onOpenProfile={onOpenProfile}
           onShowReplies={() => setThreadDisplayMode("separated")}
@@ -9015,7 +8935,6 @@ function ThreadView({
             onReplied,
             threadRootRef,
           }}
-          onOpenLinkPreview={onOpenLinkPreview}
           savedState={{ currentDid, localLists, onToggleListPost }}
         />
       ) : (
@@ -9035,7 +8954,6 @@ function ThreadView({
             onReplied,
             threadRootRef,
           },
-          onOpenLinkPreview,
           { currentDid, localLists, onToggleListPost },
           1,
         )
@@ -9056,7 +8974,6 @@ function renderThreadContextNode(
     onOpenPost: (post: FeedPost) => void;
     onOpenProfile: (profile: Profile) => void;
   },
-  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void,
   savedState: {
     currentDid?: string;
     localLists: LocalList[];
@@ -9092,7 +9009,6 @@ function renderThreadContextNode(
           currentDid={savedState.currentDid}
           s
           onOpenImage={handlers.onOpenImage}
-          onOpenLinkPreview={onOpenLinkPreview}
           onOpenPost={handlers.onOpenPost}
           onOpenProfile={handlers.onOpenProfile}
           localLists={savedState.localLists}
@@ -9109,7 +9025,6 @@ function LongThreadCard({
   onToggleReplies,
   onToggleBranch,
   handlers,
-  onOpenLinkPreview,
   savedState,
 }: {
   parts: ThreadPart[];
@@ -9130,7 +9045,6 @@ function LongThreadCard({
     onReplied?: () => void;
     threadRootRef: PostRefValue;
   };
-  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void;
   savedState: {
     currentDid?: string;
     localLists: LocalList[];
@@ -9194,7 +9108,6 @@ function LongThreadCard({
               <PostEmbeds
                 post={post}
                 onOpenImage={handlers.onOpenImage}
-                onOpenLinkPreview={onOpenLinkPreview}
                 onOpenPost={handlers.onOpenPost}
                 onOpenProfile={handlers.onOpenProfile}
               />
@@ -9232,7 +9145,6 @@ function LongThreadCard({
                       expandedReplies,
                       onToggleBranch,
                       handlers,
-                      onOpenLinkPreview,
                       savedState,
                     ),
                   )}
@@ -9530,7 +9442,6 @@ function renderThreadNode(
     onReplied?: () => void;
     threadRootRef: PostRefValue | null;
   },
-  onOpenLinkPreview: (link: NonNullable<LinkPreviewState>) => void,
   savedState: {
     currentDid?: string;
     localLists: LocalList[];
@@ -9572,7 +9483,6 @@ function renderThreadNode(
         currentDid={savedState.currentDid}
         s
         onOpenImage={handlers.onOpenImage}
-        onOpenLinkPreview={onOpenLinkPreview}
         onOpenPost={handlers.onOpenPost}
         onOpenProfile={handlers.onOpenProfile}
         onReply={handlers.canReply ? handlers.onOpenReply : undefined}
@@ -9594,7 +9504,7 @@ function renderThreadNode(
           <div className="thread-continuation" style={threadDepthStyle(depth + 1)}>
             <span>Post continues</span>
           </div>
-          {renderThreadNode(continuationReply, depth + 1, expandedBranches, onToggleBranch, handlers, onOpenLinkPreview, savedState, (opPartIndex ?? 1) + 1)}
+          {renderThreadNode(continuationReply, depth + 1, expandedBranches, onToggleBranch, handlers, savedState, (opPartIndex ?? 1) + 1)}
         </>
       )}
       {visibleReplies.length > 0 && (
@@ -9603,7 +9513,7 @@ function renderThreadNode(
         </div>
       )}
       {visibleReplies.map((reply) =>
-        renderThreadNode(reply, depth + 1, expandedBranches, onToggleBranch, handlers, onOpenLinkPreview, savedState),
+        renderThreadNode(reply, depth + 1, expandedBranches, onToggleBranch, handlers, savedState),
       )}
       {hasCollapsedReplies && (
         <button className="load-more branch-toggle" type="button" onClick={() => onToggleBranch(node.post.uri)}>
@@ -9934,54 +9844,6 @@ function PinnedProfilesPanel({
           </button>
         </div>
       ))}
-    </section>
-  );
-}
-
-function LinkPreviewPanel({
-  preview,
-  onClose,
-  onOpenPost,
-}: {
-  preview: LinkPreviewState;
-  onClose: () => void;
-  onOpenPost: (post: FeedPost) => void;
-}) {
-  if (!preview) {
-    return null;
-  }
-
-  const previewHref = safeHttpUrl(preview.uri);
-  const previewThumb = safeHttpUrl(preview.thumb);
-  let hostname = "Link";
-  try {
-    hostname = previewHref ? new URL(previewHref).hostname : "Link";
-  } catch {
-    hostname = preview.uri;
-  }
-
-  return (
-    <section className="context-panel link-preview-panel">
-      <div className="context-panel-header">
-        <h2>Link Preview</h2>
-        <button type="button" onClick={onClose} aria-label="Close link preview">
-          <X size={14} />
-        </button>
-      </div>
-      {previewThumb && <img src={previewThumb} alt="" loading="lazy" decoding="async" />}
-      <strong>{preview.title || preview.uri}</strong>
-      <small>{hostname}</small>
-      {preview.description && <p>{preview.description}</p>}
-      {previewHref && (
-        <a href={previewHref} target="_blank" rel="noreferrer">
-          Open link
-        </a>
-      )}
-      {preview.sourcePost && (
-        <button type="button" onClick={() => onOpenPost(preview.sourcePost as FeedPost)}>
-          Open source post
-        </button>
-      )}
     </section>
   );
 }

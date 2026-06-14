@@ -4915,44 +4915,6 @@ button.surface-action {
   padding: 0;
 }
 
-.link-preview-panel > img {
-  display: block;
-  width: 100%;
-  max-height: 160px;
-  margin-bottom: 10px;
-  border-radius: 8px;
-  object-fit: cover;
-  background: var(--app-surface-2);
-}
-
-.link-preview-panel strong,
-.link-preview-panel small {
-  display: block;
-}
-
-.link-preview-panel small {
-  margin-top: 3px;
-  color: var(--app-text-muted);
-}
-
-.link-preview-panel p {
-  margin-top: 10px;
-}
-
-.link-preview-panel a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 34px;
-  margin-top: 12px;
-  padding: 0 10px;
-  border-radius: 8px;
-  background: var(--app-surface-2);
-  color: var(--app-text);
-  font-size: 13px;
-  font-weight: 700;
-  text-decoration: none;
-}
-
 .feed-map-panel {
   display: grid;
   gap: 8px;
