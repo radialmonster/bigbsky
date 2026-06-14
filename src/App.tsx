@@ -6604,29 +6604,66 @@ const postLanguageStorageKey = "bigbsky:post-language";
 const postLanguageHistoryStorageKey = "bigbsky:post-language-history";
 const POST_LANGUAGE_HISTORY_LIMIT = 4;
 
-const POST_LANGUAGE_OPTIONS: Array<{ code: string; label: string }> = [
-  { code: "en", label: "English" },
-  { code: "ar", label: "العربية" },
-  { code: "bn", label: "বাংলা" },
-  { code: "de", label: "Deutsch" },
-  { code: "es", label: "Español" },
-  { code: "fa", label: "فارسی" },
-  { code: "fr", label: "Français" },
-  { code: "hi", label: "हिन्दी" },
-  { code: "id", label: "Bahasa Indonesia" },
-  { code: "it", label: "Italiano" },
-  { code: "ja", label: "日本語" },
-  { code: "ko", label: "한국어" },
-  { code: "nl", label: "Nederlands" },
-  { code: "pl", label: "Polski" },
-  { code: "pt", label: "Português" },
-  { code: "ru", label: "Русский" },
-  { code: "th", label: "ไทย" },
-  { code: "tr", label: "Türkçe" },
-  { code: "uk", label: "Українська" },
-  { code: "vi", label: "Tiếng Việt" },
-  { code: "zh", label: "中文" },
+// The full set of ISO 639-1 two-letter language codes, matching the post
+// languages bsky's composer offers. Names are rendered with Intl.DisplayNames in
+// English (as bsky shows them), so we only need to maintain the code list.
+const ISO_639_1_CODES = [
+  "aa", "ab", "ae", "af", "ak", "am", "an", "ar", "as", "av", "ay", "az",
+  "ba", "be", "bg", "bh", "bi", "bm", "bn", "bo", "br", "bs",
+  "ca", "ce", "ch", "co", "cr", "cs", "cu", "cv", "cy",
+  "da", "de", "dv", "dz",
+  "ee", "el", "en", "eo", "es", "et", "eu",
+  "fa", "ff", "fi", "fj", "fo", "fr", "fy",
+  "ga", "gd", "gl", "gn", "gu", "gv",
+  "ha", "he", "hi", "ho", "hr", "ht", "hu", "hy", "hz",
+  "ia", "id", "ie", "ig", "ii", "ik", "io", "is", "it", "iu",
+  "ja", "jv",
+  "ka", "kg", "ki", "kj", "kk", "kl", "km", "kn", "ko", "kr", "ks", "ku", "kv", "kw", "ky",
+  "la", "lb", "lg", "li", "ln", "lo", "lt", "lu", "lv",
+  "mg", "mh", "mi", "mk", "ml", "mn", "mr", "ms", "mt", "my",
+  "na", "nb", "nd", "ne", "ng", "nl", "nn", "no", "nr", "nv", "ny",
+  "oc", "oj", "om", "or", "os",
+  "pa", "pi", "pl", "ps", "pt",
+  "qu",
+  "rm", "rn", "ro", "ru", "rw",
+  "sa", "sc", "sd", "se", "sg", "si", "sk", "sl", "sm", "sn", "so", "sq", "sr", "ss", "st", "su", "sv", "sw",
+  "ta", "te", "tg", "th", "ti", "tk", "tl", "tn", "to", "tr", "ts", "tt", "tw", "ty",
+  "ug", "uk", "ur", "uz",
+  "ve", "vi", "vo",
+  "wa", "wo",
+  "xh",
+  "yi", "yo",
+  "za", "zh", "zu",
 ];
+
+// English display name for a language code (matches bsky's English-name display),
+// falling back to the uppercased code when Intl can't name it.
+function languageDisplayName(code: string): string {
+  try {
+    const display = new Intl.DisplayNames(["en"], { type: "language" }).of(code);
+    if (display && display.toLowerCase() !== code.toLowerCase()) {
+      return display;
+    }
+  } catch {
+    // Intl.DisplayNames unavailable — fall through to the code.
+  }
+  return code.toUpperCase();
+}
+
+const POST_LANGUAGE_OPTIONS: Array<{ code: string; label: string }> = (() => {
+  const seenLabels = new Set<string>();
+  return ISO_639_1_CODES.map((code) => ({ code, label: languageDisplayName(code) }))
+    // Drop codes Intl couldn't name (label falls back to the bare code) and
+    // collapse the rare case where two codes share one English name.
+    .filter((option) => {
+      if (option.label === option.code.toUpperCase() || seenLabels.has(option.label)) {
+        return false;
+      }
+      seenLabels.add(option.label);
+      return true;
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
+})();
 
 // Resolve a default post language: the last-used choice if any, else the
 // browser's primary language (normalized to a base code we offer), else English.
