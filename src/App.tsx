@@ -6953,26 +6953,32 @@ function Composer({
             </div>
           )}
           <div className="composer-actions">
-            <button
-              type="button"
-              title="Attach image"
-              onClick={() => attachImage(0)}
-              disabled={(images[0]?.length ?? 0) >= MAX_POST_IMAGES}
-            >
-              <Image size={18} />
-            </button>
-            <PostLanguageSelect
-              value={postLang}
-              disabled={posting}
-              onChange={(code) => {
-                setPostLang(code);
-                safeLocalStorageSet(postLanguageStorageKey, code);
-              }}
-            />
-            <span>
-              {graphemeLength(draftText)} chars
-              {draftText.trim() && generatedPostCount > 1 ? ` / ${generatedPostCount} posts` : ""}
-            </span>
+            <div className="composer-tools">
+              <button
+                type="button"
+                title="Add image"
+                aria-label="Add image"
+                onClick={() => attachImage(0)}
+                disabled={(images[0]?.length ?? 0) >= MAX_POST_IMAGES}
+              >
+                <Image size={20} />
+              </button>
+            </div>
+            <div className="composer-meta">
+              <PostLanguageSelect
+                value={postLang}
+                disabled={posting}
+                onChange={(code) => {
+                  setPostLang(code);
+                  safeLocalStorageSet(postLanguageStorageKey, code);
+                }}
+              />
+              <span className="composer-count">
+                {draftText.trim() && generatedPostCount > 1
+                  ? `${generatedPostCount} posts`
+                  : POST_GRAPHEME_LIMIT - graphemeLength(draftText)}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -9560,34 +9566,42 @@ function ReplyComposer({
       />
       {replyError && <p className="composer-error" role="alert">{replyError}</p>}
       <div className="composer-actions">
-        <button
-          type="button"
-          title="Attach image"
-          aria-label="Attach image"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={!canReply || replyPosting || images.length >= MAX_POST_IMAGES}
-        >
-          <Image size={18} />
-        </button>
-        <PostLanguageSelect
-          value={postLang}
-          disabled={!canReply || replyPosting}
-          onChange={(code) => {
-            setPostLang(code);
-            safeLocalStorageSet(postLanguageStorageKey, code);
-          }}
-        />
-        <span className={remainingReplyChars < 0 ? "over-limit" : ""}>{remainingReplyChars}</span>
-        <button type="button" onClick={onClose} disabled={replyPosting}>
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={handleReply}
-          disabled={!canReply || replyPosting || remainingReplyChars < 0 || !hasContent}
-        >
-          {replyPosting ? "Replying..." : "Reply"}
-        </button>
+        <div className="composer-tools">
+          <button
+            type="button"
+            title="Add image"
+            aria-label="Add image"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!canReply || replyPosting || images.length >= MAX_POST_IMAGES}
+          >
+            <Image size={20} />
+          </button>
+        </div>
+        <div className="composer-meta">
+          <PostLanguageSelect
+            value={postLang}
+            disabled={!canReply || replyPosting}
+            onChange={(code) => {
+              setPostLang(code);
+              safeLocalStorageSet(postLanguageStorageKey, code);
+            }}
+          />
+          <span className={`composer-count${remainingReplyChars < 0 ? " over-limit" : ""}`}>
+            {remainingReplyChars}
+          </span>
+        </div>
+        <div className="composer-send">
+          <button type="button" className="composer-send-cancel" onClick={onClose} disabled={replyPosting}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleReply}
+            disabled={!canReply || replyPosting || remainingReplyChars < 0 || !hasContent}
+          >
+            {replyPosting ? "Replying..." : "Reply"}
+          </button>
+        </div>
       </div>
     </section>
   );

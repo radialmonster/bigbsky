@@ -76,8 +76,7 @@ button {
 
 .rail-button,
 .feed-map-header button,
-.post-header button:not(.author-button):not(.post-timestamp),
-.composer-actions button:first-child {
+.post-header button:not(.author-button):not(.post-timestamp) {
   display: grid;
   place-items: center;
   width: 44px;
@@ -980,20 +979,65 @@ button {
   margin-top: 8px;
 }
 
+/* Composer toolbar, modeled on bsky.app's composer: media icon buttons grouped
+   on the left, language + character count on the right, and the primary send
+   action separated from the toolbar (post composer: in the footer; reply
+   composer: a trailing send group). */
 .composer-actions {
   display: flex;
   align-items: center;
   gap: 12px;
-  justify-content: flex-end;
   padding: 0 10px 10px;
 }
 
-.composer-actions span {
-  color: var(--app-text-muted);
-  font-variant-numeric: tabular-nums;
+/* Left-grouped media tools push everything after them to the right edge. */
+.composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: auto;
 }
 
-.composer-actions .over-limit {
+.composer-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.composer-send {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Round, transparent icon buttons with a soft blue hover — like bsky's. */
+.composer-tools button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--bsky-blue-soft);
+}
+
+.composer-tools button:hover:not(:disabled) {
+  background: rgba(5, 96, 255, 0.18);
+}
+
+.composer-tools button:disabled {
+  color: var(--app-text-muted);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.composer-count {
+  color: var(--app-text-muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.composer-count.over-limit {
   color: var(--app-danger);
 }
 
@@ -1001,7 +1045,6 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-right: auto;
   color: var(--app-text-muted);
 }
 
@@ -1032,7 +1075,8 @@ button {
   }
 }
 
-.composer-actions button:last-child,
+/* Primary send button (reply composer) and load-more share the filled style. */
+.composer-send button:last-child,
 .load-more {
   min-height: 38px;
   padding: 0 16px;
@@ -1042,9 +1086,27 @@ button {
   font-weight: 700;
 }
 
-.composer-actions button:disabled {
+/* Secondary Cancel button reads as muted, not a primary action. */
+.composer-send-cancel {
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--app-text-muted);
+  font-weight: 700;
+}
+
+.composer-send-cancel:hover:not(:disabled) {
+  background: var(--app-surface-2);
+}
+
+.composer-send button:disabled {
   cursor: not-allowed;
   background: #41516a;
+}
+
+.composer-send-cancel:disabled {
+  background: transparent;
 }
 
 .composer-footer {
