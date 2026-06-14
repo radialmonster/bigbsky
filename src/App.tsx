@@ -3692,7 +3692,7 @@ export function App() {
               onTogglePinned={togglePinnedProfile}
             />
             {profileTab === "new-post" && isViewingSelfProfile ? (
-              <Composer
+              <PostComposer
                 draft={composerDraft}
                 onDraftChange={setComposerDraft}
                 onPosted={reloadCurrentProfile}
@@ -4013,9 +4013,8 @@ function VirtualPostList({
                   />
                 )}
                 {activeReplyParentUri === rowPost.uri && (
-                  <ReplyComposer
-                    parent={rowPost}
-                    root={replyRootRefForPost(rowPost)}
+                  <PostComposer
+                    replyTo={{ parent: rowPost, root: replyRootRefForPost(rowPost) }}
                     canReply={canReply}
                     onClose={() => setActiveReplyParentUri(null)}
                   />
@@ -7031,93 +7030,154 @@ function splitTextForThread(text: string, limit = POST_GRAPHEME_LIMIT) {
   return posts;
 }
 
-function Composer({
+// Default a reply's post language to the parent post's language (matching
+// bsky, which seeds the composer from `replyTo?.langs`), normalized to a base
+// code we offer; falls back to the user's saved/browser default.
+function readReplyDefaultLanguage(parent: FeedPost): string {
+  const langs = parent.record?.langs;
+  if (Array.isArray(langs)) {
+    for (const lang of langs) {
+      if (typeof lang !== "string") {
+        continue;
+      }
+      const base = lang.toLowerCase().split("-")[0];
+      if (POST_LANGUAGE_OPTIONS.some((option) => option.code === base)) {
+        return base;
+      }
+    }
+  }
+  return readDefaultPostLanguage();
+}
+
+// One composer for both new posts and replies. The mode is just whether
+// `replyTo` is set (mirrors bsky's single composer keyed on `replyTo`), so every
+// shared feature — text + grapheme char count, image attach/alt, the emoji
+// picker, the language picker, draft autosave — lives in exactly one place and
+// can't drift between the two surfaces. Only the outer skeleton (reply-target
+// inline frame vs the collapsible "New post" panel), placeholder/labels, draft
+// key, and submit path branch on `isReply`.
+function PostComposer({
   draft,
   onDraftChange,
   onPosted,
   defaultExpanded = false,
+  replyTo,
+  canReply = true,
+  onClose,
+  onReplied,
 }: {
-  draft: { posts: string[] };
-  onDraftChange: (draft: { posts: string[] }) => void;
+  // New-post mode (controlled draft lifted to the app so it survives navigation):
+  draft?: { posts: string[] };
+  onDraftChange?: (draft: { posts: string[] }) => void;
   onPosted?: () => void;
   defaultExpanded?: boolean;
+  // Reply mode (presence of `replyTo` switches the composer into a reply):
+  replyTo?: { parent: FeedPost; root: PostRefValue };
+  canReply?: boolean;
+  onClose?: () => void;
+  onReplied?: () => void;
 }) {
-  const drafts = draft.posts.length > 0 ? draft.posts : [""];
-  const draftText = drafts.join("\n\n");
+  const isReply = !!replyTo;
+  // Reply text is internal state seeded from a per-thread draft key; new-post
+  // text is the controlled parent draft. `draftText`/`setText` unify the two so
+  // the shared body never has to know which mode it's in.
+  const [replyText, setReplyText] = useState("");
+  const draftText = isReply
+    ? replyText
+    : (draft?.posts && draft.posts.length > 0 ? draft.posts : [""]).join("\n\n");
+  const setText = (value: string) => {
+    if (isReply) {
+      setReplyText(value);
+    } else {
+      onDraftChange?.({ posts: [value] });
+    }
+  };
+  const replyDraftKey = replyTo ? `${replyDraftPrefix}${replyTo.parent.uri}` : "";
+
   const generatedPosts = splitTextForThread(draftText);
   const generatedPostCount = Math.max(generatedPosts.length, 1);
+  const remaining = POST_GRAPHEME_LIMIT - graphemeLength(draftText);
   // Real attached images live in component state (not the persisted draft):
   // File objects and object-URLs can't be JSON-serialized to localStorage, so
   // they are session-only — text drafts persist across reloads, images don't.
-  const [images, setImages] = useState<Record<number, ComposerImageState[]>>({});
-  const hasImages = Object.values(images).some((list) => list.length > 0);
-  const hasContent = draftText.trim().length > 0 || hasImages;
+  const [images, setImages] = useState<ComposerImageState[]>([]);
+  const hasContent = draftText.trim().length > 0 || images.length > 0;
   // Collapsed by default to keep the top of the feed clean; expand on click.
   // Start expanded if a local draft is already in progress so it isn't hidden.
+  // (Replies render inline and ignore this — they're always expanded.)
   const [expanded, setExpanded] = useState(defaultExpanded || hasContent);
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
-  const [postLang, setPostLang] = useState(readDefaultPostLanguage);
-  // Hidden file input shared across posts; attachTarget records which post the
-  // picked files belong to.
+  const [postLang, setPostLang] = useState(() =>
+    replyTo ? readReplyDefaultLanguage(replyTo.parent) : readDefaultPostLanguage(),
+  );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const attachTarget = useRef<number>(0);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
+  // New-post draft autosave (controlled draft → localStorage). No-op for replies.
   useEffect(() => {
+    if (isReply) {
+      return;
+    }
     if (draftText.trim().length > 0) {
       safeLocalStorageSet(composerDraftStorageKey, JSON.stringify({ posts: [draftText] }));
     } else {
       safeLocalStorageRemove(composerDraftStorageKey);
     }
-  }, [draftText]);
+  }, [isReply, draftText]);
+
+  // Reply: seed the text from the per-thread draft key when the target changes.
+  useEffect(() => {
+    if (!isReply) {
+      return;
+    }
+    setReplyText(localStorage.getItem(replyDraftKey) || "");
+  }, [isReply, replyDraftKey]);
+
+  // Reply: autosave the text to the per-thread draft key.
+  useEffect(() => {
+    if (!isReply) {
+      return;
+    }
+    if (replyText.trim()) {
+      safeLocalStorageSet(replyDraftKey, replyText);
+    } else {
+      safeLocalStorageRemove(replyDraftKey);
+    }
+  }, [isReply, replyDraftKey, replyText]);
 
   // Revoke any outstanding object URLs when the composer unmounts.
   useEffect(() => {
     return () => {
-      Object.values(images)
-        .flat()
-        .forEach((image) => URL.revokeObjectURL(image.url));
+      images.forEach((image) => URL.revokeObjectURL(image.url));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  function setDraftText(value: string) {
-    onDraftChange({ posts: [value] });
-  }
 
   // Insert text (e.g. an emoji) at the textarea caret, replacing any selection,
   // then restore focus with the caret just after the inserted text.
   function insertAtCaret(snippet: string) {
     const el = textareaRef.current;
     if (!el) {
-      setDraftText(draftText + snippet);
+      setText(draftText + snippet);
       return;
     }
     const start = el.selectionStart ?? draftText.length;
     const end = el.selectionEnd ?? draftText.length;
-    const next = draftText.slice(0, start) + snippet + draftText.slice(end);
-    setDraftText(next);
     const caret = start + snippet.length;
+    setText(draftText.slice(0, start) + snippet + draftText.slice(end));
     requestAnimationFrame(() => {
       el.focus();
       el.setSelectionRange(caret, caret);
     });
   }
 
-  function attachImage(index: number) {
-    attachTarget.current = index;
-    fileInputRef.current?.click();
-  }
-
   function onFilesSelected(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) {
       return;
     }
-    const index = attachTarget.current;
     const picked = Array.from(fileList).filter((file) => file.type.startsWith("image/"));
-    setImages((current) => {
-      const existing = current[index] ?? [];
+    setImages((existing) => {
       const room = MAX_POST_IMAGES - existing.length;
       const added = picked.slice(0, Math.max(0, room)).map((file) => ({
         id: `${file.name}-${file.size}-${file.lastModified}-${existing.length}`,
@@ -7125,73 +7185,197 @@ function Composer({
         url: URL.createObjectURL(file),
         alt: "",
       }));
-      return { ...current, [index]: [...existing, ...added] };
+      return [...existing, ...added];
     });
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   }
 
-  function removeImage(index: number, id: string) {
+  function removeImage(id: string) {
     setImages((current) => {
-      const list = current[index] ?? [];
-      const target = list.find((image) => image.id === id);
+      const target = current.find((image) => image.id === id);
       if (target) {
         URL.revokeObjectURL(target.url);
       }
-      return { ...current, [index]: list.filter((image) => image.id !== id) };
+      return current.filter((image) => image.id !== id);
     });
   }
 
-  function setImageAlt(index: number, id: string, alt: string) {
-    setImages((current) => ({
-      ...current,
-      [index]: (current[index] ?? []).map((image) => (image.id === id ? { ...image, alt } : image)),
-    }));
+  function setImageAlt(id: string, alt: string) {
+    setImages((current) => current.map((image) => (image.id === id ? { ...image, alt } : image)));
   }
 
   function clearDraft() {
-    Object.values(images)
-      .flat()
-      .forEach((image) => URL.revokeObjectURL(image.url));
-    setImages({});
-    const emptyDraft = { posts: [""] };
+    images.forEach((image) => URL.revokeObjectURL(image.url));
+    setImages([]);
     safeLocalStorageRemove(composerDraftStorageKey);
-    onDraftChange(emptyDraft);
+    onDraftChange?.({ posts: [""] });
   }
 
-  async function handlePostAll() {
-    if (posting || !hasContent) {
+  async function handleSubmit() {
+    if (posting || !hasContent || (isReply && remaining < 0)) {
       return;
     }
     setPosting(true);
     setPostError(null);
     try {
-      const postTexts = splitTextForThread(draftText);
-      const composerImages = (images[0] ?? []).map((image) => ({ file: image.file, alt: image.alt }));
-      const postsToPublish =
-        postTexts.length > 0
-          ? postTexts.map((text, index) => ({
-              text,
-              images: index === 0 ? composerImages : [],
-            }))
-          : [{ text: "", images: composerImages }];
-      await publishThread(postsToPublish, postLang ? [postLang] : undefined);
-      // Posted: clear the draft + images, collapse, and refresh the feed.
-      Object.values(images)
-        .flat()
-        .forEach((image) => URL.revokeObjectURL(image.url));
-      setImages({});
-      const emptyDraft = { posts: [""] };
-      safeLocalStorageRemove(composerDraftStorageKey);
-      onDraftChange(emptyDraft);
-      setExpanded(false);
-      onPosted?.();
+      const composerImages = images.map((image) => ({ file: image.file, alt: image.alt }));
+      if (isReply && replyTo) {
+        await publishPost({
+          text: draftText.trim(),
+          reply: { root: replyTo.root, parent: { uri: replyTo.parent.uri, cid: replyTo.parent.cid } },
+          ...(postLang ? { langs: [postLang] } : {}),
+          ...(composerImages.length > 0 ? { images: composerImages } : {}),
+        });
+      } else {
+        const postTexts = splitTextForThread(draftText);
+        const postsToPublish =
+          postTexts.length > 0
+            ? postTexts.map((text, index) => ({ text, images: index === 0 ? composerImages : [] }))
+            : [{ text: "", images: composerImages }];
+        await publishThread(postsToPublish, postLang ? [postLang] : undefined);
+      }
+      // Posted: revoke the session image URLs and clear the draft.
+      images.forEach((image) => URL.revokeObjectURL(image.url));
+      setImages([]);
+      if (isReply) {
+        setReplyText("");
+        safeLocalStorageRemove(replyDraftKey);
+        onClose?.();
+        onReplied?.();
+      } else {
+        safeLocalStorageRemove(composerDraftStorageKey);
+        onDraftChange?.({ posts: [""] });
+        setExpanded(false);
+        onPosted?.();
+      }
     } catch (error) {
-      setPostError(error instanceof Error ? error.message : "Could not publish. Try again.");
+      setPostError(
+        error instanceof Error
+          ? error.message
+          : isReply
+            ? "Could not publish reply. Try again."
+            : "Could not publish. Try again.",
+      );
     } finally {
       setPosting(false);
     }
+  }
+
+  // Shared pieces used by both skeletons.
+  const mediaGrid =
+    images.length > 0 ? (
+      <div className="composer-media-grid" aria-label="Attached images">
+        {images.map((image) => (
+          <div className="composer-media-item" key={image.id}>
+            <img src={image.url} alt={image.alt || "Attached image preview"} />
+            <button
+              type="button"
+              className="composer-media-remove"
+              title="Remove image"
+              aria-label="Remove image"
+              onClick={() => removeImage(image.id)}
+            >
+              <X size={14} />
+            </button>
+            <input
+              className="composer-media-alt"
+              type="text"
+              placeholder="Alt text (describe the image)"
+              value={image.alt}
+              maxLength={2000}
+              onChange={(event) => setImageAlt(image.id, event.target.value)}
+            />
+          </div>
+        ))}
+      </div>
+    ) : null;
+
+  const fileInput = (
+    <input
+      ref={fileInputRef}
+      type="file"
+      accept="image/*"
+      multiple
+      hidden
+      onChange={(event) => onFilesSelected(event.target.files)}
+    />
+  );
+
+  const errorNode = postError ? (
+    <p className="composer-error" role="alert">
+      {postError}
+    </p>
+  ) : null;
+
+  // The tools (image + emoji) and meta (language + char count) row is identical
+  // for both modes — this is the shared action bar the unification is about.
+  const toolsAndMeta = (
+    <>
+      <div className="composer-tools">
+        <button
+          type="button"
+          title="Add image"
+          aria-label="Add image"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={posting || (isReply && !canReply) || images.length >= MAX_POST_IMAGES}
+        >
+          <Image size={20} />
+        </button>
+        <EmojiPicker disabled={posting || (isReply && !canReply)} onSelect={insertAtCaret} />
+      </div>
+      <div className="composer-meta">
+        <PostLanguagePicker
+          value={postLang}
+          disabled={posting || (isReply && !canReply)}
+          onChange={(code) => {
+            setPostLang(code);
+            safeLocalStorageSet(postLanguageStorageKey, code);
+          }}
+        />
+        {isReply ? (
+          <span className={`composer-count${remaining < 0 ? " over-limit" : ""}`}>{remaining}</span>
+        ) : (
+          <span className="composer-count">
+            {draftText.trim() && generatedPostCount > 1 ? `${generatedPostCount} posts` : remaining}
+          </span>
+        )}
+      </div>
+    </>
+  );
+
+  if (isReply && replyTo) {
+    return (
+      <section className="reply-composer inline" aria-label={`Reply to ${displayName(replyTo.parent.author)}`}>
+        <textarea
+          ref={textareaRef}
+          autoFocus
+          placeholder={canReply ? `Reply to @${replyTo.parent.author.handle}` : "Sign in to reply."}
+          value={draftText}
+          onChange={(event) => setText(event.currentTarget.value)}
+          disabled={!canReply || posting}
+        />
+        {mediaGrid}
+        {fileInput}
+        {errorNode}
+        <div className="composer-actions">
+          {toolsAndMeta}
+          <div className="composer-send">
+            <button type="button" className="composer-send-cancel" onClick={onClose} disabled={posting}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!canReply || posting || remaining < 0 || !hasContent}
+            >
+              {posting ? "Replying..." : "Reply"}
+            </button>
+          </div>
+        </div>
+      </section>
+    );
   }
 
   if (!expanded) {
@@ -7226,83 +7410,25 @@ function Composer({
             ref={textareaRef}
             placeholder="What's on your mind?"
             value={draftText}
-            onChange={(event) => setDraftText(event.target.value)}
+            onChange={(event) => setText(event.target.value)}
           />
-          {(images[0]?.length ?? 0) > 0 && (
-            <div className="composer-media-grid" aria-label="Attached images">
-              {(images[0] ?? []).map((image) => (
-                <div className="composer-media-item" key={image.id}>
-                  <img src={image.url} alt={image.alt || "Attached image preview"} />
-                  <button
-                    type="button"
-                    className="composer-media-remove"
-                    title="Remove image"
-                    aria-label="Remove image"
-                    onClick={() => removeImage(0, image.id)}
-                  >
-                    <X size={14} />
-                  </button>
-                  <input
-                    className="composer-media-alt"
-                    type="text"
-                    placeholder="Alt text (describe the image)"
-                    value={image.alt}
-                    maxLength={2000}
-                    onChange={(event) => setImageAlt(0, image.id, event.target.value)}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
+          {mediaGrid}
           <div className="composer-footer">
-            <div className="composer-tools">
-              <button
-                type="button"
-                title="Add image"
-                aria-label="Add image"
-                onClick={() => attachImage(0)}
-                disabled={(images[0]?.length ?? 0) >= MAX_POST_IMAGES}
-              >
-                <Image size={20} />
-              </button>
-              <EmojiPicker disabled={posting} onSelect={insertAtCaret} />
-            </div>
-            <div className="composer-meta">
-              <PostLanguagePicker
-                value={postLang}
-                disabled={posting}
-                onChange={(code) => {
-                  setPostLang(code);
-                  safeLocalStorageSet(postLanguageStorageKey, code);
-                }}
-              />
-              <span className="composer-count">
-                {draftText.trim() && generatedPostCount > 1
-                  ? `${generatedPostCount} posts`
-                  : POST_GRAPHEME_LIMIT - graphemeLength(draftText)}
-              </span>
-            </div>
+            {toolsAndMeta}
             <span className="composer-status">
               {posting ? "Publishing…" : hasContent ? "Draft autosaved locally" : "No local draft"}
             </span>
             <button type="button" onClick={clearDraft} disabled={!hasContent || posting}>
               Clear draft
             </button>
-            <button type="button" onClick={handlePostAll} disabled={!hasContent || posting}>
+            <button type="button" onClick={handleSubmit} disabled={!hasContent || posting}>
               {posting ? "Posting…" : draftText.trim() && generatedPostCount > 1 ? "Post thread" : "Post"}
             </button>
           </div>
         </div>
       </div>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        multiple
-        hidden
-        onChange={(event) => onFilesSelected(event.target.files)}
-      />
-      {postError && <p className="composer-error" role="alert">{postError}</p>}
+      {fileInput}
+      {errorNode}
     </section>
   );
 }
@@ -8757,9 +8883,8 @@ function CombinedThreadViewCard({
         })}
       </div>
       {activeReplyParentUri === rootPost.uri && (
-        <ReplyComposer
-          parent={rootPost}
-          root={threadRootRef}
+        <PostComposer
+          replyTo={{ parent: rootPost, root: threadRootRef }}
           canReply={canReply}
           onClose={onCloseReply}
           onReplied={onReplied}
@@ -9682,9 +9807,8 @@ function LongThreadCard({
                 canReply={handlers.canReply}
               />
               {handlers.activeReplyParentUri === post.uri && (
-                <ReplyComposer
-                  parent={post}
-                  root={handlers.threadRootRef}
+                <PostComposer
+                  replyTo={{ parent: post, root: handlers.threadRootRef }}
                   canReply={handlers.canReply}
                   onClose={handlers.onCloseReply}
                   onReplied={handlers.onReplied}
@@ -9712,222 +9836,6 @@ function LongThreadCard({
         })}
       </div>
     </article>
-  );
-}
-
-function ReplyComposer({
-  parent,
-  root,
-  canReply,
-  onClose,
-  onReplied,
-}: {
-  parent: FeedPost;
-  root: PostRefValue;
-  canReply: boolean;
-  onClose: () => void;
-  onReplied?: () => void;
-}) {
-  const [replyPosting, setReplyPosting] = useState(false);
-  const [replyError, setReplyError] = useState<string | null>(null);
-  const replyDraftKey = `${replyDraftPrefix}${parent.uri}`;
-  const [replyText, setReplyText] = useState("");
-  // Images are session-only (File/object-URL can't be persisted to the draft),
-  // matching the post composer; only the reply text is autosaved.
-  const [images, setImages] = useState<ComposerImageState[]>([]);
-  const [postLang, setPostLang] = useState(readDefaultPostLanguage);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  // Bluesky's 300 limit counts graphemes, not UTF-16 code units — mirror the
-  // post composer so emoji/multibyte replies are measured the same way.
-  const remainingReplyChars = POST_GRAPHEME_LIMIT - graphemeLength(replyText);
-  const hasContent = replyText.trim().length > 0 || images.length > 0;
-
-  useEffect(() => {
-    setReplyText(localStorage.getItem(replyDraftKey) || "");
-  }, [replyDraftKey]);
-
-  useEffect(() => {
-    if (replyText.trim()) {
-      safeLocalStorageSet(replyDraftKey, replyText);
-    } else {
-      safeLocalStorageRemove(replyDraftKey);
-    }
-  }, [replyDraftKey, replyText]);
-
-  // Revoke any outstanding object URLs when the reply composer unmounts.
-  useEffect(() => {
-    return () => {
-      images.forEach((image) => URL.revokeObjectURL(image.url));
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Insert text (e.g. an emoji) at the reply textarea caret, replacing any
-  // selection, then restore focus with the caret after the inserted text.
-  function insertAtCaret(snippet: string) {
-    const el = textareaRef.current;
-    if (!el) {
-      setReplyText((current) => current + snippet);
-      return;
-    }
-    const start = el.selectionStart ?? replyText.length;
-    const end = el.selectionEnd ?? replyText.length;
-    const caret = start + snippet.length;
-    setReplyText(replyText.slice(0, start) + snippet + replyText.slice(end));
-    requestAnimationFrame(() => {
-      el.focus();
-      el.setSelectionRange(caret, caret);
-    });
-  }
-
-  function onFilesSelected(fileList: FileList | null) {
-    if (!fileList || fileList.length === 0) {
-      return;
-    }
-    const picked = Array.from(fileList).filter((file) => file.type.startsWith("image/"));
-    setImages((existing) => {
-      const room = MAX_POST_IMAGES - existing.length;
-      const added = picked.slice(0, Math.max(0, room)).map((file) => ({
-        id: `${file.name}-${file.size}-${file.lastModified}-${existing.length}`,
-        file,
-        url: URL.createObjectURL(file),
-        alt: "",
-      }));
-      return [...existing, ...added];
-    });
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  }
-
-  function removeImage(id: string) {
-    setImages((current) => {
-      const target = current.find((image) => image.id === id);
-      if (target) {
-        URL.revokeObjectURL(target.url);
-      }
-      return current.filter((image) => image.id !== id);
-    });
-  }
-
-  function setImageAlt(id: string, alt: string) {
-    setImages((current) => current.map((image) => (image.id === id ? { ...image, alt } : image)));
-  }
-
-  async function handleReply() {
-    if (replyPosting || !hasContent || remainingReplyChars < 0) {
-      return;
-    }
-    setReplyPosting(true);
-    setReplyError(null);
-    try {
-      await publishPost({
-        text: replyText.trim(),
-        reply: { root, parent: { uri: parent.uri, cid: parent.cid } },
-        ...(postLang ? { langs: [postLang] } : {}),
-        ...(images.length > 0
-          ? { images: images.map((image) => ({ file: image.file, alt: image.alt })) }
-          : {}),
-      });
-      images.forEach((image) => URL.revokeObjectURL(image.url));
-      setImages([]);
-      setReplyText("");
-      safeLocalStorageRemove(replyDraftKey);
-      onClose();
-      onReplied?.();
-    } catch (error) {
-      setReplyError(error instanceof Error ? error.message : "Could not publish reply. Try again.");
-    } finally {
-      setReplyPosting(false);
-    }
-  }
-
-  return (
-    <section className="reply-composer inline" aria-label={`Reply to ${displayName(parent.author)}`}>
-      <textarea
-        ref={textareaRef}
-        autoFocus
-        placeholder={canReply ? `Reply to @${parent.author.handle}` : "Sign in to reply."}
-        value={replyText}
-        onChange={(event) => setReplyText(event.currentTarget.value)}
-        disabled={!canReply || replyPosting}
-      />
-      {images.length > 0 && (
-        <div className="composer-media-grid" aria-label="Attached images">
-          {images.map((image) => (
-            <div className="composer-media-item" key={image.id}>
-              <img src={image.url} alt={image.alt || "Attached image preview"} />
-              <button
-                type="button"
-                className="composer-media-remove"
-                title="Remove image"
-                aria-label="Remove image"
-                onClick={() => removeImage(image.id)}
-              >
-                <X size={14} />
-              </button>
-              <input
-                className="composer-media-alt"
-                type="text"
-                placeholder="Alt text (describe the image)"
-                value={image.alt}
-                maxLength={2000}
-                onChange={(event) => setImageAlt(image.id, event.target.value)}
-              />
-            </div>
-          ))}
-        </div>
-      )}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        multiple
-        hidden
-        onChange={(event) => onFilesSelected(event.target.files)}
-      />
-      {replyError && <p className="composer-error" role="alert">{replyError}</p>}
-      <div className="composer-actions">
-        <div className="composer-tools">
-          <button
-            type="button"
-            title="Add image"
-            aria-label="Add image"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={!canReply || replyPosting || images.length >= MAX_POST_IMAGES}
-          >
-            <Image size={20} />
-          </button>
-          <EmojiPicker disabled={!canReply || replyPosting} onSelect={insertAtCaret} />
-        </div>
-        <div className="composer-meta">
-          <PostLanguagePicker
-            value={postLang}
-            disabled={!canReply || replyPosting}
-            onChange={(code) => {
-              setPostLang(code);
-              safeLocalStorageSet(postLanguageStorageKey, code);
-            }}
-          />
-          <span className={`composer-count${remainingReplyChars < 0 ? " over-limit" : ""}`}>
-            {remainingReplyChars}
-          </span>
-        </div>
-        <div className="composer-send">
-          <button type="button" className="composer-send-cancel" onClick={onClose} disabled={replyPosting}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleReply}
-            disabled={!canReply || replyPosting || remainingReplyChars < 0 || !hasContent}
-          >
-            {replyPosting ? "Replying..." : "Reply"}
-          </button>
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -10187,9 +10095,8 @@ function renderThreadNode(
         onToggleListPost={savedState.onToggleListPost}
       />
       {handlers.activeReplyParentUri === node.post.uri && handlers.threadRootRef && (
-        <ReplyComposer
-          parent={node.post}
-          root={handlers.threadRootRef}
+        <PostComposer
+          replyTo={{ parent: node.post, root: handlers.threadRootRef }}
           canReply={handlers.canReply}
           onClose={handlers.onCloseReply}
           onReplied={handlers.onReplied}
