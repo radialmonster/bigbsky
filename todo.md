@@ -198,9 +198,13 @@
     - `src/InfoPage.tsx`: About page repeats the Bluesky contact link and states BigBsky has no server-side data store.
     - `src/App.tsx`: block/unblock controls, moderation notices, list moderation UI, and own-post delete menu.
     - `src/auth.ts`: `blockAccount`, `unblockAccount`, `deletePost`, `createModList`, `deleteModList`, `addAccountToList`, and list block subscription helpers.
-- [ ] Extend the unknown-embed fallback to quoted posts (follow-up).
+- [x] Extend the unknown-embed fallback to quoted posts (follow-up).
   - Follow-up from the custom-schema / unknown-embed audit.
-  - Current behavior: `getUnknownEmbedType` + `UnsupportedEmbedNotice` only run inside `PostEmbeds` for top-level feed/thread post cards. A quoted post (`QuotedPostCard`) that itself carries an unrecognized embed `$type`, and the `MediaOnlyPostCard` path, do not surface the notice.
-  - Desired: decide whether a quoted/nested post with an unknown embed should also show a small "can't display — open on Bluesky" affordance, or whether the existing quote-card "open on Bluesky" link is sufficient.
+  - Done:
+    - `QuotedPostCard` now computes `quoteEmbedSource` (`record.embeds?.[0] ?? record.value?.embed`) once and reuses it for all embed extractors.
+    - Added `quoteRenderedEmbed` (images/video/external) and `unknownQuoteEmbedType = quoteRenderedEmbed ? null : getUnknownEmbedType(quoteEmbedSource)`, mirroring `PostEmbeds`. Because `getUnknownEmbedType` returns null for known view types (incl. `record#view`/`recordWithMedia#view`), only genuinely unrecognized `$type`s trigger.
+    - Renders the existing `UnsupportedEmbedNotice` (with its "Open on Bluesky" link) inside the quote card, just above the "Open quoted thread" button, when the quote carries an unknown embed and `quotedPost` is available (so the link target resolves). Inline note only — no popup/modal, per operator directives.
+  - Decision: `MediaOnlyPostCard` deliberately left unchanged. It returns `null` when a post has no renderable images/video, so a post whose only embed is an unknown `$type` is simply excluded from the media-only grid — the correct behavior for a media-only view; a fallback notice there would inject non-media content.
+  - Verified: `npm run build` passes (tsc, vite, audit initial JS 113 kB gzip, reader + layout verifiers all green). Remaining vite warnings (hls/main chunk size, mixed `api.ts` static+dynamic import) are pre-existing and tracked as their own tasks.
   - Relevant files/functions found:
     - `src/App.tsx`: `QuotedPostCard`, `MediaOnlyPostCard`, `PostEmbeds`, `UnsupportedEmbedNotice`, `getUnknownEmbedType`.

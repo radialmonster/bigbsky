@@ -8484,10 +8484,16 @@ function QuotedPostCard({
   const showNsfw = useContext(ShowNsfwContext);
   const showMedia = useContext(ShowMediaContext);
   const [mediaRevealed, setMediaRevealed] = useState(false);
-  const embeddedExternal = getExternalEmbed(record.embeds?.[0] ?? record.value?.embed);
+  const quoteEmbedSource = record.embeds?.[0] ?? record.value?.embed;
+  const embeddedExternal = getExternalEmbed(quoteEmbedSource);
   const embeddedExternalThumb = safeHttpUrl(embeddedExternal?.thumb);
-  const embeddedImages = safeEmbedImages(getEmbedImages(record.embeds?.[0] ?? record.value?.embed));
-  const embeddedVideo = getVideoEmbed(record.embeds?.[0] ?? record.value?.embed);
+  const embeddedImages = safeEmbedImages(getEmbedImages(quoteEmbedSource));
+  const embeddedVideo = getVideoEmbed(quoteEmbedSource);
+  // Same generic fallback as PostEmbeds: if the quoted post carries an embed we
+  // can't render and none of the known extractors produced output, surface a
+  // notice instead of silently dropping the nested content.
+  const quoteRenderedEmbed = embeddedImages.length > 0 || !!embeddedVideo || !!embeddedExternal;
+  const unknownQuoteEmbedType = quoteRenderedEmbed ? null : getUnknownEmbedType(quoteEmbedSource);
   const hasHiddenPreviewMedia = embeddedImages.length > 0 || !!embeddedVideo || !!embeddedExternalThumb;
   const hiddenPreviewMediaKind = embeddedImages.length > 0 || embeddedExternalThumb ? "image" : "video";
   const text = record.value?.text?.trim() || "";
@@ -8584,6 +8590,9 @@ function QuotedPostCard({
           onOpenLinkPreview={onOpenLinkPreview}
           sourcePost={quotedPost ?? undefined}
         />
+      )}
+      {unknownQuoteEmbedType && quotedPost && (
+        <UnsupportedEmbedNotice embedType={unknownQuoteEmbedType} post={quotedPost} />
       )}
       {quotedPost && (
         <button className="quote-open-button" type="button" onClick={() => onOpenPost?.(quotedPost)}>
