@@ -116,12 +116,16 @@
     - `src/auth.ts`: `publishPost`, list/listitem/listblock writes, and notification `updateSeen` all use `new Date().toISOString()`.
     - `src/api.ts`: `FeedPost.record.createdAt`, `FeedPost.indexedAt`, `RecordEmbedView.value.createdAt`, and `RecordEmbedView.indexedAt` types.
     - `src/App.tsx`: `postSortTime`, `formatPostTime`, `PostCard`, `MediaOnlyPostCard`, combined thread cards, thread detail, notifications.
-- [ ] Apply the `sortAt` timestamp preference to displayed post times (follow-up).
+- [x] Apply the `sortAt` timestamp preference to displayed post times (follow-up).
   - Follow-up from the timestamp-handling audit.
-  - Current behavior: `postSortTime` now uses the clock-skew-aware `sortAt` compromise for sorting/grouping, but display surfaces still pass `record.createdAt || indexedAt` straight into `formatPostTime`, so a future-dated/stale `createdAt` can still be *shown* even though it no longer affects ordering.
-  - Desired behavior: decide whether displayed timestamps should reuse the same `createdAt`-vs-`indexedAt` preference (likely via a shared helper that returns the chosen ISO string) for consistency between sort order and shown time.
+  - Done:
+    - Added a shared `postSortAt(post)` helper in `src/App.tsx` that returns the chosen ISO string using the same clock-skew-aware preference as `postSortTime` (prefer `createdAt`, fall back to `indexedAt` when `createdAt` is in the future beyond `CLOCK_SKEW_WINDOW_MS`).
+    - Refactored `postSortTime` to derive its numeric value from `postSortAt`, so sort/group order and displayed time now share one code path.
+    - Updated every post-display `formatPostTime` call site to use `postSortAt(post)` instead of the raw `record.createdAt || indexedAt`: PostCard, MediaOnlyPostCard, combined thread cards (both variants), and thread-detail header.
+    - Left the notification timestamp (`formatPostTime(item.indexedAt)`) unchanged — notifications are not `FeedPost`s and already use `indexedAt`.
+  - Verified: `npm run build` passes (tsc, vite, audit, reader + layout verification all green). Remaining vite warnings (hls/main chunk size, mixed `api.ts` import) are pre-existing and tracked as their own tasks.
   - Relevant files/functions found:
-    - `src/App.tsx`: `formatPostTime` call sites (PostCard, MediaOnlyPostCard, combined thread cards, thread detail, notifications), `postSortTime`, `parseTimestamp`, `CLOCK_SKEW_WINDOW_MS`.
+    - `src/App.tsx`: `postSortAt`, `postSortTime`, `formatPostTime` call sites, `parseTimestamp`, `CLOCK_SKEW_WINDOW_MS`.
 
 - [ ] Investigate whether BigBsky should use Firehose or JetStream.
   - Source: https://docs.bsky.app/docs/advanced-guides/firehose

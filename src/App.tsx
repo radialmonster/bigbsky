@@ -769,17 +769,28 @@ function parseTimestamp(value?: string) {
   return new Date(value).getTime();
 }
 
-function postSortTime(post: FeedPost) {
-  const createdAt = parseTimestamp(post.record.createdAt);
-  const indexedAt = parseTimestamp(post.indexedAt);
+// The `sortAt` ISO string to trust for a post: prefer `createdAt`, but fall
+// back to `indexedAt` when `createdAt` claims to be in the future beyond the
+// clock-skew window. Shared by sorting (`postSortTime`) and display
+// (`formatPostTime` call sites) so a future-dated/stale `createdAt` is neither
+// sorted on nor shown.
+function postSortAt(post: FeedPost): string | undefined {
+  const createdAtIso = post.record.createdAt;
+  const indexedAtIso = post.indexedAt;
+  const createdAt = parseTimestamp(createdAtIso);
   const now = Date.now();
   if (!Number.isNaN(createdAt) && createdAt <= now + CLOCK_SKEW_WINDOW_MS) {
-    return createdAt;
+    return createdAtIso;
   }
-  if (!Number.isNaN(indexedAt)) {
-    return indexedAt;
+  if (!Number.isNaN(parseTimestamp(indexedAtIso))) {
+    return indexedAtIso;
   }
-  return Number.isNaN(createdAt) ? 0 : createdAt;
+  return createdAtIso;
+}
+
+function postSortTime(post: FeedPost) {
+  const sortAt = parseTimestamp(postSortAt(post));
+  return Number.isNaN(sortAt) ? 0 : sortAt;
 }
 
 type ThreadedFeedItem = {
@@ -7367,7 +7378,7 @@ function ThreadedPostCard({
   const rootPost = thread.root.post;
   const likeView = likeCtx?.getState(rootPost);
   const bookmarkView = bookmarkCtx?.getState(rootPost);
-  const postTimeLabel = formatPostTime(rootPost.record.createdAt || rootPost.indexedAt);
+  const postTimeLabel = formatPostTime(postSortAt(rootPost));
   const replyCount = posts.reduce((total, post) => total + (post.replyCount ?? 0), 0);
   const repostCount = posts.reduce((total, post) => total + (post.repostCount ?? 0), 0);
   const quoteCount = posts.reduce((total, post) => total + (post.quoteCount ?? 0), 0);
@@ -7706,7 +7717,7 @@ function MediaOnlyPostCard({
   const images = safeEmbedImages(getEmbedImages(post.embed)).slice(0, maxPostImages);
   const video = getVideoEmbed(post.embed);
   const text = post.record.text?.trim() || "";
-  const postTimeLabel = formatPostTime(post.record.createdAt || post.indexedAt);
+  const postTimeLabel = formatPostTime(postSortAt(post));
   const viewerImages = images
     .map((image) => ({
       src: image.fullsize || image.thumb || "",
@@ -8057,7 +8068,7 @@ function CombinedThreadViewCard({
   const posts = parts.map((part) => part.node.post);
   const likeView = likeCtx?.getState(rootPost);
   const bookmarkView = bookmarkCtx?.getState(rootPost);
-  const postTimeLabel = formatPostTime(rootPost.record.createdAt || rootPost.indexedAt);
+  const postTimeLabel = formatPostTime(postSortAt(rootPost));
   const replyCount = posts.reduce((total, post) => total + (post.replyCount ?? 0), 0);
   const repostCount = posts.reduce((total, post) => total + (post.repostCount ?? 0), 0);
   const quoteCount = posts.reduce((total, post) => total + (post.quoteCount ?? 0), 0);
@@ -8305,7 +8316,7 @@ function PostCard({
   const recordEmbed = getRecordEmbed(post.embed);
   const video = getVideoEmbed(post.embed);
   const text = post.record.text?.trim() || "";
-  const postTimestamp = post.record.createdAt || post.indexedAt;
+  const postTimestamp = postSortAt(post);
   const postTimeLabel = formatPostTime(postTimestamp);
   const preservesLineBreaks = text.includes("\n");
   const threadMarker = threadMarkerMatch(text);
@@ -8749,7 +8760,7 @@ function ThreadView({
             >
               <h2>{displayName(rootPost.author)}</h2>
               <p>
-                @{rootPost.author.handle} · {formatPostTime(rootPost.record.createdAt || rootPost.indexedAt)}
+                @{rootPost.author.handle} · {formatPostTime(postSortAt(rootPost))}
               </p>
             </a>
           </div>
@@ -8989,7 +9000,7 @@ function LongThreadCard({
 }) {
   const onOpenTag = useContext(TagSearchContext);
   const rootPost = parts[0].node.post;
-  const firstTimeLabel = formatPostTime(rootPost.record.createdAt || rootPost.indexedAt);
+  const firstTimeLabel = formatPostTime(postSortAt(rootPost));
   const totalReplies = parts.reduce((total, part) => total + part.replies.length, 0);
 
   return (
