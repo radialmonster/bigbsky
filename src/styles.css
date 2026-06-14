@@ -1048,11 +1048,6 @@ button {
   color: var(--app-text-muted);
 }
 
-.composer-language-label {
-  font-size: 12px;
-  font-weight: 700;
-}
-
 .composer-language select {
   min-height: 32px;
   padding: 0 6px;
@@ -1067,12 +1062,6 @@ button {
 .composer-language select:disabled {
   cursor: not-allowed;
   opacity: 0.6;
-}
-
-@media (max-width: 720px) {
-  .composer-language-label {
-    display: none;
-  }
 }
 
 /* Primary send button (reply composer) and load-more share the filled style. */

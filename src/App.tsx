@@ -6661,7 +6661,6 @@ function PostLanguageSelect({
   return (
     <label className="composer-language" title="Post language">
       <Globe size={16} aria-hidden="true" />
-      <span className="composer-language-label">Language</span>
       <select
         aria-label="Post language"
         value={value}
