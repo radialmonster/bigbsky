@@ -4522,7 +4522,7 @@ button.surface-action {
 
 .reply-composer textarea {
   width: 100%;
-  min-height: 72px;
+  min-height: 150px;
   resize: vertical;
   border: 0;
   outline: 0;
