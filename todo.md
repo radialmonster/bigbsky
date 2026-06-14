@@ -103,18 +103,26 @@
     - `src/api.ts`: `RichTextFacet` type and `FeedPost.record.facets` / `RecordEmbedView.value.facets`.
     - `src/auth.ts`: `publishPost` facet production via `@atproto/api` `RichText.detectFacets`.
     - `src/App.tsx`: `renderRichText`, `extractFacetLinks`, `PostCard`, combined thread rendering, and `QuoteCard` consume facets.
-- [ ] Audit Bluesky timestamp handling.
+- [x] Audit Bluesky timestamp handling.
   - Source: https://docs.bsky.app/docs/advanced-guides/timestamps
-  - Current finding: BigBsky creates records with `new Date().toISOString()`, which includes a UTC timezone marker and should satisfy the docs' timezone requirement.
-  - Current finding: display currently uses `record.createdAt || indexedAt` in several post surfaces.
-  - Current finding: `postSortTime` currently sorts/group-checks with `new Date(post.record.createdAt || post.indexedAt || 0).getTime()`, not the docs' recommended `sortAt` compromise.
-  - Verify whether reader-side grouping/sorting should use a local `sortAt` helper: prefer `createdAt` unless it is in the future beyond a clock-skew window, then use `indexedAt`; reject or clamp far-past/far-future timestamps.
-  - Use a `CLOCK_SKEW_WINDOW` around 2 minutes unless newer docs/API behavior says otherwise.
-  - Do not parse record key TIDs or repo revision TIDs as post timestamps.
+  - Done:
+    - Reworked `postSortTime` in `src/App.tsx` to use the docs' `sortAt` compromise: parse both `createdAt` and `indexedAt`, prefer `createdAt`, but fall back to `indexedAt` when `createdAt` is in the future beyond a clock-skew window (future-dated spam / stale clocks).
+    - Added `CLOCK_SKEW_WINDOW_MS = 2 * 60 * 1000` and a `parseTimestamp` helper; `postSortTime` now degrades safely to `0` only when neither value parses.
+    - This corrects feed sorting and the reply-window/continuation grouping that all run through `postSortTime`.
+  - Verified: `npm run build` passes (tsc, vite, audit, reader + layout verification all green).
+  - Confirmed in scope only: did not change record *creation* (`new Date().toISOString()` already includes a UTC marker, satisfying the docs' timezone requirement) and did not attempt TID parsing (docs say not to derive post timestamps from record-key/revision TIDs).
+  - Follow-up (optional): display surfaces still use `record.createdAt || indexedAt` directly via `formatPostTime`; consider whether the same `sortAt` preference should apply to *displayed* timestamps for consistency. Captured as a new task below.
   - Relevant files/functions found:
     - `src/auth.ts`: `publishPost`, list/listitem/listblock writes, and notification `updateSeen` all use `new Date().toISOString()`.
     - `src/api.ts`: `FeedPost.record.createdAt`, `FeedPost.indexedAt`, `RecordEmbedView.value.createdAt`, and `RecordEmbedView.indexedAt` types.
     - `src/App.tsx`: `postSortTime`, `formatPostTime`, `PostCard`, `MediaOnlyPostCard`, combined thread cards, thread detail, notifications.
+- [ ] Apply the `sortAt` timestamp preference to displayed post times (follow-up).
+  - Follow-up from the timestamp-handling audit.
+  - Current behavior: `postSortTime` now uses the clock-skew-aware `sortAt` compromise for sorting/grouping, but display surfaces still pass `record.createdAt || indexedAt` straight into `formatPostTime`, so a future-dated/stale `createdAt` can still be *shown* even though it no longer affects ordering.
+  - Desired behavior: decide whether displayed timestamps should reuse the same `createdAt`-vs-`indexedAt` preference (likely via a shared helper that returns the chosen ISO string) for consistency between sort order and shown time.
+  - Relevant files/functions found:
+    - `src/App.tsx`: `formatPostTime` call sites (PostCard, MediaOnlyPostCard, combined thread cards, thread detail, notifications), `postSortTime`, `parseTimestamp`, `CLOCK_SKEW_WINDOW_MS`.
+
 - [ ] Investigate whether BigBsky should use Firehose or JetStream.
   - Source: https://docs.bsky.app/docs/advanced-guides/firehose
   - Current finding: no app firehose, `com.atproto.sync.subscribeRepos`, JetStream, relay, or production WebSocket usage was found; the only WebSocket reference is `scripts/cdp.mjs` for local Chrome DevTools Protocol automation.

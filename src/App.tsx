@@ -755,8 +755,31 @@ function isSelfThreadReply(item: FeedItem, rootPost?: FeedPost) {
   return !!rootAuthorDid && item.post.author.did === rootAuthorDid;
 }
 
+// Bluesky timestamp guidance: `createdAt` is user-supplied and can be wrong
+// (future-dated spam, stale device clocks) while `indexedAt` is stamped by the
+// AppView. Sort/group on a "sortAt" compromise — trust `createdAt` unless it
+// claims to be in the future beyond a small clock-skew window, in which case
+// fall back to `indexedAt`. https://docs.bsky.app/docs/advanced-guides/timestamps
+const CLOCK_SKEW_WINDOW_MS = 2 * 60 * 1000;
+
+function parseTimestamp(value?: string) {
+  if (!value) {
+    return Number.NaN;
+  }
+  return new Date(value).getTime();
+}
+
 function postSortTime(post: FeedPost) {
-  return new Date(post.record.createdAt || post.indexedAt || 0).getTime();
+  const createdAt = parseTimestamp(post.record.createdAt);
+  const indexedAt = parseTimestamp(post.indexedAt);
+  const now = Date.now();
+  if (!Number.isNaN(createdAt) && createdAt <= now + CLOCK_SKEW_WINDOW_MS) {
+    return createdAt;
+  }
+  if (!Number.isNaN(indexedAt)) {
+    return indexedAt;
+  }
+  return Number.isNaN(createdAt) ? 0 : createdAt;
 }
 
 type ThreadedFeedItem = {
