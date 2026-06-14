@@ -6589,10 +6589,16 @@ type ComposerImageState = { id: string; file: File; url: string; alt: string };
 
 const POST_GRAPHEME_LIMIT = 300;
 
-// Post language metadata: Bluesky stores a BCP-47 `langs` array on each post
-// record so feeds/clients can language-filter. We expose a single-select of the
-// most common languages (matching bsky.app's compact composer language picker)
-// and persist the last-used choice browser-locally.
+// Post language metadata. The native field is the post record's BCP-47 `langs`
+// array (app.bsky.feed.post — docs allow multiple values, e.g. ["th","en-US"]),
+// which we write via publishPost/publishThread.
+//
+// Verified against bsky.app (2026-06-14): the *default* post language is NOT an
+// atproto account/profile preference — bsky stores it device-locally in
+// BSKY_STORAGE.languagePrefs.postLanguage (alongside primaryLanguage/
+// contentLanguages/postLanguageHistory, all client-side), initialized from the
+// device locale. So there is no account-synced default to read; we mirror bsky
+// by defaulting from the browser locale and persisting the choice browser-local.
 const postLanguageStorageKey = "bigbsky:post-language";
 
 const POST_LANGUAGE_OPTIONS: Array<{ code: string; label: string }> = [
