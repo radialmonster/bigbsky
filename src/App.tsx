@@ -3015,12 +3015,25 @@ export function App() {
   useEffect(() => {
     const mediaQuery = window.matchMedia("(max-width: 720px)");
     const timeline = timelineRef.current;
-    let lastScrollY = Math.max(window.scrollY, timeline?.scrollTop ?? 0);
+    // The scroll container differs by breakpoint: on desktop the bounded
+    // `.timeline` element scrolls, but on mobile `<html>` stays overflow:hidden
+    // while `body`/`#root` become height:auto + overflow-y:auto, so the document
+    // body is the real scroller and `timeline.scrollTop` (and often
+    // `window.scrollY`) stays 0. Read whichever candidate is actually moving —
+    // only one is non-zero at a time, so the max picks the live offset.
+    const readScrollTop = () =>
+      Math.max(
+        window.scrollY,
+        document.scrollingElement?.scrollTop ?? 0,
+        document.body?.scrollTop ?? 0,
+        timeline?.scrollTop ?? 0,
+      );
+    let lastScrollY = readScrollTop();
     let frame = 0;
 
     const updateHeader = () => {
       frame = 0;
-      const currentScrollY = Math.max(window.scrollY, timeline?.scrollTop ?? 0);
+      const currentScrollY = readScrollTop();
       const delta = currentScrollY - lastScrollY;
 
       if (!mediaQuery.matches || navOpen || currentScrollY < 24) {

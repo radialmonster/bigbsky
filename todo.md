@@ -20,6 +20,20 @@
     - `scripts/verify-layout-behavior.mjs`: existing layout verification.
     - `scripts/audit-build.mjs`: build audit step.
     - `src/App.tsx`: `DevInspector` surfaces runtime route/service-worker/cache metrics.
+- [x] Fix inconsistent mobile top-bar (workspace-header) show/hide on scroll.
+  - Reported: on mobile the top menu bar should hide when scrolling down and reveal when scrolling up, but it was inconsistent.
+  - Root cause: the scroll container differs by breakpoint. On desktop the bounded `.timeline` element scrolls. On mobile the media query makes `body`/`#root` `height:auto; overflow-y:auto` while `<html>` stays `overflow:hidden`, so the document (html/body), not `.timeline`, is the scroller — and `timeline.scrollTop` stays ~0. The header effect computed `Math.max(window.scrollY, timeline.scrollTop)`, which is browser-dependent for body/document scrollers, so the offset (and thus the hide/show decision) was unreliable.
+  - Done: in the header `useEffect` in `src/App.tsx`, replaced the two-source `Math.max` with a `readScrollTop()` helper that takes the max of `window.scrollY`, `document.scrollingElement?.scrollTop`, `document.body?.scrollTop`, and `timeline?.scrollTop`. Only one candidate is non-zero at a time, so the max always picks the live offset regardless of which element scrolls. Logic/thresholds otherwise unchanged.
+  - Verified via CDP against the running dev server: at 390px the header shows at top (y<24), hides on scroll-down (y=400), reveals on scroll-up (y=250), and shows again near top (y=10); at 1280px the header stays visible (hide is mobile-only) and `.timeline` is the scroller. `npm run build` passes (tsc, vite, audit, reader + layout + rich-text verifiers all green).
+  - Follow-up (captured below): scroll restoration (`rememberScroll`) and `BackToTopButton` also read/write `timeline.scrollTop`, which is ~0 on mobile (the document scrolls), so they likely mis-save/mis-restore scroll position on mobile — same root cause.
+  - Relevant files/functions found:
+    - `src/App.tsx`: header-visibility `useEffect`, `readScrollTop`, `mobileHeaderVisible`, scroll-restoration `useEffect`, `BackToTopButton`.
+    - `src/styles.css`: `.workspace-header` (mobile `position: fixed`), `.workspace-header.mobile-hidden`, mobile `body/#root/.app-shell` overflow rules.
+- [ ] Fix mobile scroll restoration and Back-to-top to use the real scroller.
+  - Follow-up from the mobile top-bar fix. On mobile the document (html/body) scrolls, not `.timeline`, so `rememberScroll` saves `timeline.scrollTop` (~0) and the `scrollTo`/`BackToTopButton` target the wrong element.
+  - Consider a shared scroll-offset getter/setter that targets `document.scrollingElement` on mobile and `.timeline` on desktop (the `readScrollTop` helper added for the header is a starting point; extract it to module scope).
+  - Relevant files/functions found:
+    - `src/App.tsx`: scroll-restoration `useEffect` (`rememberScroll`/`persistScroll`), the `surface:` `scrollTo` effect, `BackToTopButton` (`containerRef`), `readScrollTop`.
 - [x] Investigate missing New Post button in the left rail.
   - Confirmed: the rail-only New Post item had been intentionally removed in the earlier left-rail reorder, leaving the composer reachable only via the self-profile "New post" tab / account-hub shortcut. Restored a dedicated rail entry point.
   - Done:
@@ -30,6 +44,13 @@
     - `src/App.tsx`: `navIcons`, `.rail-nav` rendering, `openSelfTab`, `Composer` (self-profile `new-post` tab).
     - `src/styles.css`: `.rail-button` / `.rail-compose` styles.
     - `src/sources.ts`: `navigationItems` ordering (unchanged — compose is a distinct action, not a nav surface).
+- [ ] Make post/comment links open directly instead of using the right-rail link preview.
+  - Current issue: clicking an external link in a post/comment does not open the target URL directly. Example: a YouTube link in `https://bigbsky.com/profile/monriatitans.bsky.social/post/3mo7bk477bs2m` opens a right-rail link preview box instead.
+  - Desired behavior: clicking the link text/card in the post or comment should open the external URL directly.
+  - Remove/delete the right-rail link preview box flow with its "Open link" and "Open source post" detour.
+  - Relevant files/functions found:
+    - `src/App.tsx`: likely owns post rendering, link click handling, right-rail preview state, and `onOpenLinkPreview` callbacks.
+    - `src/styles.css`: likely contains styles for the right-rail link preview box that may become dead after removal.
 - [ ] Prioritize the first small fix to ship.
   - Relevant files/functions found:
     - `package.json`: `npm run build` runs TypeScript, Vite build, audit, reader verification, and layout verification.
