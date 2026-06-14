@@ -698,7 +698,7 @@ export async function deletePost(postUri: string): Promise<void> {
 // one and shares the first post as the thread root, matching how bsky.app
 // composes a multi-post thread. Entries with neither text nor images are
 // skipped. Returns the root post's ref. Throws if signed out or nothing to post.
-export async function publishThread(posts: ComposerPostInput[]): Promise<PostRef> {
+export async function publishThread(posts: ComposerPostInput[], langs?: string[]): Promise<PostRef> {
   const clean = posts
     .map((post) => ({ text: post.text.trim(), images: post.images ?? [] }))
     .filter((post) => post.text.length > 0 || post.images.length > 0);
@@ -709,7 +709,7 @@ export async function publishThread(posts: ComposerPostInput[]): Promise<PostRef
   let parent: PostRef | null = null;
   for (const post of clean) {
     const reply: ReplyRef | undefined = root && parent ? { root, parent } : undefined;
-    const ref = await publishPost({ text: post.text, images: post.images, reply });
+    const ref = await publishPost({ text: post.text, images: post.images, reply, langs });
     if (!root) {
       root = ref;
     }

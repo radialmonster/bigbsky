@@ -997,6 +997,41 @@ button {
   color: var(--app-danger);
 }
 
+.composer-language {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  color: var(--app-text-muted);
+}
+
+.composer-language-label {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.composer-language select {
+  min-height: 32px;
+  padding: 0 6px;
+  border-radius: 8px;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface-2);
+  color: var(--app-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.composer-language select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@media (max-width: 720px) {
+  .composer-language-label {
+    display: none;
+  }
+}
+
 .composer-actions button:last-child,
 .load-more {
   min-height: 38px;

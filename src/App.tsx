@@ -4,6 +4,7 @@ import {
   Compass,
   EyeOff,
   Film,
+  Globe,
   Hash,
   Heart,
   Home,
@@ -6588,6 +6589,89 @@ type ComposerImageState = { id: string; file: File; url: string; alt: string };
 
 const POST_GRAPHEME_LIMIT = 300;
 
+// Post language metadata: Bluesky stores a BCP-47 `langs` array on each post
+// record so feeds/clients can language-filter. We expose a single-select of the
+// most common languages (matching bsky.app's compact composer language picker)
+// and persist the last-used choice browser-locally.
+const postLanguageStorageKey = "bigbsky:post-language";
+
+const POST_LANGUAGE_OPTIONS: Array<{ code: string; label: string }> = [
+  { code: "en", label: "English" },
+  { code: "ar", label: "العربية" },
+  { code: "bn", label: "বাংলা" },
+  { code: "de", label: "Deutsch" },
+  { code: "es", label: "Español" },
+  { code: "fa", label: "فارسی" },
+  { code: "fr", label: "Français" },
+  { code: "hi", label: "हिन्दी" },
+  { code: "id", label: "Bahasa Indonesia" },
+  { code: "it", label: "Italiano" },
+  { code: "ja", label: "日本語" },
+  { code: "ko", label: "한국어" },
+  { code: "nl", label: "Nederlands" },
+  { code: "pl", label: "Polski" },
+  { code: "pt", label: "Português" },
+  { code: "ru", label: "Русский" },
+  { code: "th", label: "ไทย" },
+  { code: "tr", label: "Türkçe" },
+  { code: "uk", label: "Українська" },
+  { code: "vi", label: "Tiếng Việt" },
+  { code: "zh", label: "中文" },
+];
+
+// Resolve a default post language: the last-used choice if any, else the
+// browser's primary language (normalized to a base code we offer), else English.
+function readDefaultPostLanguage(): string {
+  try {
+    const saved = localStorage.getItem(postLanguageStorageKey);
+    if (saved && POST_LANGUAGE_OPTIONS.some((option) => option.code === saved)) {
+      return saved;
+    }
+  } catch {
+    // ignore storage failures and fall through to the browser/default guess
+  }
+  const candidates =
+    typeof navigator !== "undefined"
+      ? [navigator.language, ...(navigator.languages ?? [])].filter(Boolean)
+      : [];
+  for (const candidate of candidates) {
+    const base = candidate.toLowerCase().split("-")[0];
+    if (POST_LANGUAGE_OPTIONS.some((option) => option.code === base)) {
+      return base;
+    }
+  }
+  return "en";
+}
+
+function PostLanguageSelect({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (code: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="composer-language" title="Post language">
+      <Globe size={16} aria-hidden="true" />
+      <span className="composer-language-label">Language</span>
+      <select
+        aria-label="Post language"
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {POST_LANGUAGE_OPTIONS.map((option) => (
+          <option key={option.code} value={option.code}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 type GraphemeSegmenter = {
   segment(input: string): Iterable<{ segment: string; index: number }>;
 };
@@ -6686,6 +6770,7 @@ function Composer({
   const [expanded, setExpanded] = useState(defaultExpanded || hasContent);
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
+  const [postLang, setPostLang] = useState(readDefaultPostLanguage);
   // Hidden file input shared across posts; attachTarget records which post the
   // picked files belong to.
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -6784,9 +6869,7 @@ function Composer({
               images: index === 0 ? composerImages : [],
             }))
           : [{ text: "", images: composerImages }];
-      await publishThread(
-        postsToPublish,
-      );
+      await publishThread(postsToPublish, postLang ? [postLang] : undefined);
       // Posted: clear the draft + images, collapse, and refresh the feed.
       Object.values(images)
         .flat()
@@ -6872,6 +6955,14 @@ function Composer({
             >
               <Image size={18} />
             </button>
+            <PostLanguageSelect
+              value={postLang}
+              disabled={posting}
+              onChange={(code) => {
+                setPostLang(code);
+                safeLocalStorageSet(postLanguageStorageKey, code);
+              }}
+            />
             <span>
               {graphemeLength(draftText)} chars
               {draftText.trim() && generatedPostCount > 1 ? ` / ${generatedPostCount} posts` : ""}
@@ -9329,6 +9420,7 @@ function ReplyComposer({
   // Images are session-only (File/object-URL can't be persisted to the draft),
   // matching the post composer; only the reply text is autosaved.
   const [images, setImages] = useState<ComposerImageState[]>([]);
+  const [postLang, setPostLang] = useState(readDefaultPostLanguage);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   // Bluesky's 300 limit counts graphemes, not UTF-16 code units — mirror the
   // post composer so emoji/multibyte replies are measured the same way.
@@ -9399,6 +9491,7 @@ function ReplyComposer({
       await publishPost({
         text: replyText.trim(),
         reply: { root, parent: { uri: parent.uri, cid: parent.cid } },
+        ...(postLang ? { langs: [postLang] } : {}),
         ...(images.length > 0
           ? { images: images.map((image) => ({ file: image.file, alt: image.alt })) }
           : {}),
@@ -9470,6 +9563,14 @@ function ReplyComposer({
         >
           <Image size={18} />
         </button>
+        <PostLanguageSelect
+          value={postLang}
+          disabled={!canReply || replyPosting}
+          onChange={(code) => {
+            setPostLang(code);
+            safeLocalStorageSet(postLanguageStorageKey, code);
+          }}
+        />
         <span className={remainingReplyChars < 0 ? "over-limit" : ""}>{remainingReplyChars}</span>
         <button type="button" onClick={onClose} disabled={replyPosting}>
           Cancel
