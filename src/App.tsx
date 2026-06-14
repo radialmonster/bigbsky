@@ -9326,7 +9326,14 @@ function ReplyComposer({
   const [replyError, setReplyError] = useState<string | null>(null);
   const replyDraftKey = `${replyDraftPrefix}${parent.uri}`;
   const [replyText, setReplyText] = useState("");
-  const remainingReplyChars = 300 - replyText.length;
+  // Images are session-only (File/object-URL can't be persisted to the draft),
+  // matching the post composer; only the reply text is autosaved.
+  const [images, setImages] = useState<ComposerImageState[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // Bluesky's 300 limit counts graphemes, not UTF-16 code units — mirror the
+  // post composer so emoji/multibyte replies are measured the same way.
+  const remainingReplyChars = POST_GRAPHEME_LIMIT - graphemeLength(replyText);
+  const hasContent = replyText.trim().length > 0 || images.length > 0;
 
   useEffect(() => {
     setReplyText(localStorage.getItem(replyDraftKey) || "");
@@ -9340,14 +9347,64 @@ function ReplyComposer({
     }
   }, [replyDraftKey, replyText]);
 
+  // Revoke any outstanding object URLs when the reply composer unmounts.
+  useEffect(() => {
+    return () => {
+      images.forEach((image) => URL.revokeObjectURL(image.url));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function onFilesSelected(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) {
+      return;
+    }
+    const picked = Array.from(fileList).filter((file) => file.type.startsWith("image/"));
+    setImages((existing) => {
+      const room = MAX_POST_IMAGES - existing.length;
+      const added = picked.slice(0, Math.max(0, room)).map((file) => ({
+        id: `${file.name}-${file.size}-${file.lastModified}-${existing.length}`,
+        file,
+        url: URL.createObjectURL(file),
+        alt: "",
+      }));
+      return [...existing, ...added];
+    });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }
+
+  function removeImage(id: string) {
+    setImages((current) => {
+      const target = current.find((image) => image.id === id);
+      if (target) {
+        URL.revokeObjectURL(target.url);
+      }
+      return current.filter((image) => image.id !== id);
+    });
+  }
+
+  function setImageAlt(id: string, alt: string) {
+    setImages((current) => current.map((image) => (image.id === id ? { ...image, alt } : image)));
+  }
+
   async function handleReply() {
-    if (replyPosting || !replyText.trim() || remainingReplyChars < 0) {
+    if (replyPosting || !hasContent || remainingReplyChars < 0) {
       return;
     }
     setReplyPosting(true);
     setReplyError(null);
     try {
-      await publishPost({ text: replyText.trim(), reply: { root, parent: { uri: parent.uri, cid: parent.cid } } });
+      await publishPost({
+        text: replyText.trim(),
+        reply: { root, parent: { uri: parent.uri, cid: parent.cid } },
+        ...(images.length > 0
+          ? { images: images.map((image) => ({ file: image.file, alt: image.alt })) }
+          : {}),
+      });
+      images.forEach((image) => URL.revokeObjectURL(image.url));
+      setImages([]);
       setReplyText("");
       safeLocalStorageRemove(replyDraftKey);
       onClose();
@@ -9368,8 +9425,51 @@ function ReplyComposer({
         onChange={(event) => setReplyText(event.currentTarget.value)}
         disabled={!canReply || replyPosting}
       />
+      {images.length > 0 && (
+        <div className="composer-media-grid" aria-label="Attached images">
+          {images.map((image) => (
+            <div className="composer-media-item" key={image.id}>
+              <img src={image.url} alt={image.alt || "Attached image preview"} />
+              <button
+                type="button"
+                className="composer-media-remove"
+                title="Remove image"
+                aria-label="Remove image"
+                onClick={() => removeImage(image.id)}
+              >
+                <X size={14} />
+              </button>
+              <input
+                className="composer-media-alt"
+                type="text"
+                placeholder="Alt text (describe the image)"
+                value={image.alt}
+                maxLength={2000}
+                onChange={(event) => setImageAlt(image.id, event.target.value)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={(event) => onFilesSelected(event.target.files)}
+      />
       {replyError && <p className="composer-error" role="alert">{replyError}</p>}
       <div className="composer-actions">
+        <button
+          type="button"
+          title="Attach image"
+          aria-label="Attach image"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={!canReply || replyPosting || images.length >= MAX_POST_IMAGES}
+        >
+          <Image size={18} />
+        </button>
         <span className={remainingReplyChars < 0 ? "over-limit" : ""}>{remainingReplyChars}</span>
         <button type="button" onClick={onClose} disabled={replyPosting}>
           Cancel
@@ -9377,7 +9477,7 @@ function ReplyComposer({
         <button
           type="button"
           onClick={handleReply}
-          disabled={!canReply || replyPosting || remainingReplyChars < 0 || replyText.trim().length === 0}
+          disabled={!canReply || replyPosting || remainingReplyChars < 0 || !hasContent}
         >
           {replyPosting ? "Replying..." : "Reply"}
         </button>

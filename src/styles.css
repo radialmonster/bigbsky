@@ -4180,6 +4180,12 @@ button.surface-action {
   background: rgba(255, 255, 255, 0.035);
 }
 
+/* The reply composer already pads its body (16px); drop the media grid's own
+   horizontal padding so attached-image previews align with the textarea. */
+.reply-composer .composer-media-grid {
+  padding: 10px 0 0;
+}
+
 .thread-detail-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
