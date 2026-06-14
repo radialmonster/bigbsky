@@ -6599,6 +6599,10 @@ const POST_GRAPHEME_LIMIT = 300;
 // device locale. So there is no account-synced default to read; we mirror bsky
 // by defaulting from the browser locale and persisting the choice browser-local.
 const postLanguageStorageKey = "bigbsky:post-language";
+// Recent post languages (most-recent-first), mirroring bsky's postLanguageHistory
+// so the picker can surface the handful of languages the user actually posts in.
+const postLanguageHistoryStorageKey = "bigbsky:post-language-history";
+const POST_LANGUAGE_HISTORY_LIMIT = 4;
 
 const POST_LANGUAGE_OPTIONS: Array<{ code: string; label: string }> = [
   { code: "en", label: "English" },
@@ -6648,7 +6652,42 @@ function readDefaultPostLanguage(): string {
   return "en";
 }
 
-function PostLanguageSelect({
+function postLanguageLabel(code: string): string {
+  return POST_LANGUAGE_OPTIONS.find((option) => option.code === code)?.label ?? code;
+}
+
+function readPostLanguageHistory(): string[] {
+  try {
+    const raw = localStorage.getItem(postLanguageHistoryStorageKey);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter(
+      (code): code is string =>
+        typeof code === "string" && POST_LANGUAGE_OPTIONS.some((option) => option.code === code),
+    );
+  } catch {
+    return [];
+  }
+}
+
+// Prepend the chosen language to the recent-history list (dedup, capped).
+function recordPostLanguage(code: string) {
+  const next = [code, ...readPostLanguageHistory().filter((entry) => entry !== code)].slice(
+    0,
+    POST_LANGUAGE_HISTORY_LIMIT,
+  );
+  safeLocalStorageSet(postLanguageHistoryStorageKey, JSON.stringify(next));
+}
+
+// bsky-style language picker: a text button showing the current language that
+// opens a small menu of recent languages (with radio markers) plus a
+// "More languages…" expansion to the full list. Closes on outside-click/Escape.
+function PostLanguagePicker({
   value,
   onChange,
   disabled,
@@ -6657,21 +6696,96 @@ function PostLanguageSelect({
   onChange: (code: string) => void;
   disabled?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    function onDocPointer(event: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        setOpen(false);
+        setShowAll(false);
+      }
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        setShowAll(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  // Recent languages to show first: the current value, then history, padded with
+  // English so the short list is never empty.
+  const recent: string[] = [];
+  for (const code of [value, ...readPostLanguageHistory(), "en"]) {
+    if (!recent.includes(code) && POST_LANGUAGE_OPTIONS.some((option) => option.code === code)) {
+      recent.push(code);
+    }
+    if (recent.length >= POST_LANGUAGE_HISTORY_LIMIT) {
+      break;
+    }
+  }
+
+  function choose(code: string) {
+    recordPostLanguage(code);
+    onChange(code);
+    setOpen(false);
+    setShowAll(false);
+  }
+
+  const listed = showAll ? POST_LANGUAGE_OPTIONS.map((option) => option.code) : recent;
+
   return (
-    <label className="composer-language" title="Post language">
-      <select
-        aria-label="Post language"
-        value={value}
+    <div className="composer-language" ref={rootRef}>
+      <button
+        type="button"
+        className="composer-language-button"
         disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title="Post language"
+        onClick={() => setOpen((current) => !current)}
       >
-        {POST_LANGUAGE_OPTIONS.map((option) => (
-          <option key={option.code} value={option.code}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
+        {postLanguageLabel(value)}
+      </button>
+      {open && (
+        <div className={`composer-language-menu${showAll ? " expanded" : ""}`} role="listbox">
+          {listed.map((code) => (
+            <button
+              key={code}
+              type="button"
+              role="option"
+              aria-selected={code === value}
+              className={`composer-language-option${code === value ? " selected" : ""}`}
+              onClick={() => choose(code)}
+            >
+              <span>{postLanguageLabel(code)}</span>
+              <span className="composer-language-radio" aria-hidden="true" />
+            </button>
+          ))}
+          {!showAll && (
+            <button
+              type="button"
+              className="composer-language-more"
+              onClick={() => setShowAll(true)}
+            >
+              <span>More languages…</span>
+              <ChevronRight size={16} aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -6962,7 +7076,7 @@ function Composer({
               </button>
             </div>
             <div className="composer-meta">
-              <PostLanguageSelect
+              <PostLanguagePicker
                 value={postLang}
                 disabled={posting}
                 onChange={(code) => {
@@ -9575,7 +9689,7 @@ function ReplyComposer({
           </button>
         </div>
         <div className="composer-meta">
-          <PostLanguageSelect
+          <PostLanguagePicker
             value={postLang}
             disabled={!canReply || replyPosting}
             onChange={(code) => {

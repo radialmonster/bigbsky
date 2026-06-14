@@ -1046,27 +1046,93 @@ button {
   color: var(--app-danger);
 }
 
+/* bsky-style language picker: a blue text trigger with a small popover menu. */
 .composer-language {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  color: var(--app-text-muted);
 }
 
-.composer-language select {
+.composer-language-button {
   min-height: 32px;
-  padding: 0 6px;
+  padding: 0 8px;
   border-radius: 8px;
-  border: 1px solid var(--app-border);
-  background: var(--app-surface-2);
-  color: var(--app-text);
-  font: inherit;
-  cursor: pointer;
+  background: transparent;
+  color: var(--bsky-blue-soft);
+  font-weight: 700;
 }
 
-.composer-language select:disabled {
-  cursor: not-allowed;
+.composer-language-button:hover:not(:disabled) {
+  background: rgba(5, 96, 255, 0.14);
+}
+
+.composer-language-button:disabled {
+  color: var(--app-text-muted);
   opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.composer-language-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 220px;
+  padding: 6px;
+  border: 1px solid var(--app-border-strong);
+  border-radius: 12px;
+  background: var(--app-surface-2);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.composer-language-menu.expanded {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.composer-language-option,
+.composer-language-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 38px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--app-text);
+  font-weight: 600;
+  text-align: left;
+}
+
+.composer-language-option:hover,
+.composer-language-more:hover {
+  background: var(--app-surface);
+}
+
+.composer-language-radio {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid var(--app-border-strong);
+}
+
+.composer-language-option.selected .composer-language-radio {
+  border-color: var(--bsky-blue);
+  background: var(--bsky-blue);
+  box-shadow: inset 0 0 0 3px var(--app-surface-2);
+}
+
+.composer-language-more {
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--app-border);
+  color: var(--app-text-muted);
+  font-weight: 700;
 }
 
 /* Primary send button (reply composer) and load-more share the filled style. */
