@@ -5809,11 +5809,12 @@ button.surface-action {
     display: none;
   }
 
-  .media-only-row {
-    display: grid;
+  .media-only-justified {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    aspect-ratio: auto;
-    max-height: none;
+  }
+
+  .media-only-row {
+    display: contents;
   }
 
   .media-only-tile {
