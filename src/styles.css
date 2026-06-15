@@ -3100,14 +3100,16 @@ button.surface-action {
   font-size: 12px;
 }
 
-.timeline.compact .post-card.media-hidden .media-hidden-button {
-  grid-column: 2;
+.timeline.compact .post-card.media-hidden > .media-hidden-button {
+  position: absolute;
+  top: 54px;
+  left: 46px;
   width: max-content;
   max-width: 100%;
   min-width: 0;
   height: auto;
-  min-height: 24px;
-  margin: 3px 0;
+  min-height: 22px;
+  margin: 0;
   padding: 0 9px;
   border-radius: 6px;
   border-style: solid;
@@ -3118,18 +3120,14 @@ button.surface-action {
   font-weight: 800;
 }
 
-/* The rule above is for the compact *placeholder* button, which is a direct
-   grid child of the post card and belongs in the content column (2). When the
-   reader reveals media, the "Hide Media" button is instead nested inside
-   .post-image-video-media — its own single-column grid — where grid-column: 2
-   spawns a phantom second column and shoves the button to the right of the
-   image. Keep the revealed button in column 1 so it sits below the media. */
+/* Revealed media keeps its Hide Media control with the media itself. */
 .timeline.compact .post-card.media-hidden .post-image-video-media .media-hidden-button {
   grid-column: 1;
   justify-self: start;
 }
 
-.timeline.compact .post-card.media-hidden .media-hidden-button svg {
+.timeline.compact .post-card.media-hidden > .media-hidden-button svg,
+.timeline.compact .post-card.media-hidden .post-image-video-media .media-hidden-button svg {
   width: 13px;
   height: 13px;
 }
@@ -4210,6 +4208,7 @@ button.surface-action {
 
 .compact .post-card.text-only,
 .compact .post-card.media-hidden {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(190px, 280px) minmax(0, 1fr);
   column-gap: 10px;
