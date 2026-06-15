@@ -3056,14 +3056,11 @@ button.surface-action {
 }
 
 .compact .post-byline {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  gap: 1px;
 }
 
 .compact .post-byline span {
-  display: inline;
+  display: block;
 }
 
 .compact .reason,
@@ -3178,22 +3175,25 @@ button.surface-action {
 }
 
 .post-byline {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  display: grid;
+  gap: 2px;
   min-width: 0;
   color: var(--app-text-muted);
   font-size: 13px;
 }
 
 .post-byline span {
-  display: inline;
+  display: block;
 }
 
 .post-byline span:first-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.post-byline span[aria-hidden="true"] {
+  display: none;
 }
 
 .post-timestamp:hover {
@@ -5745,14 +5745,6 @@ button.surface-action {
   .compact .post-card.media-hidden {
     display: block;
     padding: 8px 10px 10px;
-  }
-
-  .compact .post-byline span + span {
-    margin-left: 4px;
-  }
-
-  .compact .post-byline .post-timestamp {
-    margin-left: 4px;
   }
 
   .compact .post-text {
