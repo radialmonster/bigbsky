@@ -5747,6 +5747,22 @@ button.surface-action {
     padding: 8px 10px 10px;
   }
 
+  .post-byline,
+  .compact .post-byline {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .post-byline span,
+  .compact .post-byline span {
+    display: inline;
+  }
+
+  .post-byline span[aria-hidden="true"] {
+    display: inline;
+  }
+
   .compact .post-text {
     margin: 4px 0;
     font-size: 17px;
