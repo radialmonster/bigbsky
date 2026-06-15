@@ -41,11 +41,35 @@ export default function InfoPage() {
           </p>
         </article>
         <article className="info-panel">
+          <h3>Reporting content &amp; abuse</h3>
+          <p>
+            The posts and profiles you see in BigBsky are hosted on the Bluesky network, not on BigBsky. To report
+            illegal content, abuse, harassment, or a user, please use Bluesky&rsquo;s official moderation tools: use the
+            report option on the post or account, or follow Bluesky&rsquo;s{" "}
+            <a href="https://bsky.social/about/support/community-guidelines" target="_blank" rel="noreferrer">
+              community guidelines and reporting process
+            </a>
+            . Bluesky&rsquo;s moderation team handles takedowns and account actions across the network.
+          </p>
+          <p>
+            For problems with the BigBsky reader itself &mdash; bugs, broken rendering, or a request to remove a
+            BigBsky-specific issue &mdash; open an issue on{" "}
+            <a href="https://github.com/radialmonster/bigbsky/issues" target="_blank" rel="noreferrer">
+              GitHub
+            </a>{" "}
+            or use the contact below. Reports are reviewed and responded to through those channels.
+          </p>
+        </article>
+        <article className="info-panel">
           <h3>Contact</h3>
           <p>
             Suggestions and issue reports are welcome on Bluesky at{" "}
             <a href="https://bsky.app/profile/radialmonster.com" target="_blank" rel="noreferrer">
               @radialmonster.com
+            </a>{" "}
+            or on{" "}
+            <a href="https://github.com/radialmonster/bigbsky/issues" target="_blank" rel="noreferrer">
+              GitHub
             </a>
             .
           </p>

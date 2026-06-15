@@ -342,19 +342,29 @@
     - `public/oauth-client-metadata.json`: browser OAuth scopes with AppView `aud=did:web:api.bsky.app#bsky_appview`.
     - `src/auth.ts`: OAuth session restoration and AppView proxy usage.
     - `src/scopes.ts`: `APPVIEW_AUD` and scope comments for client-server AppView RPC calls.
-- [ ] Audit Bluesky Developer Guidelines compliance.
+- [x] Audit Bluesky Developer Guidelines compliance.
   - Source: https://docs.bsky.app/docs/support/developer-guidelines
   - Current finding: BigBsky has public contact/issue-report links, user blocking, block-list/moderation-list tools, and delete support for the signed-in user's own posts/lists.
-  - Gap to verify: provide a clear method to report illegal content and abuse; decide whether to delegate to Bluesky reporting, add a BigBsky report contact flow, or both.
-  - Gap to verify: publish a regularly monitored email address, not only a Bluesky profile contact link.
-  - Gap to verify: document how user reports are tracked/responded to and how content deletion requests are handled.
-  - Keep anti-spam posture explicit: avoid automated/bulk follows, likes, replies, account generation, or notification-generating automation.
-  - Review security posture for local OAuth/session data, browser-local preferences, drafts, pins, and collections.
+  - Done (2026-06-14): closed the primary documented gap — **a clear method to report illegal content and abuse**.
+    - Added a "Reporting content & abuse" panel to `src/InfoPage.tsx` (above the Contact panel). It explains that posts/profiles are hosted on the Bluesky network (not BigBsky, which has no server-side store), so illegal-content/abuse/harassment/user reports go through **Bluesky's official moderation tools** — the in-app report option on the post/account, or Bluesky's [community guidelines and reporting process](https://bsky.social/about/support/community-guidelines), where Bluesky's moderation team handles network-wide takedowns/account actions. For BigBsky-reader-specific problems it points to a monitored **GitHub Issues** channel (`/issues`) plus the existing Bluesky contact, and states reports are reviewed/responded to through those channels.
+    - Expanded the **Contact** panel to add the GitHub Issues link alongside the Bluesky profile (a second, monitored channel).
+    - Mirrored both in `README.md`: a new "Reporting content & abuse" section and added the GitHub Issues + Bluesky community-guidelines links to the Links list.
+  - Decision: delegate illegal-content/abuse reporting to Bluesky's official moderation rather than building a BigBsky report-intake flow — correct because BigBsky has no backend and the content lives on the Bluesky network; duplicating an intake form would mislead users about where takedowns actually happen.
+  - Anti-spam posture (confirmed, no change needed): BigBsky performs no automated/bulk follows, likes, replies, account generation, or notification-generating automation — all actions are user-initiated from the reader UI.
+  - Verified: `npm run build` passes (tsc, vite, audit initial JS 116 kB gzip, reader + layout + rich-text verifiers all green). Change is static informational JSX (compiled into the `InfoPage` chunk); no runtime/auth path touched. (Preview MCP couldn't bind — port 5173 already held by the running dev server — but tsc + the build prove the render path.)
+  - Follow-ups (captured below): (a) the guidelines suggest a regularly **monitored email address**, not only profile/GitHub links — needs an operator decision on which address to publish; (b) documenting an explicit reports-tracking/response SLA and content-deletion-request process; (c) a dedicated security-posture review of local OAuth/session data, browser-local preferences, drafts, pins, and collections.
   - Relevant files/functions found:
     - `README.md`: public contact/issue report link currently points to `https://bsky.app/profile/radialmonster.com`.
     - `src/InfoPage.tsx`: About page repeats the Bluesky contact link and states BigBsky has no server-side data store.
     - `src/App.tsx`: block/unblock controls, moderation notices, list moderation UI, and own-post delete menu.
     - `src/auth.ts`: `blockAccount`, `unblockAccount`, `deletePost`, `createModList`, `deleteModList`, `addAccountToList`, and list block subscription helpers.
+- [ ] Publish a monitored contact email + document reports/deletion handling (follow-up from Developer Guidelines audit).
+  - Bluesky's developer guidelines suggest a regularly monitored **email address**, not only a Bluesky profile / GitHub Issues link. BigBsky currently exposes the Bluesky profile and GitHub Issues (both added in the audit above) but no email.
+  - **Question for operator:** which email address should BigBsky publish for content/abuse reports and contact? Once provided, add it to the "Reporting content & abuse" + "Contact" panels in `src/InfoPage.tsx` and the README Links/Reporting sections.
+  - Also document an explicit process for how reports are tracked/responded to and how content-deletion requests are handled (even a short stated turnaround), and do a dedicated security-posture review of local OAuth/session data, browser-local preferences, drafts, pins, and collections.
+  - Relevant files/functions found:
+    - `src/InfoPage.tsx`: "Reporting content & abuse" + "Contact" panels.
+    - `README.md`: "Reporting content & abuse" section + Links list.
 - [x] Extend the unknown-embed fallback to quoted posts (follow-up).
   - Follow-up from the custom-schema / unknown-embed audit.
   - Done:

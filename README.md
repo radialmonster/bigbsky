@@ -18,9 +18,16 @@ BigBsky is not Bluesky, not bsky.app, and not affiliated with Bluesky Social, PB
 
 Sign-in is optional. BigBsky only asks you to sign in so it can authenticate with your Bluesky account and show your feeds, bookmarks, and profile-specific data. You can still browse public Bluesky feeds without signing in. BigBsky has no server-side data store and does not store your user data on BigBsky servers. Preferences, drafts, pins, recent items, and local collections may be stored locally in your browser so the reader can remember them on this device.
 
+## Reporting content & abuse
+
+The posts and profiles you see in BigBsky are hosted on the Bluesky network, not on BigBsky. To report illegal content, abuse, harassment, or a user, use Bluesky's official moderation tools: the report option on the post or account, or Bluesky's [community guidelines and reporting process](https://bsky.social/about/support/community-guidelines). Bluesky's moderation team handles takedowns and account actions across the network.
+
+For problems with the BigBsky reader itself — bugs, broken rendering, or a BigBsky-specific issue — open a [GitHub issue](https://github.com/radialmonster/bigbsky/issues) or use the contact below. Reports are reviewed and responded to through those channels.
+
 ## Links
 
 - Website: https://bigbsky.com
-- Contact / issue reports: https://bsky.app/profile/radialmonster.com
+- Contact / issue reports: https://bsky.app/profile/radialmonster.com or https://github.com/radialmonster/bigbsky/issues
+- Report illegal content / abuse: https://bsky.social/about/support/community-guidelines
 - Optional support: https://radialmonster.github.io/send-a-virtual-gift/
 - Source code: https://github.com/radialmonster/bigbsky
