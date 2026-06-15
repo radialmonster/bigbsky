@@ -2400,6 +2400,12 @@ export function App() {
       return undefined;
     }
 
+    if (activeSource.uri === "following") {
+      setFeedMetadata(null);
+      setListMetadata(null);
+      return undefined;
+    }
+
     const controller = new AbortController();
 
     if (isListUri(activeSource.uri)) {
