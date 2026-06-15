@@ -366,6 +366,10 @@ function resolveHomeSource(homeId: string, signedIn: boolean, subscribed: FeedSo
   }
   return publicHomeFallback;
 }
+
+function homeSourceNeedsAuth(homeId: string) {
+  return homeId === "following" || homeId.startsWith("at://");
+}
 // One entry in the Settings "Open Home to" picker. `group` drives the section
 // headings (Following / Feeds / Lists) in the searchable picker.
 type HomeOption = { id: string; label: string; needsAuth: boolean; group: "Following" | "Feeds" | "Lists" };
@@ -1502,6 +1506,9 @@ export function App() {
   // Protocol preferences and surface them in the feed selector. Cleared on
   // sign-out. Failures are non-fatal: the selector keeps its public feeds.
   const signedInDid = authState.status === "signed-in" ? authState.session?.did : undefined;
+  const authCheckPending = authState.status === "checking" || authState.status === "callback";
+  const homeWaitingForAuth =
+    route.kind === "feed" && !route.uri && authCheckPending && homeSourceNeedsAuth(homeSourceId);
 
   // "Permissions updated" detection: when the desired OAUTH_SCOPE has grown
   // beyond what this session's (long-lived) grant carries, surface a one-click
@@ -1859,10 +1866,10 @@ export function App() {
     // Root "/" (feed route with no uri) shows the user's chosen Home feed, with a
     // public fallback when signed out so Home never breaks.
     if (route.kind === "feed" && !route.uri) {
-      return resolveHomeSource(homeSourceId, !!signedInDid, subscribedFeeds);
+      return resolveHomeSource(homeSourceId, !!signedInDid || homeWaitingForAuth, subscribedFeeds);
     }
     return feedSources.find((source) => source.id === activeSourceId) ?? feedSources[0];
-  }, [route, activeSourceId, subscribedFeeds, homeSourceId, signedInDid]);
+  }, [route, activeSourceId, subscribedFeeds, homeSourceId, signedInDid, homeWaitingForAuth]);
   // The signed-in user's saved feeds, reordered by the browser-local feedOrder
   // (URIs). Feeds with a saved position sort by it; the rest keep their account
   // order after them (stable sort). Drives both the /feeds grid and the selector.
@@ -2326,6 +2333,12 @@ export function App() {
       return undefined;
     }
 
+    if (homeWaitingForAuth) {
+      setProfile(null);
+      setFeedState({ items: [], status: "loading" });
+      return undefined;
+    }
+
     const controller = new AbortController();
     if (route.kind === "profile") {
       setProfile(null);
@@ -2336,7 +2349,7 @@ export function App() {
     setProfile(null);
     void loadFeed(activeSource, undefined, controller.signal);
     return () => controller.abort();
-  }, [activeSource, loadFeed, loadProfileFeed, profileTab, route]);
+  }, [activeSource, homeWaitingForAuth, loadFeed, loadProfileFeed, profileTab, route]);
 
   useEffect(() => {
     if (route.kind !== "search") {
@@ -2376,6 +2389,12 @@ export function App() {
 
   useEffect(() => {
     if (route.kind === "post" || route.kind === "search" || route.kind === "surface" || route.kind === "profile") {
+      setFeedMetadata(null);
+      setListMetadata(null);
+      return undefined;
+    }
+
+    if (homeWaitingForAuth) {
       setFeedMetadata(null);
       setListMetadata(null);
       return undefined;
@@ -2425,7 +2444,7 @@ export function App() {
         }
       });
     return () => controller.abort();
-  }, [activeSource, route.kind]);
+  }, [activeSource, homeWaitingForAuth, route.kind]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -3796,7 +3815,7 @@ export function App() {
             className={`timeline ${density}`}
             ref={timelineRef}
           >
-            {feedState.status === "loading" && <LoadingState label="Loading public Bluesky posts" />}
+            {feedState.status === "loading" && <LoadingState label={homeWaitingForAuth ? "Checking browser session" : "Loading Bluesky posts"} />}
             {feedState.status === "error" && <ErrorState message={feedState.error || "Feed failed to load."} />}
             {feedState.status === "rate-limit" && <RateLimitState message={feedState.error} />}
             {feedState.status === "ready" && (
