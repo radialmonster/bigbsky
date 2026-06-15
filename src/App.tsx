@@ -3294,6 +3294,32 @@ export function App() {
     delete profileCacheRef.current[`profile:${route.actor}:${profileFeedFilterForTab(profileTab)}`];
     void loadProfileFeed(route.actor, undefined, undefined, profileFeedFilterForTab(profileTab));
   }, [loadProfileFeed, profileTab, route]);
+  // After the signed-in user creates a post or reply, drop the SPA caches that
+  // would otherwise serve a stale list omitting the new record: the Following
+  // timeline (which includes the user's own posts) and every cached self-profile
+  // tab. The refreshed reads are authenticated (PDS-proxied), so they benefit
+  // from atproto read-after-write smoothing even before the AppView is fully
+  // consistent. Other users' feeds aren't touched — read-after-write only
+  // applies to the requesting user's own records.
+  const invalidateOwnContentCaches = useCallback(() => {
+    delete feedCacheRef.current["feed:following"];
+    const selfIds = [signedInDid, authState.session?.handle].filter(Boolean) as string[];
+    if (selfIds.length > 0) {
+      for (const key of Object.keys(profileCacheRef.current)) {
+        if (selfIds.some((id) => key.startsWith(`profile:${id}:`))) {
+          delete profileCacheRef.current[key];
+        }
+      }
+    }
+  }, [signedInDid, authState.session?.handle]);
+  const handleOwnReplyPublished = useCallback(() => {
+    invalidateOwnContentCaches();
+    reloadThread();
+  }, [invalidateOwnContentCaches, reloadThread]);
+  const handleOwnPostPublished = useCallback(() => {
+    invalidateOwnContentCaches();
+    reloadCurrentProfile();
+  }, [invalidateOwnContentCaches, reloadCurrentProfile]);
   const openPost = (post: FeedPost) => {
     const path = postPath(post);
     if (!path) {
@@ -3575,7 +3601,7 @@ export function App() {
             localLists={localLists}
             onToggleListPost={togglePostInLocalList}
             canReply={!!authState.session}
-            onReplied={reloadThread}
+            onReplied={handleOwnReplyPublished}
           />
         ) : route.kind === "surface" && route.name === "bookmarks" ? (
           <BookmarksView
@@ -3695,7 +3721,7 @@ export function App() {
               <PostComposer
                 draft={composerDraft}
                 onDraftChange={setComposerDraft}
-                onPosted={reloadCurrentProfile}
+                onPosted={handleOwnPostPublished}
                 defaultExpanded
               />
             ) : profileTab === "feeds" ? (
