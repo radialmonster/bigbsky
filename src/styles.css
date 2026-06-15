@@ -5809,6 +5809,18 @@ button.surface-action {
     display: none;
   }
 
+  .media-only-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    aspect-ratio: auto;
+    max-height: none;
+  }
+
+  .media-only-tile {
+    height: auto;
+    aspect-ratio: var(--media-aspect, 1) / 1;
+  }
+
   .search-workspace {
     grid-template-columns: 22px minmax(0, 1fr) 34px 34px;
   }
