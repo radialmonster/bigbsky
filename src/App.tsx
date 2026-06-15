@@ -180,6 +180,7 @@ const DeletePostContext = createContext<DeletePostContextValue | null>(null);
 
 function readShowNsfw() {
   try {
+    // Off by default: only an explicit opt-in shows adult/graphic media.
     return localStorage.getItem(showNsfwStorageKey) === "true";
   } catch {
     return false;
@@ -2702,6 +2703,14 @@ export function App() {
   function toggleShowNsfw() {
     setShowNsfw((current) => {
       const next = !current;
+      if (next) {
+        const confirmed = window.confirm(
+          "Show NSFW media in BigBSky on this browser? Confirm that you are allowed to view adult content where you live. BigBSky will not ask for or store your birthday. For Bluesky account-wide moderation settings, use https://bsky.app/moderation.",
+        );
+        if (!confirmed) {
+          return current;
+        }
+      }
       safeLocalStorageSet(showNsfwStorageKey, next ? "true" : "false");
       return next;
     });
@@ -4597,9 +4606,9 @@ function SurfaceView({
             </div>
           </article>
           <article className="settings-panel">
-            <span>{showNsfw ? "Showing" : "Hidden"}</span>
-            <h3>Content &amp; Media</h3>
-            <p>Adult and graphic media is hidden behind a warning by default. Turn this on to show labeled media without the per-post Show step.</p>
+            <span>{showNsfw ? "On" : "Off"}</span>
+            <h3>Show NSFW media</h3>
+            <p>Off by default. Enabling asks for a local confirmation, not your birthday. BigBSky does not store this on a server; it only changes how this browser displays Bluesky-hosted labeled media. Use Bluesky's moderation settings for account-wide content filtering.</p>
             <button
               type="button"
               className={showNsfw ? "settings-toggle on" : "settings-toggle"}
@@ -4612,6 +4621,9 @@ function SurfaceView({
               </span>
               <span>{showNsfw ? "Showing adult / graphic media" : "Hiding adult / graphic media"}</span>
             </button>
+            <a className="settings-link" href="https://bsky.app/moderation" target="_blank" rel="noreferrer">
+              Open Bluesky moderation settings
+            </a>
             <p>This preference is stored locally in this browser only.</p>
           </article>
           <article className="settings-panel">
@@ -4677,6 +4689,7 @@ function SurfaceView({
                 <dd>IndexedDB</dd>
               </div>
             </dl>
+            <p className="settings-note">Clears BigBSky browser-local data on this device only. It does not delete Bluesky account data.</p>
             <button type="button" onClick={onClearLocalData}>
               Clear local reader data
             </button>

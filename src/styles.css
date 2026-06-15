@@ -1526,6 +1526,20 @@ button {
   font-weight: 700;
 }
 
+.settings-link {
+  display: inline-flex;
+  margin-top: 12px;
+  color: var(--bsky-blue-soft);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.settings-link:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+
 .settings-select {
   display: flex;
   flex-direction: column;

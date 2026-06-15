@@ -41,6 +41,17 @@ export default function InfoPage() {
           </p>
         </article>
         <article className="info-panel">
+          <h3>Privacy posture</h3>
+          <p>
+            BigBsky is a static browser app. It does not run a BigBsky user database, does not profile what you read,
+            and does not store adult-content preferences, birthday, age, ID, or verification data on a BigBsky server.
+            Bluesky and AT Protocol services receive the API requests needed to load Bluesky-hosted posts, profiles,
+            feeds, media, bookmarks, and account actions. BigBsky is hosted on Cloudflare, which may process ordinary
+            web delivery, security, and aggregate/anonymized analytics data for hosting. GitHub receives anything you
+            choose to submit in an issue report.
+          </p>
+        </article>
+        <article className="info-panel">
           <h3>Reporting content &amp; abuse</h3>
           <p>
             The posts and profiles you see in BigBsky are hosted on the Bluesky network, not on BigBsky. To report
