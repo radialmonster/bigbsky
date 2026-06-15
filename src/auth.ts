@@ -469,6 +469,75 @@ export async function unfollowFeed(feedUri: string): Promise<void> {
   }
 }
 
+// Persist a feed-generator ordering back to the signed-in user's AT Protocol
+// saved-feeds preference so the order syncs across devices/clients (instead of
+// staying browser-local). `orderedFeedUris` is the desired order of feed
+// generators; only feed-type saved items are reordered relative to each other —
+// non-feed items (the Following timeline, saved lists) keep their original
+// positions and pinned state. A real authenticated write routed through the
+// user's session/PDS via the official `overwriteSavedFeeds` helper, which
+// preserves each item's id/pinned and only changes the array order. No-ops (no
+// write) when the order is already current, when signed out, or when the account
+// only has the legacy `savedFeedsPref` (no V2 items to reorder).
+export async function syncSavedFeedsOrder(orderedFeedUris: string[]): Promise<void> {
+  const session = await ensureSession();
+  if (!session) {
+    throw new Error("Sign in to sync feed order.");
+  }
+  const { Agent } = await import("@atproto/api");
+  const agent = new Agent(session);
+  const prefsResponse = await agent.app.bsky.actor.getPreferences();
+  const preferences = (prefsResponse.data?.preferences ?? []) as Array<Record<string, unknown>>;
+
+  type SavedItem = { id: string; type: string; value: string; pinned: boolean };
+  let items: SavedItem[] | null = null;
+  for (const pref of preferences) {
+    if (pref.$type === "app.bsky.actor.defs#savedFeedsPrefV2" && Array.isArray(pref.items)) {
+      items = (pref.items as Array<Record<string, unknown>>).map((item) => ({
+        id: String(item.id ?? ""),
+        type: String(item.type ?? ""),
+        value: String(item.value ?? ""),
+        pinned: !!item.pinned,
+      }));
+      break;
+    }
+  }
+  if (!items || items.length === 0) {
+    // Nothing to reorder (signed-out handled above; legacy-only or empty prefs).
+    return;
+  }
+
+  // Desired order for feed-generator items only. Feeds absent from the desired
+  // list keep their original relative order after the ordered ones.
+  const rank = new Map(orderedFeedUris.map((uri, index) => [uri, index] as const));
+  const fallback = orderedFeedUris.length;
+  const feedItems = items.filter((item) => item.type === "feed");
+  const orderedFeedItems = feedItems
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      // Stable sort: rank by desired position, tie-break on original index so
+      // unranked feeds keep their relative order after the ordered ones.
+      const ra = rank.get(a.item.value) ?? fallback;
+      const rb = rank.get(b.item.value) ?? fallback;
+      return ra - rb || a.index - b.index;
+    })
+    .map((entry) => entry.item);
+
+  // Skip the write when the feed order is already current.
+  if (feedItems.every((item, index) => item.id === orderedFeedItems[index]?.id)) {
+    return;
+  }
+
+  // Refill the feed-type slots in their new order; leave non-feed items
+  // (timeline, lists) at their original positions untouched.
+  let feedCursor = 0;
+  const nextItems = items.map((item) =>
+    item.type === "feed" ? orderedFeedItems[feedCursor++] : item,
+  ) as Parameters<typeof agent.overwriteSavedFeeds>[0];
+
+  await agent.overwriteSavedFeeds(nextItems);
+}
+
 // Authenticated profile read so viewer-relative state (viewer.following etc.)
 // is populated. The public AppView omits viewer state, so write buttons need
 // this when signed in. Falls back to the public read when signed out.

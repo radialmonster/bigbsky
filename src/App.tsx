@@ -106,6 +106,7 @@ import {
   publishThread,
   deletePost,
   searchPostsAuthed,
+  syncSavedFeedsOrder,
   unblockAccount,
   unbookmarkPost,
   unfollowAccount,
@@ -2984,6 +2985,15 @@ export function App() {
   function persistFeedOrder(uris: string[]) {
     setFeedOrder(uris);
     safeLocalStorageSet(feedOrderStorageKey, JSON.stringify(uris));
+    // Best-effort sync the new order back to the account's saved-feeds
+    // preference so it follows the user across devices/clients. The local order
+    // remains the immediate source of truth; this only reorders feed-generator
+    // items in the account preference and no-ops when the order is unchanged.
+    if (signedInDid) {
+      void syncSavedFeedsOrder(uris).catch((error) => {
+        console.error("Failed to sync feed order to account", error);
+      });
+    }
   }
 
   // Accessible up/down reorder for a saved feed.

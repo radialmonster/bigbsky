@@ -385,10 +385,22 @@
 - [x] Review/commit the uncommitted `src/styles.css` mobile compact-media change.
   - Resolved: the change was committed in e4f8253 "Fix mobile hidden media link layout". Working tree is clean at the start of the 2026-06-14 feed-reorder session; the `.timeline.compact .post-card.media-hidden .media-hidden-button` (`grid-column: auto; justify-self: start;` in the mobile media query) and link-card grid rules are present in `src/styles.css`. Nothing further to do.
 
-- [ ] Optionally sync saved-feed order back to the account (follow-up).
-  - Follow-up from the `/feeds` feed-reorder work. The new ordering is browser-local (`bigbsky:feed-order`), so it does not persist across devices/clients.
-  - To sync, write the reordered list to the user's `app.bsky.actor.putPreferences` `savedFeedsPref` (v2 `savedFeeds` order) via the authed session, and have `getSubscribedFeeds` return feeds in that order so the local override becomes unnecessary (or a fallback).
-  - Verify the current preference read/write path in `src/auth.ts` (`getSubscribedFeeds`, `followFeed`/`unfollowFeed`) and the exact preference lexicon shape before implementing.
+- [x] Optionally sync saved-feed order back to the account (follow-up).
+  - Follow-up from the `/feeds` feed-reorder work. The ordering was browser-local only (`bigbsky:feed-order`), so it did not persist across devices/clients.
+  - Done (2026-06-14):
+    - Added `syncSavedFeedsOrder(orderedFeedUris)` in `src/auth.ts`. It reads `app.bsky.actor.getPreferences`, finds the `savedFeedsPrefV2` items, reorders **only the feed-type items** relative to each other to match the desired order (stable sort; feeds absent from the desired list keep their original relative order after the ordered ones), leaves non-feed items — the Following timeline and saved lists — at their original positions with their pinned state intact, and writes the result via the official `agent.overwriteSavedFeeds(...)` helper (which preserves each item's id/pinned and only changes array order). It **no-ops** (no write) when signed out, when the order is already current, or when the account only has the legacy `savedFeedsPref` (no V2 items to reorder).
+    - Wired it into `persistFeedOrder` in `src/App.tsx`: after the browser-local save, when `signedInDid` is set it fires `void syncSavedFeedsOrder(uris).catch(...)` as a best-effort background write (local order stays the immediate source of truth; a sync failure only logs).
+    - No read-path change needed: `getSubscribedFeeds` already returns feeds in account order, and `orderedSubscribedFeeds` falls back to that account order when there is no local `feedOrder` — so a second device with no local override picks up the synced order directly, and after a sync the two are consistent.
+  - Verified: `npm run build` passes (tsc clean, vite, audit initial JS 117 kB gzip, reader + layout + rich-text verifiers all green). The account write only runs on an authenticated reorder action, which is not reachable in a read-only CDP/preview check (same documented limitation as prior composer/follow/block write work), so it was validated through the build/type path and by mirroring the existing `followFeed`/`unfollowFeed` preference read/write pattern + the official `overwriteSavedFeeds` helper.
+  - Follow-up (captured below): exercise the write once in a real signed-in session and confirm the reordered order shows up in the official bsky.app client (cross-client sync), and decide whether to surface a small "synced"/"saving…" affordance on `/feeds`.
   - Relevant files/functions found:
-    - `src/auth.ts`: `getSubscribedFeeds`, `followFeed`, `unfollowFeed` (saved-feeds preference read/write).
-    - `src/App.tsx`: `orderedSubscribedFeeds`, `feedOrder`, `persistFeedOrder`.
+    - `src/auth.ts`: `syncSavedFeedsOrder`, `getSubscribedFeeds`, `followFeed`, `unfollowFeed` (saved-feeds preference read/write), `overwriteSavedFeeds` (atproto helper).
+    - `src/App.tsx`: `orderedSubscribedFeeds`, `feedOrder`, `persistFeedOrder`, `signedInDid`.
+
+- [ ] Confirm saved-feed-order account sync in a real signed-in session (follow-up).
+  - Follow-up from the saved-feed-order sync work above. The `syncSavedFeedsOrder` account write only runs on an authenticated reorder and couldn't be exercised read-only.
+  - In a real signed-in session: reorder feeds on `/feeds`, then confirm (a) no console error from the background sync, (b) reloading BigBsky in a fresh browser/profile (empty `bigbsky:feed-order`) shows the new order, and (c) the official bsky.app client reflects the same saved-feed order (cross-client sync) and that pinned state + the Following timeline + saved lists are unchanged.
+  - Optional: surface a subtle "saving…/synced" affordance on `/feeds` so the user knows the order is account-synced, and consider a manual retry if the sync fails.
+  - Relevant files/functions found:
+    - `src/auth.ts`: `syncSavedFeedsOrder`.
+    - `src/App.tsx`: `persistFeedOrder`.
