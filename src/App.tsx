@@ -8354,7 +8354,10 @@ function PostImageVideoMedia({ post, onOpenImage }: { post: FeedPost; onOpenImag
                 className="image-button"
                 key={image.thumb || image.fullsize}
                 type="button"
-                onClick={() => {
+                onClick={(event) => {
+                  if (!clickedImageElement(event)) {
+                    return;
+                  }
                   const viewerImages = feedViewerImages(images);
                   if (viewerImages.length === 0) {
                     return;
@@ -8396,7 +8399,10 @@ function PostImageVideoMedia({ post, onOpenImage }: { post: FeedPost; onOpenImag
                       key={image.thumb || image.fullsize}
                       type="button"
                       style={{ "--media-aspect": imageAspectRatio(image) } as CSSProperties}
-                      onClick={() => {
+                      onClick={(event) => {
+                        if (!clickedImageElement(event)) {
+                          return;
+                        }
                         if (viewerImages.length === 0) {
                           return;
                         }
@@ -8429,6 +8435,10 @@ function feedViewerImages(images: ReturnType<typeof getEmbedImages>) {
       alt: viewerImage.alt || "",
     }))
     .filter((viewerImage) => viewerImage.src);
+}
+
+function clickedImageElement(event: ReactMouseEvent<HTMLButtonElement>) {
+  return event.target instanceof HTMLImageElement;
 }
 
 function imageAspectRatio(image: ReturnType<typeof getEmbedImages>[number]) {
@@ -8474,7 +8484,14 @@ function MediaOnlyImageTile({
       className="media-only-tile"
       type="button"
       style={{ "--media-aspect": aspectRatio } as CSSProperties}
-      onClick={() => viewerImages.length > 0 && onOpenImage?.({ images: viewerImages, index: Math.max(0, viewerIndex) })}
+      onClick={(event) => {
+        if (!clickedImageElement(event)) {
+          return;
+        }
+        if (viewerImages.length > 0) {
+          onOpenImage?.({ images: viewerImages, index: Math.max(0, viewerIndex) });
+        }
+      }}
       aria-label={image.alt ? "Open image" : "Open full size image"}
     >
       <img
@@ -8540,7 +8557,14 @@ function MediaOnlyPostCard({
         <button
           className="media-only-single"
           type="button"
-          onClick={() => viewerImages.length > 0 && onOpenImage?.({ images: viewerImages, index: 0 })}
+          onClick={(event) => {
+            if (!clickedImageElement(event)) {
+              return;
+            }
+            if (viewerImages.length > 0) {
+              onOpenImage?.({ images: viewerImages, index: 0 });
+            }
+          }}
           aria-label={images[0].alt ? "Open image" : "Open full size image"}
         >
           <img
