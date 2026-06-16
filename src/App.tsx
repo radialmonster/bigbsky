@@ -15,7 +15,6 @@ import {
   Menu,
   Plus,
   X,
-  ChevronLeft,
   ChevronRight,
   ChevronUp,
   ChevronDown,
@@ -912,6 +911,8 @@ type FeedRow = FeedItem | ThreadedFeedItem;
 type PostRefValue = { uri: string; cid: string };
 type BranchLoadResult = { added: number };
 const CONTINUATION_REPLY_WINDOW_MS = 10 * 60 * 1000;
+const MEDIA_DENSITY_VISIBLE_TARGET = 12;
+const MEDIA_DENSITY_MAX_PREFETCH_PAGES = 4;
 type ThreadPart = {
   node: ThreadPostNode;
   partNumber: number;
@@ -1058,6 +1059,10 @@ function buildThreadedFeedRows(items: FeedItem[]): FeedRow[] {
     });
   }
   return rows;
+}
+
+function countVisualFeedItems(items: FeedItem[]) {
+  return items.filter((item) => postHasVisualMedia(item.post)).length;
 }
 
 async function hydrateProfileSelfThreads(items: FeedItem[], signal?: AbortSignal) {
@@ -2100,7 +2105,15 @@ export function App() {
     }));
 
     try {
-      const response =
+      const readPage = (pageCursor?: string) =>
+        source.uri === "following"
+          ? getFollowingTimeline(pageCursor, signal)
+          : isListUri(source.uri)
+            ? getListFeed(source.uri, pageCursor, signal)
+            : signedInDid
+              ? getFeedAuthed(source.uri, pageCursor, signal)
+              : getFeed(source.uri, pageCursor, signal);
+      let response =
         source.uri === "following"
           ? await getFollowingTimeline(cursor, signal)
           : isListUri(source.uri)
@@ -2108,6 +2121,25 @@ export function App() {
             : signedInDid
               ? await getFeedAuthed(source.uri, cursor, signal)
               : await getFeed(source.uri, cursor, signal);
+      if (density === "media" && response.cursor && countVisualFeedItems(response.feed) < MEDIA_DENSITY_VISIBLE_TARGET) {
+        let nextCursor: string | undefined = response.cursor;
+        let combinedFeed = response.feed;
+        let extraPages = 0;
+        while (
+          nextCursor &&
+          countVisualFeedItems(combinedFeed) < MEDIA_DENSITY_VISIBLE_TARGET &&
+          extraPages < MEDIA_DENSITY_MAX_PREFETCH_PAGES
+        ) {
+          const nextResponse = await readPage(nextCursor);
+          combinedFeed = [...combinedFeed, ...nextResponse.feed];
+          nextCursor = nextResponse.cursor;
+          extraPages += 1;
+          if (nextResponse.feed.length === 0) {
+            break;
+          }
+        }
+        response = { feed: combinedFeed, cursor: nextCursor };
+      }
       setFeedState((current) => {
         const next = {
           items: cursor ? [...current.items, ...response.feed] : response.feed,
@@ -2129,7 +2161,7 @@ export function App() {
         );
       }
     }
-  }, [signedInDid]);
+  }, [density, signedInDid]);
 
   const loadProfileFeed = useCallback(async (actor: string, cursor?: string, signal?: AbortSignal, filter: ProfileFeedFilter = "posts_with_replies") => {
     const cacheKey = `profile:${actor}:${filter}`;
@@ -3837,7 +3869,9 @@ export function App() {
                 {feedState.cursor && (
                   <AutoLoadMoreButton label="Load more feed posts" onLoadMore={loadMore} error={feedState.loadMoreError} />
                 )}
-                {feedState.items.length > 0 && !feedState.cursor && !feedState.loadMoreError && <EndOfFeedCard />}
+                {feedState.items.length > 0 && !feedState.cursor && !feedState.loadMoreError && (
+                  <EndOfFeedCard kind={density === "media" ? "media" : "posts"} />
+                )}
               </VirtualPostList>
             )}
           </div>
@@ -9523,6 +9557,7 @@ function ThreadView({
   canReply?: boolean;
   onReplied?: () => void;
 }) {
+  const density = useContext(DensityContext);
   const [expandedBranches, setExpandedBranches] = useState<Record<string, boolean>>({});
   const [engagement, setEngagement] = useState<null | "reposts" | "quotes" | "likes">(null);
   const [activeReplyParentUri, setActiveReplyParentUri] = useState<string | null>(null);
@@ -9546,7 +9581,7 @@ function ThreadView({
   }
 
   return (
-    <div className="thread-view">
+    <div className={`thread-view ${density}`}>
       {rootPost && (
         <section className="thread-detail-header">
           <div>
@@ -10000,38 +10035,6 @@ function ImageViewer({
       </button>
       {hasMultiple && (
         <>
-          <button
-            className="image-viewer-nav previous"
-            type="button"
-            onMouseDown={(event) => {
-              event.preventDefault();
-              clearSelection();
-            }}
-            onClick={(event) => {
-              event.stopPropagation();
-              goPrevious();
-              event.currentTarget.blur();
-            }}
-            aria-label="Previous image"
-          >
-            <ChevronLeft size={30} />
-          </button>
-          <button
-            className="image-viewer-nav next"
-            type="button"
-            onMouseDown={(event) => {
-              event.preventDefault();
-              clearSelection();
-            }}
-            onClick={(event) => {
-              event.stopPropagation();
-              goNext();
-              event.currentTarget.blur();
-            }}
-            aria-label="Next image"
-          >
-            <ChevronRight size={30} />
-          </button>
           <div className="image-viewer-count">
             {image.index + 1} / {image.images.length}
           </div>
@@ -10603,11 +10606,15 @@ function EmptyState({ title, message }: { title: string; message: string }) {
   );
 }
 
-function EndOfFeedCard() {
+function EndOfFeedCard({ kind = "posts" }: { kind?: "posts" | "media" }) {
   return (
     <div className="end-of-feed" role="status">
       <strong>End of Feed</strong>
-      <span>No more posts can be returned for this feed right now.</span>
+      <span>
+        {kind === "media"
+          ? "No more media posts can be returned for this feed right now."
+          : "No more posts can be returned for this feed right now."}
+      </span>
     </div>
   );
 }

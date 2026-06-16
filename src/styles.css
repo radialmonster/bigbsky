@@ -3101,14 +3101,14 @@ button.surface-action {
 }
 
 .timeline.compact .post-card.media-hidden > .media-hidden-button {
-  grid-column: 1;
+  grid-column: 1 / -1;
   justify-self: start;
   width: max-content;
   max-width: 100%;
   min-width: 0;
   height: auto;
   min-height: 22px;
-  margin: 4px 0 0 33px;
+  margin: 4px 0;
   padding: 0 9px;
   border-radius: 6px;
   border-style: solid;
@@ -4192,9 +4192,7 @@ button.surface-action {
 }
 
 .compact .post-card.text-only .post-header,
-.compact .post-card.media-hidden .post-header,
 .compact .post-card.text-only .thread-open-chip,
-.compact .post-card.media-hidden .thread-open-chip,
 .compact .thread-combined-card .post-header,
 .compact .thread-combined-card .thread-open-chip {
   grid-column: 1;
@@ -4204,6 +4202,13 @@ button.surface-action {
 .compact .post-card.text-only .post-badges,
 .compact .post-card.text-only .post-text,
 .compact .post-card.text-only .post-actions,
+.compact .thread-combined-card .combined-thread-text,
+.compact .thread-combined-card .post-actions {
+  grid-column: 2;
+}
+
+.compact .post-card.media-hidden .post-header,
+.compact .post-card.media-hidden .thread-open-chip,
 .compact .post-card.media-hidden .reason,
 .compact .post-card.media-hidden .post-badges,
 .compact .post-card.media-hidden .moderation-notice,
@@ -4211,15 +4216,31 @@ button.surface-action {
 .compact .post-card.media-hidden .post-image-video-media,
 .compact .post-card.media-hidden .link-card,
 .compact .post-card.media-hidden .quote-card,
-.compact .post-card.media-hidden .post-actions,
-.compact .thread-combined-card .combined-thread-text,
-.compact .thread-combined-card .post-actions {
-  grid-column: 2;
+.compact .post-card.media-hidden .post-actions {
+  grid-column: 1 / -1;
 }
 
 .compact .post-card.text-only .post-text,
 .compact .post-card.media-hidden .post-text {
   margin-top: 0;
+}
+
+.compact .post-card.combined-thread-view-card {
+  display: block;
+}
+
+.compact .post-card.combined-thread-view-card .combined-thread-text {
+  margin-top: 8px;
+}
+
+.compact .post-card.combined-thread-view-card .combined-thread-segment > * {
+  grid-column: 1 / -1;
+}
+
+.compact .post-card.combined-thread-view-card .combined-thread-segment > .media-hidden-button {
+  justify-self: start;
+  width: max-content;
+  max-width: 100%;
 }
 
 .compact .post-card.media-hidden .link-card,
@@ -5371,36 +5392,10 @@ button.surface-action {
   color: var(--app-text);
 }
 
-.image-viewer-nav {
-  position: fixed;
-  top: 50%;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 48px;
-  height: 64px;
-  border-radius: 8px;
-  background: rgba(22, 31, 47, 0.72);
-  color: var(--app-text);
-  transform: translateY(-50%);
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.image-viewer-nav:focus,
 .image-viewer-close:focus {
   outline: none;
 }
 
-.image-viewer-nav.previous {
-  left: 18px;
-}
-
-.image-viewer-nav.next {
-  right: 18px;
-}
-
-.image-viewer-nav:hover,
 .image-viewer-close:hover {
   background: rgba(44, 58, 79, 0.96);
 }
