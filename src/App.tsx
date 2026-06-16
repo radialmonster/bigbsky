@@ -7976,40 +7976,6 @@ function renderRichText(
   });
 }
 
-function AdditionalLinks({
-  externalHref,
-  links,
-}: {
-  externalHref?: string;
-  links: string[];
-}) {
-  const externalNormalized = normalizeLinkHref(externalHref);
-  const additional = links.filter((link) => normalizeLinkHref(link) !== externalNormalized);
-
-  if (additional.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="additional-links" aria-label="Additional links in post">
-      <span>{externalHref ? "Also linked" : additional.length === 1 ? "Linked" : "Links"}</span>
-      {additional.map((link) => (
-        <a
-          key={link}
-          href={link}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(event) => {
-            event.stopPropagation();
-          }}
-        >
-          {formatExternalUrlLabel(link)}
-        </a>
-      ))}
-    </div>
-  );
-}
-
 function ExternalLinkCard({
   className = "",
   external,
@@ -8338,81 +8304,86 @@ function PostImageVideoMedia({ post, onOpenImage }: { post: FeedPost; onOpenImag
     return <MediaHiddenButton kind={images.length > 0 ? "image" : "video"} onReveal={() => setMediaRevealed(true)} />;
   }
 
+  const hideMediaButton =
+    mediaRevealed && (mediaWarningValues.length > 0 || !showMedia) ? (
+      <MediaHiddenButton kind={images.length > 0 ? "image" : "video"} revealed onReveal={() => setMediaRevealed(false)} />
+    ) : null;
+
   return (
-    <div className="post-image-video-media">
-      {images.length === 1 && (
-        <div className="image-grid count-1">
-          {images.slice(0, 1).map((image) => (
-            <button
-              className="image-button"
-              key={image.thumb || image.fullsize}
-              type="button"
-              onClick={() => {
-                const viewerImages = feedViewerImages(images);
-                if (viewerImages.length === 0) {
-                  return;
-                }
-                onOpenImage?.({ images: viewerImages, index: 0 });
-              }}
-              aria-label={image.alt ? "Open image" : "Open full size image"}
-            >
-              <img
-                alt={image.alt || ""}
-                src={image.thumb || image.fullsize}
-                loading="lazy"
-                decoding="async"
-                style={
-                  image.aspectRatio?.width && image.aspectRatio?.height
-                    ? { aspectRatio: `${image.aspectRatio.width} / ${image.aspectRatio.height}` }
-                    : undefined
-                }
-              />
-            </button>
-          ))}
-        </div>
-      )}
-      {images.length > 1 && (
-        <div className={`image-grid image-masonry count-${Math.min(images.length, 4)}`}>
-          {pairedImageRows(images.slice(0, maxPostImages)).map((row, rowIndex) => (
-            <div
-              className="image-row"
-              key={`image-row-${post.uri}-${rowIndex}`}
-              style={{ "--media-row-aspect": row.reduce((total, image) => total + imageAspectRatio(image), 0) } as CSSProperties}
-            >
-              {row.map((image, imageIndex) => {
-                const flatIndex = rowIndex * 2 + imageIndex;
-                const viewerImages = feedViewerImages(images);
-                const selectedIndex = Math.max(0, viewerImages.findIndex((viewerImage) => viewerImage.src === (image.fullsize || image.thumb)));
-                return (
-                  <button
-                    className="image-button"
-                    key={image.thumb || image.fullsize}
-                    type="button"
-                    style={{ "--media-aspect": imageAspectRatio(image) } as CSSProperties}
-                    onClick={() => {
-                      if (viewerImages.length === 0) {
-                        return;
-                      }
-                      onOpenImage?.({ images: viewerImages, index: selectedIndex });
-                    }}
-                    aria-label={image.alt ? "Open image" : "Open full size image"}
-                  >
-                    <img alt={image.alt || ""} src={image.thumb || image.fullsize} loading="lazy" decoding="async" />
-                    {images.length > maxPostImages && flatIndex === maxPostImages - 1 && (
-                      <span className="more-media-badge">+{images.length - maxPostImages}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      )}
-      {video && <VideoEmbedCard video={video} />}
-      {mediaRevealed && (mediaWarningValues.length > 0 || !showMedia) && (
-        <MediaHiddenButton kind={images.length > 0 ? "image" : "video"} revealed onReveal={() => setMediaRevealed(false)} />
-      )}
-    </div>
+    <>
+      {hideMediaButton}
+      <div className="post-image-video-media">
+        {images.length === 1 && (
+          <div className="image-grid count-1">
+            {images.slice(0, 1).map((image) => (
+              <button
+                className="image-button"
+                key={image.thumb || image.fullsize}
+                type="button"
+                onClick={() => {
+                  const viewerImages = feedViewerImages(images);
+                  if (viewerImages.length === 0) {
+                    return;
+                  }
+                  onOpenImage?.({ images: viewerImages, index: 0 });
+                }}
+                aria-label={image.alt ? "Open image" : "Open full size image"}
+              >
+                <img
+                  alt={image.alt || ""}
+                  src={image.thumb || image.fullsize}
+                  loading="lazy"
+                  decoding="async"
+                  style={
+                    image.aspectRatio?.width && image.aspectRatio?.height
+                      ? { aspectRatio: `${image.aspectRatio.width} / ${image.aspectRatio.height}` }
+                      : undefined
+                  }
+                />
+              </button>
+            ))}
+          </div>
+        )}
+        {images.length > 1 && (
+          <div className={`image-grid image-masonry count-${Math.min(images.length, 4)}`}>
+            {pairedImageRows(images.slice(0, maxPostImages)).map((row, rowIndex) => (
+              <div
+                className="image-row"
+                key={`image-row-${post.uri}-${rowIndex}`}
+                style={{ "--media-row-aspect": row.reduce((total, image) => total + imageAspectRatio(image), 0) } as CSSProperties}
+              >
+                {row.map((image, imageIndex) => {
+                  const flatIndex = rowIndex * 2 + imageIndex;
+                  const viewerImages = feedViewerImages(images);
+                  const selectedIndex = Math.max(0, viewerImages.findIndex((viewerImage) => viewerImage.src === (image.fullsize || image.thumb)));
+                  return (
+                    <button
+                      className="image-button"
+                      key={image.thumb || image.fullsize}
+                      type="button"
+                      style={{ "--media-aspect": imageAspectRatio(image) } as CSSProperties}
+                      onClick={() => {
+                        if (viewerImages.length === 0) {
+                          return;
+                        }
+                        onOpenImage?.({ images: viewerImages, index: selectedIndex });
+                      }}
+                      aria-label={image.alt ? "Open image" : "Open full size image"}
+                    >
+                      <img alt={image.alt || ""} src={image.thumb || image.fullsize} loading="lazy" decoding="async" />
+                      {images.length > maxPostImages && flatIndex === maxPostImages - 1 && (
+                        <span className="more-media-badge">+{images.length - maxPostImages}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
+        {video && <VideoEmbedCard video={video} />}
+      </div>
+    </>
   );
 }
 
@@ -9042,11 +9013,9 @@ function PostEmbeds({
   const images = safeEmbedImages(getEmbedImages(post.embed));
   const video = getVideoEmbed(post.embed);
   const external = getExternalEmbed(post.embed);
-  const externalHref = safeHttpUrl(external?.uri);
   const externalThumb = safeHttpUrl(external?.thumb);
   const recordEmbed = getRecordEmbed(post.embed);
   const linkMediaHidden = !showMedia && !linkMediaRevealed && !!externalThumb;
-  const facetLinks = extractFacetLinks(post.record.facets);
   // If the post carries an embed we don't know how to render and none of the
   // known extractors produced anything, tell the reader rather than dropping it.
   const renderedEmbed = images.length > 0 || !!video || !!external || !!recordEmbed;
@@ -9064,7 +9033,6 @@ function PostEmbeds({
           hideThumbnail={linkMediaHidden}
         />
       )}
-      <AdditionalLinks externalHref={externalHref} links={facetLinks} />
       {recordEmbed && (
         <QuotedPostCard
           record={recordEmbed}
@@ -9288,6 +9256,10 @@ function QuotedPostCard({
   ]);
   const gateMedia = !showNsfw && mediaWarningValues.length > 0 && (embeddedImages.length > 0 || !!embeddedVideo) && !mediaRevealed;
   const hideMediaForSetting = !showMedia && !mediaRevealed && !gateMedia;
+  const hiddenMediaControl =
+    hideMediaForSetting && hasHiddenPreviewMedia ? (
+      <MediaHiddenButton kind={hiddenPreviewMediaKind} onReveal={() => setMediaRevealed(true)} />
+    ) : null;
   const quotedPost = record.author
     ? ({
         uri: record.uri,
@@ -9306,20 +9278,29 @@ function QuotedPostCard({
         indexedAt: record.indexedAt,
       } satisfies FeedPost)
     : null;
+  const openQuotedThreadButton = quotedPost ? (
+    <button className="quote-open-button" type="button" onClick={() => onOpenPost?.(quotedPost)}>
+      Open quoted thread
+    </button>
+  ) : null;
 
   return (
     <div className={mediaRevealed ? "quote-card revealed" : "quote-card"}>
       {record.author && (
         <header className="quote-header">
           <Avatar profile={record.author} />
-          <a
-            className="author-button"
-            href={profilePath(record.author as Profile)}
-            onClick={(event) => onOpenProfile && handleInternalLinkClick(event, () => onOpenProfile(record.author as Profile))}
-          >
-            <strong>{displayName(record.author)}</strong>
-            <span>@{record.author.handle}</span>
-          </a>
+          <div className="quote-header-main">
+            <a
+              className="author-button"
+              href={profilePath(record.author as Profile)}
+              onClick={(event) => onOpenProfile && handleInternalLinkClick(event, () => onOpenProfile(record.author as Profile))}
+            >
+              <strong>{displayName(record.author)}</strong>
+              <span>@{record.author.handle}</span>
+            </a>
+            {hiddenMediaControl}
+            {openQuotedThreadButton}
+          </div>
         </header>
       )}
       {text ? (
@@ -9334,14 +9315,11 @@ function QuotedPostCard({
       ) : (
         <p className="quote-text muted">Quoted post has no plain text.</p>
       )}
-      <AdditionalLinks
-        externalHref={embeddedExternal?.uri}
-        links={extractFacetLinks(record.value?.facets)}
-      />
+      {!record.author && hiddenMediaControl}
       {gateMedia ? (
         <SensitiveMediaGate values={mediaWarningValues} onReveal={() => setMediaRevealed(true)} />
       ) : hideMediaForSetting && hasHiddenPreviewMedia ? (
-        <MediaHiddenButton kind={hiddenPreviewMediaKind} onReveal={() => setMediaRevealed(true)} />
+        null
       ) : (
         <>
           {embeddedImages.length > 0 && (
@@ -9375,11 +9353,7 @@ function QuotedPostCard({
       {unknownQuoteEmbedType && quotedPost && (
         <UnsupportedEmbedNotice embedType={unknownQuoteEmbedType} post={quotedPost} />
       )}
-      {quotedPost && (
-        <button className="quote-open-button" type="button" onClick={() => onOpenPost?.(quotedPost)}>
-          Open quoted thread
-        </button>
-      )}
+      {!record.author && openQuotedThreadButton}
     </div>
   );
 }
