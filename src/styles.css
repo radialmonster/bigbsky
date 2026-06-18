@@ -5370,10 +5370,16 @@ button.surface-action {
   border-radius: 8px;
   object-fit: contain;
   box-shadow: 0 18px 70px rgba(0, 0, 0, 0.55);
+  transform-origin: center center;
   user-select: none;
+  will-change: transform;
   -webkit-touch-callout: none;
   -webkit-user-drag: none;
   -webkit-user-select: none;
+}
+
+.image-viewer > img.zoomed {
+  cursor: grab;
 }
 
 .image-viewer img::selection {

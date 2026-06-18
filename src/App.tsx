@@ -264,11 +264,14 @@ type FeedSearchState = {
   error?: string;
 };
 
+type ImageViewerImage = {
+  src: string;
+  previewSrc?: string;
+  alt: string;
+};
+
 type ImageViewerState = {
-  images: Array<{
-    src: string;
-    alt: string;
-  }>;
+  images: ImageViewerImage[];
   index: number;
 } | null;
 
@@ -8432,6 +8435,7 @@ function feedViewerImages(images: ReturnType<typeof getEmbedImages>) {
     .slice(0, maxPostImages)
     .map((viewerImage) => ({
       src: viewerImage.fullsize || viewerImage.thumb || "",
+      previewSrc: viewerImage.thumb && viewerImage.fullsize && viewerImage.thumb !== viewerImage.fullsize ? viewerImage.thumb : undefined,
       alt: viewerImage.alt || "",
     }))
     .filter((viewerImage) => viewerImage.src);
@@ -8472,7 +8476,7 @@ function MediaOnlyImageTile({
   onOpenImage,
 }: {
   image: ReturnType<typeof getEmbedImages>[number];
-  viewerImages: Array<{ src: string; alt: string }>;
+  viewerImages: ImageViewerImage[];
   onOpenImage?: (image: ImageViewerState) => void;
 }) {
   const src = image.thumb || image.fullsize;
@@ -8543,6 +8547,7 @@ function MediaOnlyPostCard({
   const viewerImages = images
     .map((image) => ({
       src: image.fullsize || image.thumb || "",
+      previewSrc: image.thumb && image.fullsize && image.thumb !== image.fullsize ? image.thumb : undefined,
       alt: image.alt || "",
     }))
     .filter((image) => image.src);
@@ -9964,10 +9969,23 @@ function ImageViewer({
 }) {
   const selected = image.images[image.index] ?? image.images[0];
   const hasMultiple = image.images.length > 1;
-  const swipeStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+  const [loadedOriginals, setLoadedOriginals] = useState<Set<string>>(() => new Set());
+  const [zoom, setZoom] = useState({ scale: 1, x: 0, y: 0 });
+  const pointerPositionsRef = useRef(new Map<number, { x: number; y: number }>());
+  const gestureRef = useRef<{
+    swipeStart?: { pointerId: number; x: number; y: number };
+    panStart?: { pointerId: number; x: number; y: number; originX: number; originY: number };
+    pinchStart?: { distance: number; scale: number };
+    moved: boolean;
+  }>({ moved: false });
   const suppressNextClickRef = useRef(false);
+  const zoomRef = useRef(zoom);
+  const displayedSrc = selected && loadedOriginals.has(selected.src) ? selected.src : selected?.previewSrc || selected?.src;
   const clearSelection = useCallback(() => {
     window.getSelection()?.removeAllRanges();
+  }, []);
+  const resetZoom = useCallback(() => {
+    setZoom({ scale: 1, x: 0, y: 0 });
   }, []);
   const goPrevious = useCallback(() => {
     if (!hasMultiple) {
@@ -9993,27 +10011,143 @@ function ImageViewer({
     });
     requestAnimationFrame(clearSelection);
   }, [clearSelection, hasMultiple, image, onChange]);
+  const openAtIndex = useCallback(
+    (index: number) => {
+      resetZoom();
+      onChange({ images: image.images, index });
+    },
+    [image.images, onChange, resetZoom],
+  );
+  const preloadOriginal = useCallback((viewerImage?: ImageViewerImage) => {
+    if (!viewerImage?.src) {
+      return;
+    }
+    if (loadedOriginals.has(viewerImage.src)) {
+      return;
+    }
+
+    const img = new window.Image();
+    img.onload = () => {
+      setLoadedOriginals((current) => {
+        if (current.has(viewerImage.src)) {
+          return current;
+        }
+        const next = new Set(current);
+        next.add(viewerImage.src);
+        return next;
+      });
+    };
+    img.src = viewerImage.src;
+    if (img.complete) {
+      img.onload?.(new Event("load"));
+    }
+  }, [loadedOriginals]);
+  const imageDistance = useCallback((points: Array<{ x: number; y: number }>) => {
+    const [a, b] = points;
+    return Math.hypot(b.x - a.x, b.y - a.y);
+  }, []);
+  const clampZoom = useCallback((value: number) => Math.max(1, Math.min(4, value)), []);
   const handlePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       clearSelection();
-      if (!hasMultiple || event.button !== 0) {
-        swipeStartRef.current = null;
+      if (event.button !== 0 || (event.target as HTMLElement).closest("button, a, .image-viewer-footer, .image-viewer-thumbs")) {
         return;
       }
 
-      swipeStartRef.current = {
-        pointerId: event.pointerId,
-        x: event.clientX,
-        y: event.clientY,
-      };
+      try {
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+      } catch {
+        // Synthetic pointer events used by tests may not be eligible for capture.
+      }
+      const position = { x: event.clientX, y: event.clientY };
+      pointerPositionsRef.current.set(event.pointerId, position);
+      gestureRef.current.moved = false;
+      const points = Array.from(pointerPositionsRef.current.values());
+      if (points.length >= 2) {
+        gestureRef.current = {
+          moved: true,
+          pinchStart: {
+            distance: imageDistance(points.slice(0, 2)),
+            scale: zoomRef.current.scale,
+          },
+        };
+        suppressNextClickRef.current = true;
+        return;
+      }
+
+      if (zoomRef.current.scale > 1.02) {
+        gestureRef.current = {
+          moved: false,
+          panStart: {
+            pointerId: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+            originX: zoomRef.current.x,
+            originY: zoomRef.current.y,
+          },
+        };
+        return;
+      }
+
+      gestureRef.current = hasMultiple
+        ? { moved: false, swipeStart: { pointerId: event.pointerId, x: event.clientX, y: event.clientY } }
+        : { moved: false };
     },
-    [clearSelection, hasMultiple],
+    [clearSelection, hasMultiple, imageDistance],
+  );
+  const handlePointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (!pointerPositionsRef.current.has(event.pointerId)) {
+        return;
+      }
+
+      pointerPositionsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      const points = Array.from(pointerPositionsRef.current.values());
+      const gesture = gestureRef.current;
+      if (gesture.pinchStart && points.length >= 2) {
+        const distance = imageDistance(points.slice(0, 2));
+        const nextScale = clampZoom(gesture.pinchStart.scale * (distance / Math.max(1, gesture.pinchStart.distance)));
+        gesture.moved = true;
+        suppressNextClickRef.current = true;
+        setZoom((current) => ({
+          scale: nextScale,
+          x: nextScale <= 1.01 ? 0 : current.x,
+          y: nextScale <= 1.01 ? 0 : current.y,
+        }));
+        return;
+      }
+
+      if (gesture.panStart?.pointerId === event.pointerId) {
+        const deltaX = event.clientX - gesture.panStart.x;
+        const deltaY = event.clientY - gesture.panStart.y;
+        if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
+          gesture.moved = true;
+          suppressNextClickRef.current = true;
+          setZoom((current) => ({
+            ...current,
+            x: gesture.panStart ? gesture.panStart.originX + deltaX : current.x,
+            y: gesture.panStart ? gesture.panStart.originY + deltaY : current.y,
+          }));
+        }
+      }
+    },
+    [clampZoom, imageDistance],
   );
   const handlePointerUp = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      const start = swipeStartRef.current;
-      swipeStartRef.current = null;
-      if (!start || start.pointerId !== event.pointerId) {
+      const start = gestureRef.current.swipeStart;
+      const wasGestureMove = gestureRef.current.moved;
+      pointerPositionsRef.current.delete(event.pointerId);
+      if (pointerPositionsRef.current.size < 2) {
+        gestureRef.current.pinchStart = undefined;
+      }
+      if (pointerPositionsRef.current.size === 0) {
+        gestureRef.current.panStart = undefined;
+      }
+      if (wasGestureMove || zoomRef.current.scale > 1.02) {
+        suppressNextClickRef.current = true;
+      }
+      if (!start || start.pointerId !== event.pointerId || zoomRef.current.scale > 1.02) {
         return;
       }
 
@@ -10035,6 +10169,25 @@ function ImageViewer({
     },
     [goNext, goPrevious],
   );
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  useEffect(() => {
+    resetZoom();
+    pointerPositionsRef.current.clear();
+    gestureRef.current = { moved: false };
+  }, [image.index, resetZoom]);
+
+  useEffect(() => {
+    const imagesToPreload = [
+      image.images[image.index],
+      image.images[(image.index + 1) % image.images.length],
+      image.images[(image.index - 1 + image.images.length) % image.images.length],
+    ];
+    imagesToPreload.forEach(preloadOriginal);
+  }, [image.images, image.index, preloadOriginal]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -10068,9 +10221,11 @@ function ImageViewer({
       aria-modal="true"
       aria-label="Image viewer"
       onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      onPointerCancel={() => {
-        swipeStartRef.current = null;
+      onPointerCancel={(event) => {
+        pointerPositionsRef.current.delete(event.pointerId);
+        gestureRef.current = { moved: false };
       }}
       onMouseDown={clearSelection}
       onMouseUp={clearSelection}
@@ -10083,6 +10238,9 @@ function ImageViewer({
         clearSelection();
         if (suppressNextClickRef.current) {
           suppressNextClickRef.current = false;
+          return;
+        }
+        if (zoom.scale > 1.02) {
           return;
         }
         const halfway = window.innerWidth / 2;
@@ -10117,9 +10275,11 @@ function ImageViewer({
         </>
       )}
       <img
-        src={selected.src}
+        className={zoom.scale > 1.02 ? "zoomed" : ""}
+        src={displayedSrc}
         alt={selected.alt}
         draggable={false}
+        style={{ transform: `translate3d(${zoom.x}px, ${zoom.y}px, 0) scale(${zoom.scale})` }}
         onDragStart={(event) => {
           event.preventDefault();
           clearSelection();
@@ -10127,6 +10287,10 @@ function ImageViewer({
         onClick={(event) => {
           event.stopPropagation();
           clearSelection();
+        }}
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+          resetZoom();
         }}
       />
       <div className="image-viewer-footer" onClick={(event) => event.stopPropagation()}>
@@ -10145,10 +10309,10 @@ function ImageViewer({
               className={index === image.index ? "selected" : ""}
               key={`${thumb.src}:${index}`}
               type="button"
-              onClick={() => onChange({ images: image.images, index })}
+              onClick={() => openAtIndex(index)}
               aria-label={`Open image ${index + 1}`}
             >
-              <img src={thumb.src} alt="" draggable={false} />
+              <img src={thumb.previewSrc || thumb.src} alt="" draggable={false} />
             </button>
           ))}
         </div>
