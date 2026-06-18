@@ -5356,6 +5356,7 @@ button.surface-action {
   overflow: hidden;
   padding: 68px 28px 96px;
   background: rgba(3, 7, 18, 0.88);
+  touch-action: none;
   user-select: none;
   -webkit-touch-callout: none;
   -webkit-user-select: none;

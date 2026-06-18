@@ -30,7 +30,7 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { createContext, lazy, Suspense, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, lazy, Suspense, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   type ActorSearchResponse,
@@ -9964,6 +9964,8 @@ function ImageViewer({
 }) {
   const selected = image.images[image.index] ?? image.images[0];
   const hasMultiple = image.images.length > 1;
+  const swipeStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+  const suppressNextClickRef = useRef(false);
   const clearSelection = useCallback(() => {
     window.getSelection()?.removeAllRanges();
   }, []);
@@ -9991,6 +9993,48 @@ function ImageViewer({
     });
     requestAnimationFrame(clearSelection);
   }, [clearSelection, hasMultiple, image, onChange]);
+  const handlePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      clearSelection();
+      if (!hasMultiple || event.button !== 0) {
+        swipeStartRef.current = null;
+        return;
+      }
+
+      swipeStartRef.current = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+      };
+    },
+    [clearSelection, hasMultiple],
+  );
+  const handlePointerUp = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const start = swipeStartRef.current;
+      swipeStartRef.current = null;
+      if (!start || start.pointerId !== event.pointerId) {
+        return;
+      }
+
+      const deltaX = event.clientX - start.x;
+      const deltaY = event.clientY - start.y;
+      const horizontalSwipe = Math.abs(deltaX) >= 48 && Math.abs(deltaX) > Math.abs(deltaY) * 1.25;
+      if (!horizontalSwipe) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      suppressNextClickRef.current = true;
+      if (deltaX < 0) {
+        goNext();
+      } else {
+        goPrevious();
+      }
+    },
+    [goNext, goPrevious],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -10023,7 +10067,11 @@ function ImageViewer({
       role="dialog"
       aria-modal="true"
       aria-label="Image viewer"
-      onPointerDown={clearSelection}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={() => {
+        swipeStartRef.current = null;
+      }}
       onMouseDown={clearSelection}
       onMouseUp={clearSelection}
       onSelect={clearSelection}
@@ -10033,6 +10081,10 @@ function ImageViewer({
       }}
       onClick={(event) => {
         clearSelection();
+        if (suppressNextClickRef.current) {
+          suppressNextClickRef.current = false;
+          return;
+        }
         const halfway = window.innerWidth / 2;
         if (!hasMultiple) {
           onClose();
