@@ -8,6 +8,7 @@ import {
   Heart,
   Home,
   Image,
+  Info,
   Link as LinkIcon,
   List,
   Loader2,
@@ -9970,6 +9971,9 @@ function ImageViewer({
   const selected = image.images[image.index] ?? image.images[0];
   const hasMultiple = image.images.length > 1;
   const [loadedOriginals, setLoadedOriginals] = useState<Set<string>>(() => new Set());
+  const [infoVisible, setInfoVisible] = useState(() =>
+    typeof window === "undefined" ? true : !window.matchMedia(MOBILE_SCROLL_QUERY).matches,
+  );
   const [zoom, setZoom] = useState({ scale: 1, x: 0, y: 0 });
   const pointerPositionsRef = useRef(new Map<number, { x: number; y: number }>());
   const gestureRef = useRef<{
@@ -10216,7 +10220,7 @@ function ImageViewer({
 
   return (
     <div
-      className="image-viewer"
+      className={infoVisible ? "image-viewer" : "image-viewer info-hidden"}
       role="dialog"
       aria-modal="true"
       aria-label="Image viewer"
@@ -10256,17 +10260,27 @@ function ImageViewer({
         }
       }}
     >
-      <button
-        className="image-viewer-close"
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          onClose();
-        }}
-        aria-label="Close image viewer"
-      >
-        <X size={22} />
-      </button>
+      <div className="image-viewer-controls" onClick={(event) => event.stopPropagation()}>
+        <button
+          className={infoVisible ? "image-viewer-info active" : "image-viewer-info"}
+          type="button"
+          onClick={() => setInfoVisible((visible) => !visible)}
+          aria-label={infoVisible ? "Hide image information" : "Show image information"}
+          aria-pressed={infoVisible}
+          title={infoVisible ? "Hide image information" : "Show image information"}
+        >
+          <Info size={21} />
+        </button>
+        <button
+          className="image-viewer-close"
+          type="button"
+          onClick={onClose}
+          aria-label="Close image viewer"
+          title="Close image viewer"
+        >
+          <X size={22} />
+        </button>
+      </div>
       {hasMultiple && (
         <>
           <div className="image-viewer-count">
@@ -10293,15 +10307,17 @@ function ImageViewer({
           resetZoom();
         }}
       />
-      <div className="image-viewer-footer" onClick={(event) => event.stopPropagation()}>
-        <div>
-          <strong>{hasMultiple ? `Image ${image.index + 1} of ${image.images.length}` : "Image"}</strong>
-          <span>{selected.alt || "No alt text provided."}</span>
+      {infoVisible && (
+        <div className="image-viewer-footer" onClick={(event) => event.stopPropagation()}>
+          <div>
+            <strong>{hasMultiple ? `Image ${image.index + 1} of ${image.images.length}` : "Image"}</strong>
+            <span>{selected.alt || "No alt text provided."}</span>
+          </div>
+          <a href={selected.src} target="_blank" rel="noreferrer">
+            <LinkIcon size={15} /> Open original
+          </a>
         </div>
-        <a href={selected.src} target="_blank" rel="noreferrer">
-          <LinkIcon size={15} /> Open original
-        </a>
-      </div>
+      )}
       {hasMultiple && (
         <div className="image-viewer-thumbs" onClick={(event) => event.stopPropagation()}>
           {image.images.map((thumb, index) => (
