@@ -708,6 +708,11 @@ function shouldSuppressScrollSave(currentOffset: number): boolean {
   return currentOffset < scrollRestoreGuard.target - 1;
 }
 
+// How long to keep re-asserting the restore target, and how many consecutive
+// frames the offset must hold at target before we consider the restore settled.
+const SCROLL_RESTORE_MAX_FRAMES = 30;
+const SCROLL_RESTORE_STABLE_FRAMES = 3;
+
 // Restore a saved scroll offset after a navigation/cache hit. A single
 // post-render scroll often lands short because the feed content (virtualized
 // rows, images, embeds) is still growing, so the early offset clamps to a
@@ -723,11 +728,24 @@ function restoreScrollOffset(timelineRef: { readonly current: HTMLElement | null
   }
   armScrollRestore(top);
   let frames = 0;
+  // Count of consecutive frames the offset has already reached the target. We do
+  // NOT stop the first frame the target is momentarily reached: the feed content
+  // (virtualized rows measuring, images/embeds loading) keeps growing for a few
+  // frames after a cache hit or fresh load, and the list can briefly remount and
+  // reset scrollTop to 0. Re-asserting `top` whenever the offset falls short and
+  // only finishing once it has *held* at target for a few consecutive frames lets
+  // the restore survive that late reflow instead of bailing early and landing at 0.
+  let stable = 0;
   const apply = () => {
     const timeline = timelineRef.current;
-    scrollOffsetTo(timeline, top);
+    if (readScrollOffset(timeline) < top - 1) {
+      scrollOffsetTo(timeline, top);
+      stable = 0;
+    } else {
+      stable += 1;
+    }
     frames += 1;
-    if (frames < 16 && readScrollOffset(timeline) < top - 1) {
+    if (frames < SCROLL_RESTORE_MAX_FRAMES && stable < SCROLL_RESTORE_STABLE_FRAMES) {
       requestAnimationFrame(apply);
     } else {
       scrollRestoreGuard = null;
