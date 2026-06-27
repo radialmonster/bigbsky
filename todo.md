@@ -411,3 +411,133 @@
   - Relevant files/functions found:
     - `src/auth.ts`: `syncSavedFeedsOrder`.
     - `src/App.tsx`: `persistFeedOrder`.
+
+## From the 2026-06-26 code review (`docs/code-review.md`)
+
+- [ ] Fix the composer object-URL leak (stale-closure bug).
+  - Severity: medium. `src/App.tsx:7275-7281`. The mount-only cleanup effect
+    (`useEffect(..., [])`) closes over the **mount render's** `images` (usually
+    empty), so on unmount it revokes that stale empty set — object URLs created
+    after mount leak whenever the composer closes without sending (e.g. dismissing
+    a reply with images attached). The `// eslint-disable-next-line
+    react-hooks/exhaustive-deps` is hiding exactly this.
+  - Fix: hold the current `images` in a ref and read it in cleanup, e.g.
+    `const imagesRef = useRef(images); imagesRef.current = images;` then
+    `useEffect(() => () => imagesRef.current.forEach((i) => URL.revokeObjectURL(i.url)), [])`.
+  - Relevant files/functions found:
+    - `src/App.tsx`: the revoke-URL `useEffect` (~`:7276`), `PostComposer` image state.
+- [ ] Decompose the `src/App.tsx` monolith (dominant structural issue).
+  - Severity: critical. `src/App.tsx` is 10,283 lines, 176 functions, ~60 React
+    components, 244 hook calls; the single `App()` (`src/App.tsx:1424`–`~3960`)
+    holds 60+ `useState` and 13 `useRef` caches. `src/styles.css` is 5,116 lines.
+    Impacts reviewability, merge-conflict rate, re-render blast radius, feature
+    tree-shaking (notifications/lists/composer/image-viewer/dev-inspector are all
+    statically fused into the entry chunk), and edit-loop/compile time.
+    `docs/plan.md` already specifies the target layout (`features/feed`,
+    `features/post`, `features/composer`, `auth/`, `storage/`, …).
+  - Progress (2026-06-26): **slice 1 started** — extracted the pure timestamp
+    cluster (`postSortAt`/`postSortTime`/`parseTimestamp`/`CLOCK_SKEW_WINDOW_MS`)
+    into `src/lib/time.ts` with a real Vitest suite (`src/lib/time.test.ts`,
+    15 tests). This is the first of the "extract pure helpers into `src/lib/`"
+    slice below and proves the tests-first path. Build + tests green. Continue the
+    slice with the remaining `read*`/`safe*`/scroll-math/feed-order helpers.
+  - Suggested lowest-risk first slices, each independently shippable:
+    1. Extract pure helpers (the `read*`/`safe*`/`readScrollOffset`/
+       `scrollOffsetTo`/`restoreScrollOffset`/`postSortAt` cluster) into
+       `src/lib/` — no JSX, zero behavior risk, immediately unit-testable.
+       (`postSortAt` cluster done → `src/lib/time.ts`.)
+    2. Move leaf/presentational components (`Avatar`, `LoadingState`,
+       `ErrorState`, `SensitiveMediaGate`, `ExternalLinkCard`, `PostCard`,
+       `PostComposer`, `ImageViewer`, `ThreadView`, `DevInspector`…) into
+       `src/features/**`, co-locating their CSS slices out of the mega-stylesheet.
+    3. Pull the `useRef<Record>` caches + their loaders into a real cache layer
+       (plan name-checks TanStack Query; current manual invalidation re-
+       implements it imperfectly).
+  - Relevant files/functions found:
+    - `src/App.tsx`: `App` (`:1424`), `VirtualPostList` (`:3960`), `PostComposer`
+      (`:7185`), `PostCard` (`:9158`), `ThreadView` (`:9581`), `ImageViewer`
+      (`:9980`), and the cache refs (`:1493`–`:1502`).
+    - `src/styles.css`: single 5,116-line stylesheet.
+    - `docs/plan.md`: "Project File Layout" already specifies the modular target.
+- [ ] Replace the regex source-text "tests" with behavioral tests; add Vitest.
+  - Progress (2026-06-26): **Vitest is now installed and wired up** — the test net the App.tsx decomposition needs before it starts.
+    - Added `vitest@^3` + `jsdom@^25` devDeps; `test` (`vitest run`) and `test:watch` scripts in `package.json`; a `test` block in `vite.config.ts` (jsdom env, `src/**/*.{test,spec}.{ts,tsx}` include).
+    - First real behavioral suite shipped alongside the first decomposition slice: extracted the pure timestamp cluster (`CLOCK_SKEW_WINDOW_MS`, `parseTimestamp`, `postSortAt`, `postSortTime`) from `src/App.tsx` into `src/lib/time.ts` (App.tsx now imports it; all `postSortAt`/`postSortTime` call sites unchanged), and added `src/lib/time.test.ts` — 15 tests over the docs' edge cases (spoofable future-dated `createdAt`, exact clock-skew-window edge, missing/unparseable `indexedAt`, ordering). `npm test` green; `npm run build` still green (tsc, audit, reader + layout + rich-text verifiers).
+    - Still open: the regex verifiers (`verify-reader-behavior.mjs`, `verify-layout-behavior.mjs`) remain as migration guardrails — keep porting their assertions to real tests and delete each as it gains behavioral coverage. Next helper extractions to cover: scroll math (`readScrollOffset`/`scrollOffsetTo`/`restoreScrollOffset`, jsdom), `resolveHandle` cache, `readPinnedFeedMeta` validators, feed-order sort (`readFeedOrder`/`orderedSubscribedFeeds`).
+  - Severity: high. `scripts/verify-reader-behavior.mjs` and
+    `scripts/verify-layout-behavior.mjs` are 100% `readFileSync` + regex (e.g.
+    `verify-layout-behavior.mjs:29` asserts a specific scroll-compensation
+    expression verbatim). They fail on any harmless refactor (renaming,
+    reordering a `useMemo` body) and pass while behavior is broken, as long as
+    the literal string exists. They will actively block the App.tsx decomposition.
+    Only `scripts/verify-richtext.mjs` actually executes code — it's the model.
+    No `test` script in `package.json`; no test framework in devDependencies.
+  - Plan: add Vitest (already on Vite). Write real unit tests for the pure
+    helpers slated for extraction (scroll math, `resolveHandle` cache,
+    `readPinnedFeedMeta` validators, feed-order sort), then React Testing
+    Library smoke tests for extracted components. Keep the regex verifiers only
+    as migration guardrails and delete each as it gains a real test.
+  - Relevant files/functions found:
+    - `scripts/verify-reader-behavior.mjs`, `scripts/verify-layout-behavior.mjs`
+      (static-source regex checks).
+    - `scripts/verify-richtext.mjs` (executable esbuild-transpiled harness).
+    - `package.json`: `build` script; no `test` script, no vitest/jest/RTL.
+- [ ] Bound the `resolvedHandleCache` Map.
+  - Severity: medium. `src/api.ts:379`. Entries get a 5-min TTL on *read* but
+    are never evicted, so the `Map` grows for the lifetime of the tab in a long
+    session. Add a sweep on write (drop `expires < now`) or cap the size.
+  - Relevant files/functions found:
+    - `src/api.ts`: `resolvedHandleCache`, `resolveHandle`, `RESOLVE_HANDLE_TTL_MS`.
+- [ ] Harden the `signOut` SDK-disposal workaround against version drift.
+  - Severity: medium. `src/auth.ts:191-214`. The `Symbol.asyncDispose` cast
+    works around an `@atproto/oauth-client-browser` bug (sync `dispose()` calls
+    undefined `Symbol.dispose`). Well documented, but coupled to a specific
+    library version's internals — an SDK upgrade could silently re-break sign-out.
+    Pin the version and add a regression check.
+  - Relevant files/functions found:
+    - `src/auth.ts`: `signOut`, `clearOAuthLocalSession`.
+- [ ] Router nits: hoist the `surfaces` Set and handle trailing slashes/case.
+  - Severity: low. `src/router.ts:40` re-allocates the `surfaces` `Set` on every
+    `getRouteState` call — hoist it module-scope. No handling of trailing slashes
+    (`/feeds/`) or non-lowercase paths — they silently fall through to the
+    default feed route.
+  - Relevant files/functions found:
+    - `src/router.ts`: `getRouteState`, the `surfaces` `Set`.
+- [ ] Gate the per-request `CustomEvent` dispatch behind `import.meta.env.DEV`.
+  - Severity: low. `src/api.ts:153` dispatches a `bigbsky:api-request`
+    `CustomEvent` on every request for the DevInspector, including in production.
+    Cheap, but production-only noise — gate it behind `import.meta.env.DEV`.
+  - Relevant files/functions found:
+    - `src/api.ts`: `getJson` (`:149`), the `bigbsky:api-request` dispatch.
+    - `src/App.tsx`: `DevInspector` consumer.
+- [ ] Service worker: evict stale hashed `/assets/*` across deploys.
+  - Severity: low. `public/sw.js:51` caches `/assets/*` cache-first with no
+    per-entry eviction; only a whole `CACHE_NAME` bump (`bigbsky-shell-v5`)
+    cleans stale assets. Make the per-release `CACHE_NAME` bump explicit as
+    load-bearing for storage hygiene, or add an LRU/sweep pass in `activate`.
+  - Relevant files/functions found:
+    - `public/sw.js`: `CACHE_NAME`, the `/assets/*` fetch handler, `activate`.
+- [ ] Reconcile `docs/plan.md` and `todo.md` (single source of truth).
+  - Severity: low. The two already drift — e.g. `docs/plan.md` still lists
+    "User-sortable feed order" as open, while `todo.md` shows it done. Pick one
+    source of truth for open work (recommend `todo.md`) and have the other
+    reference it.
+  - Relevant files/functions found:
+    - `docs/plan.md`: "TODO (open tasks)".
+    - `todo.md`.
+- [ ] CSS dead-selector sweep (co-locate with component extraction).
+  - Severity: low. `src/styles.css` (5,116 lines) likely has orphaned rules after
+    the Save→Bookmark rename and removed panels, but several classes are applied
+    via dynamically-built names so a blind strip is unsafe. Do it with a real
+    usage cross-check alongside the App.tsx component extraction, co-locating
+    each component's styles. (Already flagged in `docs/plan.md`; tracked here.)
+  - Relevant files/functions found:
+    - `src/styles.css`.
+- [ ] Clear copy/share feedback `setTimeout`s on unmount.
+  - Severity: low. The 5-min notification poll correctly clears
+    (`src/App.tsx:1783-1787`), but the copy/share feedback timeouts (1.6–1.8 s at
+    `src/App.tsx:6675`, `8238`, `8772`, `8958`, `10647`) are not cleared on
+    unmount — trivial leaks if a card unmounts mid-countdown. Clear them in the
+    effect cleanup.
+  - Relevant files/functions found:
+    - `src/App.tsx`: the `setCopied`/`setShareState` `setTimeout` call sites.
