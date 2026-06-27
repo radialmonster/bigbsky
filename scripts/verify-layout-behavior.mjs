@@ -16,10 +16,10 @@ function forbidPattern(source, pattern, label) {
   }
 }
 
-requirePattern(app, /const widthModes = \["balanced", "wide", "focus"\] as const;/, "reader should keep explicit desktop width modes");
-requirePattern(app, /const \[widthByContext, setWidthByContext\][\s\S]*readWidthPreferences\(\)/, "reader width preference should be read per-context before first paint");
-requirePattern(app, /const storedWidth = widthByContext\[densityKey\] \|\| widthByContext\.default;[\s\S]*const workspaceWidth = /, "active width should resolve per-feed with a default fallback");
-requirePattern(app, /safeLocalStorageSet\(widthByContextStorageKey, JSON\.stringify\(nextPreferences\)\)/, "per-feed width preference should persist locally");
+requirePattern(app, /function readColumnPreferences\(\): ColumnVisibility/, "reader should resolve optional column visibility (with legacy width migration)");
+requirePattern(app, /const \[columns, setColumns\][\s\S]*readColumnPreferences\(\)/, "column visibility should be read before first paint");
+requirePattern(app, /columns\.feeds \? "" : " feeds-hidden"[\s\S]*columns\.right \? "" : " right-hidden"/, "the shell should apply feeds-hidden / right-hidden state classes from column visibility");
+requirePattern(app, /safeLocalStorageSet\(columnsStorageKey, JSON\.stringify\(next\)\)/, "column visibility should persist locally");
 
 requirePattern(app, /function VirtualPostList\([\s\S]*defaultRowHeight = density === "compact" \? 112 : density === "media" \? 360 : 260/s, "virtual rows should use density-aware estimated heights");
 requirePattern(app, /const overscanPixels = defaultRowHeight \* 3/, "virtual list should overscan a bounded row window");
@@ -40,8 +40,13 @@ requirePattern(css, /\.media \.post-card\.has-media \.image-grid\.count-1 img,[\
 requirePattern(css, /\.video-card \{[\s\S]*width: 100%;[\s\S]*aspect-ratio: var\(--video-aspect, 16 \/ 9\);[\s\S]*max-height: calc\(100vh - 140px\);/s, "video card should reserve the playback frame before media metadata loads and use the image viewport cap");
 requirePattern(css, /\.video-card video,[\s\S]*\.video-card img,[\s\S]*\.video-placeholder \{[\s\S]*height: 100%;/s, "video media elements should fill the stable card frame");
 
-requirePattern(css, /\.width-wide \{[\s\S]*grid-template-columns: 76px 260px minmax\(780px, 1\.35fr\) 280px;/s, "wide mode should allocate more width to the reader before rails");
-requirePattern(css, /\.width-focus \{[\s\S]*grid-template-columns: 76px 228px minmax\(860px, 1\.5fr\) 0;/s, "focus mode should allocate reader width and collapse the right rail");
+requirePattern(css, /\.app-shell:where\(\.feeds-hidden\) \{[\s\S]*grid-template-columns: 76px minmax\(0, 1fr\) 320px;/s, "hiding the feeds column should drop its track and let content absorb the space");
+requirePattern(css, /\.app-shell:where\(\.right-hidden\) \{[\s\S]*grid-template-columns: 76px 288px minmax\(0, 1fr\);/s, "hiding the right column should drop its track and let content absorb the space");
+requirePattern(css, /\.app-shell:where\(\.feeds-hidden\):where\(\.right-hidden\) \{[\s\S]*grid-template-columns: 76px minmax\(0, 1fr\);/s, "hiding both columns should leave only the icon rail and content");
+requirePattern(css, /\.feeds-hidden \.feed-map \{[\s\S]*display: none;/s, "feeds-hidden should remove the feeds column element from the grid");
+requirePattern(css, /\.right-hidden \.right-rail \{[\s\S]*display: none;/s, "right-hidden should remove the right column element from the grid");
+requirePattern(css, /@media \(max-width: 1323px\) \{[\s\S]*\.right-rail \{[\s\S]*display: none;/s, "below the 4-column minimum the right column should auto-hide so it cannot clip off-screen");
+requirePattern(css, /@media \(max-width: 1003px\) \{[\s\S]*\.feed-map \{[\s\S]*display: none;/s, "below the 3-column minimum the feeds column should auto-hide too");
 // The reader is widened fluidly by a single `1fr` content column, not by
 // per-screen-size grid overrides. The content column must always be the
 // one that absorbs remaining width (the widest), with fixed narrow rails.

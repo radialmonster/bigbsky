@@ -374,7 +374,6 @@ function resolveHomeSource(homeId: string, signedIn: boolean, subscribed: FeedSo
 // One entry in the Settings "Open Home to" picker. `group` drives the section
 // headings (Following / Feeds / Lists) in the searchable picker.
 type HomeOption = { id: string; label: string; needsAuth: boolean; group: "Following" | "Feeds" | "Lists" };
-const widthModes = ["balanced", "wide", "focus"] as const;
 const searchTabs = ["posts", "people", "feeds"] as const;
 const profileTabs = ["posts", "replies", "media", "videos", "feeds", "lists"] as const;
 type ProfileTab = (typeof profileTabs)[number] | "new-post";
@@ -392,6 +391,7 @@ const composerDraftStorageKey = "bigbsky:composer-draft";
 const localListsStorageKey = "bigbsky:local-lists";
 const workspaceWidthStorageKey = "bigbsky:workspace-width";
 const widthByContextStorageKey = "bigbsky:width-by-context";
+const columnsStorageKey = "bigbsky:columns";
 const showNsfwStorageKey = "bigbsky:show-nsfw";
 const showMediaStorageKey = "bigbsky:show-media";
 const showMediaByFeedStorageKey = "bigbsky:show-media-by-feed";
@@ -494,23 +494,29 @@ function readComposerDraft() {
   }
 }
 
-// Per-feed width memory, mirroring the per-context density map. Keyed the same
-// way as density (route.kind, or `feed:<id>`). Migrates the previous single
-// global width preference into the `default` slot so existing users keep their
-// chosen width.
-function readWidthPreferences(): Record<string, string> {
+// Side-column visibility. The far-left icon rail is always present; the feeds
+// column and the right context column are each optional and toggled globally
+// (not per-feed — a sidebar toggle is expected to be a window-wide preference).
+// Migrates the previous balanced/wide/focus width preference: only "focus" hid
+// a column (the right rail), so legacy focus users keep their right column off.
+type ColumnVisibility = { feeds: boolean; right: boolean };
+
+function readColumnPreferences(): ColumnVisibility {
   try {
-    const stored = JSON.parse(localStorage.getItem(widthByContextStorageKey) || "{}") as Record<string, string>;
-    if (stored && typeof stored === "object" && Object.keys(stored).length > 0) {
-      return stored;
+    const stored = JSON.parse(localStorage.getItem(columnsStorageKey) || "null") as Partial<ColumnVisibility> | null;
+    if (stored && typeof stored === "object") {
+      return { feeds: stored.feeds !== false, right: stored.right !== false };
     }
-    const legacy = localStorage.getItem(workspaceWidthStorageKey);
-    if (widthModes.includes(legacy as (typeof widthModes)[number])) {
-      return { default: legacy as string };
+    // Migrate the legacy width preference (per-context map first, then the
+    // older single-value key). "focus" was the only mode that hid a column.
+    const legacyMap = JSON.parse(localStorage.getItem(widthByContextStorageKey) || "{}") as Record<string, string>;
+    const legacy = (legacyMap && typeof legacyMap === "object" && legacyMap.default) || localStorage.getItem(workspaceWidthStorageKey);
+    if (legacy === "focus") {
+      return { feeds: true, right: false };
     }
-    return {};
+    return { feeds: true, right: true };
   } catch {
-    return {};
+    return { feeds: true, right: true };
   }
 }
 
@@ -1429,7 +1435,7 @@ export function App() {
   const [navOpen, setNavOpen] = useState<boolean>(false);
   const [mobileHeaderVisible, setMobileHeaderVisible] = useState<boolean>(true);
   const [densityByContext, setDensityByContext] = useState<Record<string, DensityMode>>(() => readDensityPreferences());
-  const [widthByContext, setWidthByContext] = useState<Record<string, string>>(() => readWidthPreferences());
+  const [columns, setColumns] = useState<ColumnVisibility>(() => readColumnPreferences());
   const [showNsfw, setShowNsfw] = useState<boolean>(() => readShowNsfw());
   const [showMedia, setShowMedia] = useState<boolean>(() => readShowMedia());
   const [showMediaByFeed, setShowMediaByFeed] = useState<Record<string, boolean>>(() => readShowMediaPreferences());
@@ -1928,10 +1934,6 @@ export function App() {
     route.kind === "feed" ? feedShowMediaOverride(activeSource, showMediaByFeed) : undefined;
   const effectiveShowMedia = routeShowMediaOverride ?? showMedia;
   const density = storedDensity === "media" && !effectiveShowMedia ? "comfortable" : storedDensity;
-  const storedWidth = widthByContext[densityKey] || widthByContext.default;
-  const workspaceWidth = (
-    widthModes.includes(storedWidth as (typeof widthModes)[number]) ? storedWidth : "balanced"
-  ) as (typeof widthModes)[number];
   const visibleSources = useMemo(() => {
     const query = feedSearch.trim().toLowerCase();
     if (!query) {
@@ -2728,14 +2730,12 @@ export function App() {
     safeLocalStorageSet(showMediaByFeedStorageKey, JSON.stringify(nextPreferences));
   }
 
-  function updateWorkspaceWidth(nextWidth: (typeof widthModes)[number]) {
-    const nextPreferences = {
-      ...widthByContext,
-      [densityKey]: nextWidth,
-      default: nextWidth,
-    };
-    setWidthByContext(nextPreferences);
-    safeLocalStorageSet(widthByContextStorageKey, JSON.stringify(nextPreferences));
+  function setColumnVisible(which: keyof ColumnVisibility, visible: boolean) {
+    setColumns((current) => {
+      const next = { ...current, [which]: visible };
+      safeLocalStorageSet(columnsStorageKey, JSON.stringify(next));
+      return next;
+    });
   }
 
   function toggleShowNsfw() {
@@ -2772,7 +2772,7 @@ export function App() {
     await clearOAuthLocalSession();
     setDensityByContext({});
     setShowMediaByFeed({});
-    setWidthByContext({});
+    setColumns({ feeds: true, right: true });
     setRecentItems([]);
     setComposerDraft({ posts: [""] });
     setLocalLists([]);
@@ -3496,7 +3496,7 @@ export function App() {
       <BookmarkContext.Provider value={bookmarkContextValue}>
       <BlockContext.Provider value={blockContextValue}>
       <DeletePostContext.Provider value={deletePostContextValue}>
-      <div className={`app-shell width-${workspaceWidth} ${navOpen ? "nav-open" : "nav-hidden"}`}>
+      <div className={`app-shell ${navOpen ? "nav-open" : "nav-hidden"}${columns.feeds ? "" : " feeds-hidden"}${columns.right ? "" : " right-hidden"}`}>
       <aside className="left-rail" aria-label="Primary">
         <nav className="rail-nav">
           {authState.session && (
@@ -3542,9 +3542,20 @@ export function App() {
       <aside className="feed-map" aria-label="Feeds">
         <div className="feed-map-header">
           <strong>Feeds</strong>
-          <button type="button" title="Search feeds" onClick={() => setFeedSearch("")}>
-            <Search size={16} />
-          </button>
+          <div className="feed-map-actions">
+            <button type="button" title="Search feeds" onClick={() => setFeedSearch("")}>
+              <Search size={16} />
+            </button>
+            <button
+              type="button"
+              className="column-close"
+              title="Hide feeds column (re-enable in Settings)"
+              aria-label="Hide feeds column"
+              onClick={() => setColumnVisible("feeds", false)}
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
         <input
           className="feed-search"
@@ -3694,7 +3705,7 @@ export function App() {
             pinnedNotificationIds={pinnedNotificationIds}
             pinnedProfileCount={pinnedProfiles.length}
             pinnedSearchCount={pinnedSearches.length}
-            workspaceWidth={workspaceWidth}
+            columns={columns}
             onClearLocalData={clearLocalReaderData}
             onCreateLocalList={createLocalList}
             onDensityChange={updateDensity}
@@ -3715,7 +3726,7 @@ export function App() {
             onSignIn={handleSignIn}
             onSignOut={handleSignOut}
             onTogglePinnedFeed={togglePinnedFeed}
-            onWorkspaceWidthChange={updateWorkspaceWidth}
+            onSetColumnVisible={setColumnVisible}
             showNsfw={showNsfw}
             onToggleNsfw={toggleShowNsfw}
             showMedia={showMedia}
@@ -3865,6 +3876,15 @@ export function App() {
       </main>
 
       <aside className="right-rail" aria-label="Context">
+        <button
+          type="button"
+          className="column-close right-rail-close"
+          title="Hide right column (re-enable in Settings)"
+          aria-label="Hide right column"
+          onClick={() => setColumnVisible("right", false)}
+        >
+          <X size={16} />
+        </button>
         <SearchBox value={globalSearchText} onChange={setGlobalSearchText} onSearch={submitSearch} />
         <AccountPanel auth={authState} onSignIn={handleSignIn} onSignOut={handleSignOut} />
         {route.kind === "profile" ? (
@@ -4412,7 +4432,7 @@ function SurfaceView({
   pinnedNotificationIds,
   pinnedProfileCount,
   pinnedSearchCount,
-  workspaceWidth,
+  columns,
   onClearLocalData,
   onCreateLocalList,
   onDensityChange,
@@ -4436,7 +4456,7 @@ function SurfaceView({
   onSignOut,
   onTogglePinnedFeed,
   onTogglePinnedNotification,
-  onWorkspaceWidthChange,
+  onSetColumnVisible,
   showNsfw,
   onToggleNsfw,
   showMedia,
@@ -4470,7 +4490,7 @@ function SurfaceView({
   pinnedNotificationIds: string[];
   pinnedProfileCount: number;
   pinnedSearchCount: number;
-  workspaceWidth: (typeof widthModes)[number];
+  columns: ColumnVisibility;
   onClearLocalData: () => void | Promise<void>;
   onCreateLocalList: (name: string, description: string) => void;
   onDensityChange: (density: DensityMode) => void;
@@ -4494,7 +4514,7 @@ function SurfaceView({
   onSignOut: () => void | Promise<void>;
   onTogglePinnedFeed: (source: FeedSource) => void;
   onTogglePinnedNotification: (id: string) => void;
-  onWorkspaceWidthChange: (width: (typeof widthModes)[number]) => void;
+  onSetColumnVisible: (which: keyof ColumnVisibility, visible: boolean) => void;
   showNsfw: boolean;
   onToggleNsfw: () => void;
   showMedia: boolean;
@@ -4631,19 +4651,32 @@ function SurfaceView({
             </div>
             {!showMedia && <p className="settings-note">Media density needs Show Media on.</p>}
             <p className="settings-note">Per-feed view overrides are managed on the Feeds page.</p>
-            <p>Feed width is stored locally and changes how much desktop space the reader claims from side context.</p>
-            <div className="settings-control-group" aria-label="Feed width setting">
-              {widthModes.map((mode) => (
-                <button
-                  className={workspaceWidth === mode ? "selected-setting" : ""}
-                  key={mode}
-                  type="button"
-                  onClick={() => onWorkspaceWidthChange(mode)}
-                >
-                  {mode}
-                </button>
-              ))}
-            </div>
+            <p>Side columns are optional. Hide either to give the reader more room — the X on a column hides it, and these toggles bring it back. The far-left icon rail always stays.</p>
+            <button
+              type="button"
+              className={columns.feeds ? "settings-toggle on" : "settings-toggle"}
+              role="switch"
+              aria-checked={columns.feeds}
+              onClick={() => onSetColumnVisible("feeds", !columns.feeds)}
+            >
+              <span className="settings-toggle-track" aria-hidden="true">
+                <span className="settings-toggle-thumb" />
+              </span>
+              <span>{columns.feeds ? "Feeds column shown" : "Feeds column hidden"}</span>
+            </button>
+            <button
+              type="button"
+              className={columns.right ? "settings-toggle on" : "settings-toggle"}
+              role="switch"
+              aria-checked={columns.right}
+              onClick={() => onSetColumnVisible("right", !columns.right)}
+            >
+              <span className="settings-toggle-track" aria-hidden="true">
+                <span className="settings-toggle-thumb" />
+              </span>
+              <span>{columns.right ? "Right column shown" : "Right column hidden"}</span>
+            </button>
+            <p className="settings-note">Stored locally in this browser. On narrow screens these columns hide automatically to fit.</p>
           </article>
           <article className="settings-panel">
             <span>{showNsfw ? "On" : "Off"}</span>
