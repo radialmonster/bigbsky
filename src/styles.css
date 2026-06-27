@@ -1311,33 +1311,6 @@ button {
   line-height: 1.5;
 }
 
-.info-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.info-actions button,
-.info-actions a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 8px;
-  background: var(--app-surface-2);
-  color: var(--app-text);
-  font-size: 13px;
-  font-weight: 800;
-  text-decoration: none;
-}
-
-.info-actions button:hover,
-.info-actions a:hover {
-  background: rgba(5, 96, 255, 0.18);
-  color: var(--bsky-blue-soft);
-}
-
 .info-page {
   display: grid;
   align-content: start;
@@ -1408,32 +1381,6 @@ button {
 
 .info-panel a:hover {
   color: var(--app-text);
-}
-
-.info-hero dl {
-  display: grid;
-  gap: 10px;
-  align-content: start;
-  margin: 0;
-}
-
-.info-hero dl div {
-  padding: 12px;
-  border: 1px solid var(--app-border);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.025);
-}
-
-.info-hero dt {
-  color: var(--app-text-soft);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.info-hero dd {
-  margin: 4px 0 0;
-  font-weight: 800;
 }
 
 .surface-grid,
@@ -4206,37 +4153,21 @@ button.surface-action {
   align-items: start;
 }
 
-.compact .post-card.text-only .post-header,
-.compact .post-card.text-only .thread-open-chip,
-.compact .thread-combined-card .post-header,
-.compact .thread-combined-card .thread-open-chip {
+.compact :is(.post-card.text-only, .thread-combined-card) :is(.post-header, .thread-open-chip) {
   grid-column: 1;
 }
 
-.compact .post-card.text-only .reason,
-.compact .post-card.text-only .post-badges,
-.compact .post-card.text-only .post-text,
-.compact .post-card.text-only .post-actions,
-.compact .thread-combined-card .combined-thread-text,
-.compact .thread-combined-card .post-actions {
+.compact .post-card.text-only :is(.reason, .post-badges, .post-text, .post-actions),
+.compact .thread-combined-card :is(.combined-thread-text, .post-actions) {
   grid-column: 2;
 }
 
-.compact .post-card.media-hidden .post-header,
-.compact .post-card.media-hidden .thread-open-chip,
-.compact .post-card.media-hidden .reason,
-.compact .post-card.media-hidden .post-badges,
-.compact .post-card.media-hidden .moderation-notice,
-.compact .post-card.media-hidden .post-text,
-.compact .post-card.media-hidden .post-image-video-media,
-.compact .post-card.media-hidden .link-card,
-.compact .post-card.media-hidden .quote-card,
-.compact .post-card.media-hidden .post-actions {
+.compact .post-card.media-hidden
+  :is(.post-header, .thread-open-chip, .reason, .post-badges, .moderation-notice, .post-text, .post-image-video-media, .link-card, .quote-card, .post-actions) {
   grid-column: 1 / -1;
 }
 
-.compact .post-card.text-only .post-text,
-.compact .post-card.media-hidden .post-text {
+.compact .post-card:is(.text-only, .media-hidden) .post-text {
   margin-top: 0;
 }
 
@@ -4392,15 +4323,11 @@ button.surface-action {
   white-space: nowrap;
 }
 
-.compact .post-card.media-hidden .quote-card:not(.revealed) > .quote-link-card,
-.compact .post-card.media-hidden .quote-card:not(.revealed) > .image-grid,
-.compact .post-card.media-hidden .quote-card:not(.revealed) > .video-card {
+.compact .post-card.media-hidden .quote-card:not(.revealed) > :is(.quote-link-card, .image-grid, .video-card) {
   display: none;
 }
 
-.compact .post-card.text-only .thread-open-chip,
-.compact .post-card.media-hidden .thread-open-chip,
-.compact .thread-combined-card .thread-open-chip {
+.compact :is(.post-card.text-only, .post-card.media-hidden, .thread-combined-card) .thread-open-chip {
   margin: 4px 0 0 33px;
   min-height: 24px;
   padding: 0 9px;
@@ -4411,9 +4338,7 @@ button.surface-action {
   font-weight: 800;
 }
 
-.compact .post-card.text-only .thread-open-chip svg,
-.compact .post-card.media-hidden .thread-open-chip svg,
-.compact .thread-combined-card .thread-open-chip svg {
+.compact :is(.post-card.text-only, .post-card.media-hidden, .thread-combined-card) .thread-open-chip svg {
   width: 13px;
   height: 13px;
 }
@@ -5578,46 +5503,28 @@ button.surface-action {
 }
 
 @media (min-width: 1900px) {
-  .timeline.compact .post-card.has-link:not(.media-hidden),
-  .timeline.compact .post-card.has-quote:not(.media-hidden),
-  .timeline.compact .post-card.has-media:not(.media-hidden) {
+  .timeline.compact .post-card:is(.has-link, .has-quote, .has-media):not(.media-hidden) {
     display: grid;
     grid-template-columns: minmax(280px, 0.92fr) minmax(360px, 1.08fr);
     column-gap: 18px;
     align-items: start;
   }
 
-  .timeline.compact .post-card.has-link:not(.media-hidden) .post-header,
-  .timeline.compact .post-card.has-quote:not(.media-hidden) .post-header,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .post-header,
-  .timeline.compact .post-card.has-link:not(.media-hidden) .reason,
-  .timeline.compact .post-card.has-quote:not(.media-hidden) .reason,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .reason,
-  .timeline.compact .post-card.has-link:not(.media-hidden) .post-badges,
-  .timeline.compact .post-card.has-quote:not(.media-hidden) .post-badges,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .post-badges,
-  .timeline.compact .post-card.has-link:not(.media-hidden) .post-text,
-  .timeline.compact .post-card.has-quote:not(.media-hidden) .post-text,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .post-text,
-  .timeline.compact .post-card.has-link:not(.media-hidden) .post-actions,
-  .timeline.compact .post-card.has-quote:not(.media-hidden) .post-actions,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .post-actions {
+  .timeline.compact
+    .post-card:is(.has-link, .has-quote, .has-media):not(.media-hidden)
+    :is(.post-header, .reason, .post-badges, .post-text, .post-actions) {
     grid-column: 1;
   }
 
   .timeline.compact .post-card.has-link:not(.media-hidden) .link-card,
   .timeline.compact .post-card.has-quote:not(.media-hidden) .quote-card,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .image-grid,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .video-card {
+  .timeline.compact .post-card.has-media:not(.media-hidden) :is(.image-grid, .video-card) {
     grid-column: 2;
     grid-row: 1 / span 8;
     margin-top: 0;
   }
 
-  .timeline.compact .post-card.has-media:not(.media-hidden) .image-grid.count-1 img,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .video-card video,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .video-card img,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .video-placeholder {
+  .timeline.compact .post-card.has-media:not(.media-hidden) :is(.image-grid.count-1 img, .video-card video, .video-card img, .video-placeholder) {
     min-height: var(--post-embed-min);
   }
 }
