@@ -964,8 +964,9 @@ export async function unblockAccount(blockUri: string): Promise<void> {
 
 // --- Moderation / block-list curation ---
 // Scopes repo:app.bsky.graph.list / .listitem / .listblock are all granted.
-// (Subscribing to a *mute* list would need app.bsky.graph.muteActorList, which
-// is NOT in scope, so only block-list subscription is implemented here.)
+// app.bsky.graph.muteActorList / unmuteActorList are also in scope (see
+// public/oauth-client-metadata.json) and muteList/unmuteList are implemented
+// below; this section just covers block-list (listblock) subscription.
 
 // Create a moderation list (the kind used for block/mute lists). Returns the
 // new list's at:// uri. Throws if signed out.

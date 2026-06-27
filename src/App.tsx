@@ -239,6 +239,14 @@ function safeLocalStorageRemove(key: string) {
   }
 }
 
+function safeLocalStorageGet(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
 function safeSessionStorageRemove(key: string) {
   try {
     sessionStorage.removeItem(key);
@@ -737,6 +745,12 @@ function scrollFeedToTop(timeline: HTMLElement | null) {
 // transient ~0 offset doesn't clobber the value we're trying to restore.
 let scrollRestoreGuard: { target: number; until: number } | null = null;
 
+// Monotonic token so a newer restore invalidates any prior rAF apply loop.
+// Without it, rapid navigation between cached feeds runs two loops against the
+// one shared scrollRestoreGuard, jittering toward different targets for ~30
+// frames.
+let scrollRestoreToken = 0;
+
 function nowMs(): number {
   return typeof performance !== "undefined" ? performance.now() : 0;
 }
@@ -781,6 +795,7 @@ function restoreScrollOffset(timelineRef: { readonly current: HTMLElement | null
   if (top <= 0) {
     return;
   }
+  const token = ++scrollRestoreToken;
   armScrollRestore(top);
   let frames = 0;
   // Count of consecutive frames the offset has already reached the target. We do
@@ -792,6 +807,11 @@ function restoreScrollOffset(timelineRef: { readonly current: HTMLElement | null
   // the restore survive that late reflow instead of bailing early and landing at 0.
   let stable = 0;
   const apply = () => {
+    // A newer restore superseded this one — stop so the two loops don't fight
+    // over the shared guard/scroll position.
+    if (token !== scrollRestoreToken) {
+      return;
+    }
     const timeline = timelineRef.current;
     if (readScrollOffset(timeline) < top - 1) {
       scrollOffsetTo(timeline, top);
@@ -2025,6 +2045,9 @@ export function App() {
         }
         response = { feed: combinedFeed, cursor: nextCursor };
       }
+      if (signal?.aborted) {
+        return;
+      }
       setFeedState((current) => {
         const next = {
           items: cursor ? [...current.items, ...response.feed] : response.feed,
@@ -2154,6 +2177,9 @@ export function App() {
 
     try {
       const response: SearchPostsResponse = await searchPostsAuthed(query, sort, lang || undefined, cursor, signal);
+      if (signal?.aborted) {
+        return;
+      }
       setSearchState((current) => {
         const next = {
           posts: cursor ? [...current.posts, ...response.posts] : response.posts,
@@ -2194,6 +2220,9 @@ export function App() {
 
     try {
       const response: ActorSearchResponse = await searchActors(query, cursor, signal);
+      if (signal?.aborted) {
+        return;
+      }
       setActorSearchState((current) => {
         const next = {
           actors: cursor ? [...current.actors, ...response.actors] : response.actors,
@@ -2227,6 +2256,9 @@ export function App() {
 
     try {
       const response = await getPopularFeedGenerators(20, signal, query);
+      if (signal?.aborted) {
+        return;
+      }
       const next: FeedSearchState = { feeds: response.feeds, status: "ready" };
       feedSearchCacheRef.current[cacheKey] = next;
       setFeedSearchState(next);
@@ -2491,8 +2523,16 @@ export function App() {
     const cached = threadCacheRef.current[`${route.actor}:${route.rkey}`];
     if (cached) {
       setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
+      // Mirror startThreadLoad's controller bookkeeping even on a cache hit: a
+      // prior navigation aborted the previous controller, and loadThreadBranch
+      // reads threadLoadControllerRef.current?.signal — so without a fresh,
+      // un-aborted controller here, "load more replies" fetches a pre-aborted
+      // signal and silently fails on any back-navigation to a cached thread.
+      const controller = new AbortController();
+      threadLoadControllerRef.current?.abort();
+      threadLoadControllerRef.current = controller;
       setThread({ status: "ready", node: cached });
-      return;
+      return () => controller.abort();
     }
 
     const controller = startThreadLoad(route.actor, route.rkey);
@@ -2680,6 +2720,12 @@ export function App() {
     await clearOAuthLocalSession();
     setDensityByContext({});
     setShowMediaByFeed({});
+    // Reset the in-memory prefs whose bigbsky: keys were just wiped, so memory
+    // and storage don't diverge until a reload (defaults match the read* helpers).
+    setShowMedia(true);
+    setShowNsfw(false);
+    setHomeSourceIdState("following");
+    setPinnedFeedMeta([]);
     setColumns({ feeds: true, right: true });
     setRecentItems([]);
     setComposerDraft({ posts: [""] });
@@ -3230,27 +3276,38 @@ export function App() {
     return undefined;
   }, [activeScrollKey]);
 
+  const loadMoreInFlightRef = useRef(false);
   const loadMore = () => {
+    // Single in-flight gate across feed/profile/search: the cursor isn't updated
+    // until the fetch resolves, so two rapid fires (un-disabled manual button, or
+    // beating the observer cooldown) would otherwise fetch the same cursor and
+    // append duplicate rows.
+    if (loadMoreInFlightRef.current) {
+      return;
+    }
+
+    let promise: Promise<unknown> | undefined;
     if (route.kind === "search") {
       if (route.query && searchTab === "posts" && searchState.cursor) {
-        void loadSearch(route.query, searchSort, searchLanguage, searchState.cursor);
+        promise = loadSearch(route.query, searchSort, searchLanguage, searchState.cursor);
+      } else if (route.query && searchTab === "people" && actorSearchState.cursor) {
+        promise = loadActorSearch(route.query, actorSearchState.cursor);
       }
-      if (route.query && searchTab === "people" && actorSearchState.cursor) {
-        void loadActorSearch(route.query, actorSearchState.cursor);
-      }
+    } else if (feedState.cursor) {
+      promise =
+        route.kind === "profile"
+          ? loadProfileFeed(route.actor, feedState.cursor, undefined, profileFeedFilterForTab(profileTab))
+          : loadFeed(activeSource, feedState.cursor);
+    }
+
+    if (!promise) {
       return;
     }
 
-    if (!feedState.cursor) {
-      return;
-    }
-
-    if (route.kind === "profile") {
-      void loadProfileFeed(route.actor, feedState.cursor, undefined, profileFeedFilterForTab(profileTab));
-      return;
-    }
-
-    void loadFeed(activeSource, feedState.cursor);
+    loadMoreInFlightRef.current = true;
+    void promise.finally(() => {
+      loadMoreInFlightRef.current = false;
+    });
   };
   const reloadCurrentProfile = useCallback(() => {
     if (route.kind !== "profile") {
@@ -3894,6 +3951,13 @@ function VirtualPostList({
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(720);
   const [rowHeights, setRowHeights] = useState<Record<string, number>>({});
+  // Mirror the committed heights so onMeasured can read the previous height and
+  // apply the scroll compensation *outside* the state updater (updaters must be
+  // pure — running the scrollTop side effect inside one double-applies it under
+  // StrictMode / concurrent retries). The ref is forward-synced synchronously so
+  // back-to-back measurements in one batch still diff against the latest height.
+  const rowHeightsRef = useRef(rowHeights);
+  rowHeightsRef.current = rowHeights;
   const [activeReplyParentUri, setActiveReplyParentUri] = useState<string | null>(null);
   const canReply = !!currentDid;
   const rowOffsets = useMemo(() => {
@@ -3981,22 +4045,29 @@ function VirtualPostList({
           post={feedRowPost(row)}
           key={feedRowKey(row)}
           onMeasured={(height) => {
-            setRowHeights((current) => {
-              const rowKey = feedRowKey(row);
-              const previousHeight = current[rowKey] ?? defaultRowHeight;
-              if (previousHeight === height) {
-                return current;
-              }
+            const rowKey = feedRowKey(row);
+            const previousHeight = rowHeightsRef.current[rowKey] ?? defaultRowHeight;
+            if (previousHeight === height) {
+              return;
+            }
 
-              const rowIndex = rows.findIndex((candidate) => feedRowKey(candidate) === rowKey);
-              const rowTop = rowIndex >= 0 ? rowOffsets[rowIndex] ?? 0 : 0;
-              const container = containerRef.current;
-              if (container && rowTop + previousHeight <= container.scrollTop) {
-                container.scrollTop += height - previousHeight;
-              }
+            // Keep the offset stable when a row above the viewport changes size:
+            // grow/shrink the scroll position by the same delta so the content
+            // under the user's eyes doesn't jump. Done here (not in the updater)
+            // to keep setRowHeights pure.
+            const rowIndex = rows.findIndex((candidate) => feedRowKey(candidate) === rowKey);
+            const rowTop = rowIndex >= 0 ? rowOffsets[rowIndex] ?? 0 : 0;
+            const container = containerRef.current;
+            if (container && rowTop + previousHeight <= container.scrollTop) {
+              container.scrollTop += height - previousHeight;
+            }
 
-              return { ...current, [rowKey]: height };
-            });
+            // Forward-sync the ref so a sibling measurement in the same batch
+            // diffs against this height before the state commit lands.
+            rowHeightsRef.current = { ...rowHeightsRef.current, [rowKey]: height };
+            setRowHeights((current) =>
+              (current[rowKey] ?? defaultRowHeight) === height ? current : { ...current, [rowKey]: height },
+            );
           }}
         >
           {(() => {
@@ -7065,6 +7136,11 @@ function PostComposer({
   // File objects and object-URLs can't be JSON-serialized to localStorage, so
   // they are session-only — text drafts persist across reloads, images don't.
   const [images, setImages] = useState<ComposerImageState[]>([]);
+  // Mirror images into a ref so the unmount cleanup revokes the *current* blob
+  // URLs. A cleanup with an empty dep array closes over the mount-time [] and
+  // would leak every URL when the user attaches images then navigates away.
+  const imagesRef = useRef(images);
+  imagesRef.current = images;
   const hasContent = draftText.trim().length > 0 || images.length > 0;
   // Collapsed by default to keep the top of the feed clean; expand on click.
   // Start expanded if a local draft is already in progress so it isn't hidden.
@@ -7095,7 +7171,7 @@ function PostComposer({
     if (!isReply) {
       return;
     }
-    setReplyText(localStorage.getItem(replyDraftKey) || "");
+    setReplyText(safeLocalStorageGet(replyDraftKey) || "");
   }, [isReply, replyDraftKey]);
 
   // Reply: autosave the text to the per-thread draft key.
@@ -7113,9 +7189,8 @@ function PostComposer({
   // Revoke any outstanding object URLs when the composer unmounts.
   useEffect(() => {
     return () => {
-      images.forEach((image) => URL.revokeObjectURL(image.url));
+      imagesRef.current.forEach((image) => URL.revokeObjectURL(image.url));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Insert text (e.g. an emoji) at the textarea caret, replacing any selection,
@@ -8017,6 +8092,10 @@ function ThreadedPostCard({
   const repostCount = posts.reduce((total, post) => total + (post.repostCount ?? 0), 0);
   const quoteCount = posts.reduce((total, post) => total + (post.quoteCount ?? 0), 0);
   const likeCount = posts.reduce((total, post) => total + (post.likeCount ?? 0), 0);
+  // Only the first (root) post can be liked here, so swap its static server count
+  // for the optimistic live count; otherwise the heart fills on like but the
+  // number never moves, reading as "the like didn't register".
+  const liveLikeCount = likeCount - (rootPost.likeCount ?? 0) + (likeView ? likeView.count : rootPost.likeCount ?? 0);
   const hideThreadMarkers = canHideCombinedThreadMarkers(posts);
   const { showReplyLimited, handleReplyClick } = useReplyGate(rootPost, onReply);
   const handleShare = async () => {
@@ -8115,11 +8194,11 @@ function ThreadedPostCard({
             onClick={() => likeCtx.toggle(rootPost)}
             title={likeView.liked ? "Unlike first post" : "Like first post"}
           >
-            <Heart size={16} /> {likeCount}
+            <Heart size={16} /> {liveLikeCount}
           </button>
         ) : (
           <span title="Total likes across combined posts">
-            <Heart size={16} /> {likeCount}
+            <Heart size={16} /> {liveLikeCount}
           </span>
         )}
         {bookmarkCtx?.canBookmark && bookmarkView && (
@@ -8739,6 +8818,10 @@ function CombinedThreadViewCard({
   const repostCount = posts.reduce((total, post) => total + (post.repostCount ?? 0), 0);
   const quoteCount = posts.reduce((total, post) => total + (post.quoteCount ?? 0), 0);
   const likeCount = posts.reduce((total, post) => total + (post.likeCount ?? 0), 0);
+  // Only the first (root) post can be liked here, so swap its static server count
+  // for the optimistic live count; otherwise the heart fills on like but the
+  // number never moves, reading as "the like didn't register".
+  const liveLikeCount = likeCount - (rootPost.likeCount ?? 0) + (likeView ? likeView.count : rootPost.likeCount ?? 0);
   const hideThreadMarkers = canHideCombinedThreadMarkers(posts);
   const { showReplyLimited, handleReplyClick } = useReplyGate(rootPost, onOpenReply);
 
@@ -8856,11 +8939,11 @@ function CombinedThreadViewCard({
             onClick={() => likeCtx.toggle(rootPost)}
             title={likeView.liked ? "Unlike first post" : "Like first post"}
           >
-            <Heart size={16} /> {likeCount}
+            <Heart size={16} /> {liveLikeCount}
           </button>
         ) : (
           <span title="Total likes across combined posts">
-            <Heart size={16} /> {likeCount}
+            <Heart size={16} /> {liveLikeCount}
           </span>
         )}
         {bookmarkCtx?.canBookmark && bookmarkView ? (
