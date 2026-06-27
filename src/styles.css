@@ -4797,6 +4797,10 @@ button.surface-action {
   font-weight: 700;
 }
 
+.branch-load-status.branch-load-error {
+  color: var(--app-danger);
+}
+
 .thread-continuation,
 .thread-replies-divider {
   display: flex;

@@ -44,7 +44,6 @@ import {
   type RichTextFacet,
   type SearchPostsResponse,
   type ThreadNode,
-  type ThreadPostNode,
   type TrendingTopic,
   getActorFeeds,
   getActorLists,
@@ -68,6 +67,31 @@ import {
 } from "./api";
 import { segmentRichText } from "./richtext";
 import { postSortAt, postSortTime } from "./lib/time";
+import {
+  CONTINUATION_REPLY_WINDOW_MS,
+  POST_BYTE_LIMIT,
+  POST_GRAPHEME_LIMIT,
+  buildThreadParts,
+  buildThreadedFeedRows,
+  canHideCombinedThreadMarkers,
+  combinedThreadText,
+  countThreadPostNodes,
+  countThreadRows,
+  expectedThreadMarkerTotal,
+  feedRowKey,
+  feedRowPost,
+  findThreadNodeByUri,
+  getContinuationReply,
+  graphemeLength,
+  isSelfThreadReply,
+  isThreadedFeedItem,
+  postReplyRootUri,
+  replaceThreadBranch,
+  splitTextForThread,
+  threadMarkerMatch,
+  utf8ByteLength,
+} from "./lib/threads";
+import type { ThreadPart, ThreadedFeedItem } from "./lib/threads";
 import {
   type AuthSnapshot,
   type ListMember,
@@ -694,13 +718,18 @@ function scrollOffsetTo(timeline: HTMLElement | null, top: number, behavior?: Sc
   scrollElementTo(timeline, top, behavior);
 }
 
+// Jump instantly to the top of the feed. We deliberately do NOT use a smooth
+// scroll here: VirtualPostList keeps the viewport stable when a row above it
+// resizes by doing `container.scrollTop += height - previousHeight` (see the
+// onMeasured compensation in VirtualPostList). As a smooth scroll-to-top runs,
+// previously virtualized top rows mount, measure taller than the default
+// estimate, and that compensation fires — and any direct `scrollTop` assignment
+// cancels the in-flight smooth animation (CSSOM View spec), so the scroll halts
+// partway. An instant jump to 0 sidesteps this: the compensation's guard
+// (`rowTop + previousHeight <= scrollTop`) can never hold at scrollTop === 0,
+// so the jump lands at the top and stays there.
 function scrollFeedToTop(timeline: HTMLElement | null) {
-  scrollOffsetTo(timeline, 0, "smooth");
-  window.setTimeout(() => {
-    if (readScrollOffset(timeline) > 1) {
-      scrollOffsetTo(timeline, 0);
-    }
-  }, 300);
+  scrollOffsetTo(timeline, 0);
 }
 
 // While a saved offset is being restored, the document briefly sits near the
@@ -887,111 +916,14 @@ function rateLimitMessage(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong loading this.";
 }
 
-function countThreadRows(node?: ThreadNode): number {
-  if (!node || !("post" in node)) {
-    return 0;
-  }
-
-  return 1 + (node.replies ?? []).reduce((total, reply) => total + countThreadRows(reply), 0);
-}
-
-function postReplyRootUri(post: FeedPost) {
-  return post.record.reply?.root?.uri;
-}
-
-function postReplyParentUri(post: FeedPost) {
-  return post.record.reply?.parent?.uri;
-}
-
-function isSelfThreadReply(item: FeedItem, rootPost?: FeedPost) {
-  const rootUri = postReplyRootUri(item.post);
-  if (!rootUri) {
-    return false;
-  }
-  const rootAuthorDid = rootPost?.author.did || item.reply?.root?.author.did;
-  return !!rootAuthorDid && item.post.author.did === rootAuthorDid;
-}
-
-type ThreadedFeedItem = {
-  root: FeedItem;
-  replies: FeedItem[];
-};
-
-type FeedRow = FeedItem | ThreadedFeedItem;
 type PostRefValue = { uri: string; cid: string };
-type BranchLoadResult = { added: number };
-const CONTINUATION_REPLY_WINDOW_MS = 10 * 60 * 1000;
+type BranchLoadResult = { added: number; error?: undefined } | { added?: undefined; error: string };
 const MEDIA_DENSITY_VISIBLE_TARGET = 12;
 const MEDIA_DENSITY_MAX_PREFETCH_PAGES = 4;
-type ThreadPart = {
-  node: ThreadPostNode;
-  partNumber: number;
-  replies: ThreadNode[];
-};
-
-function isThreadedFeedItem(row: FeedRow): row is ThreadedFeedItem {
-  return "root" in row && "replies" in row;
-}
-
-function feedRowKey(row: FeedRow) {
-  return isThreadedFeedItem(row) ? `thread:${row.root.post.uri}` : row.post.uri;
-}
-
-function feedRowPost(row: FeedRow) {
-  return isThreadedFeedItem(row) ? row.root.post : row.post;
-}
 
 function replyRootRefForPost(post: FeedPost): PostRefValue {
   const rootRef = post.record.reply?.root;
   return rootRef?.uri && rootRef?.cid ? { uri: rootRef.uri, cid: rootRef.cid } : { uri: post.uri, cid: post.cid };
-}
-
-function isThreadPostNode(node: ThreadNode): node is ThreadPostNode {
-  return "post" in node;
-}
-
-function getContinuationReply(parent: FeedPost, replies: ThreadNode[]) {
-  const parentTime = postSortTime(parent);
-  const candidates = replies
-    .filter(isThreadPostNode)
-    .filter((reply) => {
-      if (reply.post.author.did !== parent.author.did || postReplyParentUri(reply.post) !== parent.uri) {
-        return false;
-      }
-      const replyTime = postSortTime(reply.post);
-      return Number.isFinite(parentTime) && Number.isFinite(replyTime) && replyTime - parentTime >= 0 && replyTime - parentTime <= CONTINUATION_REPLY_WINDOW_MS;
-    })
-    .sort((first, second) => postSortTime(first.post) - postSortTime(second.post));
-  return candidates[0] ?? null;
-}
-
-function buildThreadParts(root: ThreadNode): ThreadPart[] {
-  if (!isThreadPostNode(root)) {
-    return [];
-  }
-
-  const parts: ThreadPart[] = [];
-  let current: ThreadPostNode | null = root;
-  let partNumber = 1;
-
-  while (current) {
-    const replies = current.replies ?? [];
-    const continuation = getContinuationReply(current.post, replies);
-    parts.push({
-      node: current,
-      partNumber,
-      replies: continuation ? replies.filter((reply) => reply !== continuation) : replies,
-    });
-    current = continuation;
-    partNumber += 1;
-  }
-
-  return parts;
-}
-
-function expectedThreadMarkerTotal(parts: ThreadPart[]) {
-  const marker = threadMarkerMatch(parts[0]?.node.post.record.text || "");
-  return marker?.index === 1 && marker.total > parts.length ? marker.total : null;
 }
 
 async function hydrateThreadContinuations(root: ThreadNode, signal?: AbortSignal) {
@@ -1028,56 +960,41 @@ async function hydrateThreadContinuations(root: ThreadNode, signal?: AbortSignal
   return hydrated;
 }
 
-function buildThreadedFeedRows(items: FeedItem[]): FeedRow[] {
-  const byUri = new Map(items.map((item) => [item.post.uri, item]));
-  const repliesByRoot = new Map<string, FeedItem[]>();
-  const groupedReplyUris = new Set<string>();
-
-  for (const item of items) {
-    const rootUri = postReplyRootUri(item.post);
-    if (!rootUri) {
-      continue;
-    }
-    const rootItem = byUri.get(rootUri);
-    if (!rootItem || !isSelfThreadReply(item, rootItem.post)) {
-      continue;
-    }
-    const replyTime = postSortTime(item.post);
-    const rootTime = postSortTime(rootItem.post);
-    if (!Number.isFinite(replyTime) || !Number.isFinite(rootTime) || replyTime - rootTime < 0 || replyTime - rootTime > CONTINUATION_REPLY_WINDOW_MS) {
-      continue;
-    }
-    repliesByRoot.set(rootUri, [...(repliesByRoot.get(rootUri) ?? []), item]);
-    groupedReplyUris.add(item.post.uri);
-  }
-
-  const rows: FeedRow[] = [];
-  for (const item of items) {
-    if (groupedReplyUris.has(item.post.uri)) {
-      continue;
-    }
-
-    const replies = repliesByRoot.get(item.post.uri);
-    if (!replies?.length) {
-      rows.push(item);
-      continue;
-    }
-
-    rows.push({
-      root: item,
-      replies: replies.slice().sort((first, second) => postSortTime(first.post) - postSortTime(second.post)),
-    });
-  }
-  return rows;
-}
-
 function countVisualFeedItems(items: FeedItem[]) {
   return items.filter((item) => postHasVisualMedia(item.post)).length;
+}
+
+// Run an async mapper over items with a bounded number of in-flight calls.
+// Hydration fans out one deep getPostThread (depth 100) per root, so an
+// unbounded Promise.all could fire dozens of concurrent reads on an active
+// profile; cap it. Returns settled results in input order, like allSettled.
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> {
+  const results = new Array<PromiseSettledResult<R>>(items.length);
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      try {
+        results[index] = { status: "fulfilled", value: await mapper(items[index], index) };
+      } catch (reason) {
+        results[index] = { status: "rejected", reason };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
 }
 
 async function hydrateProfileSelfThreads(items: FeedItem[], signal?: AbortSignal) {
   const threadRoots = items.filter((item) => {
     const marker = threadMarkerMatch(item.post.record.text || "");
+    // The non-marker branch optimistically fetches any own top-level post that
+    // has replies (it may be an unmarked self-thread); buildThreadParts below
+    // discards the ones that turn out to have no self-continuation.
     return (marker?.index === 1 && marker.total > 1) || (!item.post.record.reply && (item.post.replyCount ?? 0) > 0);
   });
 
@@ -1085,16 +1002,17 @@ async function hydrateProfileSelfThreads(items: FeedItem[], signal?: AbortSignal
     return items;
   }
 
-  const threadResults = await Promise.allSettled(
-    threadRoots.map(async (item) => {
-      const response = await getPostThreadByUriAuthed(item.post.uri, signal);
-      const thread = await hydrateThreadContinuations(response.thread, signal);
-      return {
-        uri: item.post.uri,
-        parts: buildThreadParts(thread).map((part) => part.node.post),
-      };
-    }),
-  );
+  const threadResults = await mapWithConcurrency(threadRoots, 4, async (item) => {
+    if (signal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    const response = await getPostThreadByUriAuthed(item.post.uri, signal);
+    const thread = await hydrateThreadContinuations(response.thread, signal);
+    return {
+      uri: item.post.uri,
+      parts: buildThreadParts(thread).map((part) => part.node.post),
+    };
+  });
 
   if (signal?.aborted) {
     return items;
@@ -1116,48 +1034,6 @@ async function hydrateProfileSelfThreads(items: FeedItem[], signal?: AbortSignal
   }
 
   return items.flatMap((item) => [item, ...(continuationsByRoot.get(item.post.uri) ?? [])]);
-}
-
-function replaceThreadBranch(node: ThreadNode, uri: string, replacement: ThreadNode): ThreadNode {
-  if (!("post" in node)) {
-    return node;
-  }
-
-  if (node.post.uri === uri) {
-    return replacement;
-  }
-
-  return {
-    ...node,
-    replies: node.replies?.map((reply) => replaceThreadBranch(reply, uri, replacement)),
-  };
-}
-
-function findThreadNodeByUri(node: ThreadNode | undefined, uri: string): ThreadPostNode | null {
-  if (!node || !("post" in node)) {
-    return null;
-  }
-
-  if (node.post.uri === uri) {
-    return node;
-  }
-
-  for (const reply of node.replies ?? []) {
-    const found = findThreadNodeByUri(reply, uri);
-    if (found) {
-      return found;
-    }
-  }
-
-  return null;
-}
-
-function countThreadPostNodes(node: ThreadNode | undefined): number {
-  if (!node || !("post" in node)) {
-    return 0;
-  }
-
-  return 1 + (node.replies ?? []).reduce((total, reply) => total + countThreadPostNodes(reply), 0);
 }
 
 function safeEmbedImages(images: ReturnType<typeof getEmbedImages>) {
@@ -1487,6 +1363,9 @@ export function App() {
   const feedSearchCacheRef = useRef<Record<string, FeedSearchState>>({});
   const threadCacheRef = useRef<Record<string, ThreadNode>>({});
   const threadBranchCacheRef = useRef<Record<string, ThreadNode>>({});
+  // Tracks the in-flight full-thread load (initial fetch or post-reply reload) so
+  // a stale response can't overwrite the thread after navigating to another post.
+  const threadLoadControllerRef = useRef<AbortController | null>(null);
   const scrollCacheRef = useRef<Record<string, number>>(readTimelineScrollCache());
 
   useEffect(() => {
@@ -2569,26 +2448,19 @@ export function App() {
     };
   }, []);
 
-  useEffect(() => {
-    if (route.kind !== "post") {
-      setThread({ status: "idle" });
-      setLoadingThreadBranches({});
-      setThreadBranchResults({});
-      return;
-    }
-
-    const cacheKey = `${route.actor}:${route.rkey}`;
-    const cached = threadCacheRef.current[cacheKey];
-    if (cached) {
-      setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
-      setThread({ status: "ready", node: cached });
-      return;
-    }
-
+  // Single source of truth for fetching a full thread: aborts any prior load,
+  // sets loading state, hydrates self-thread continuations, then caches and
+  // commits the result. Both the route effect and reloadThread go through this
+  // so their fetch/abort/cache logic can't drift. Returns the controller so the
+  // caller can abort on cleanup.
+  const startThreadLoad = useCallback((actor: string, rkey: string) => {
+    const cacheKey = `${actor}:${rkey}`;
     const controller = new AbortController();
+    threadLoadControllerRef.current?.abort();
+    threadLoadControllerRef.current = controller;
     setThread({ status: "loading" });
     setThreadBranchResults({});
-    getPostThreadAuthed(route.actor, route.rkey, controller.signal)
+    getPostThreadAuthed(actor, rkey, controller.signal)
       .then(async (response) => {
         const thread = await hydrateThreadContinuations(response.thread, controller.signal);
         if (controller.signal.aborted) {
@@ -2605,8 +2477,27 @@ export function App() {
           });
         }
       });
+    return controller;
+  }, []);
+
+  useEffect(() => {
+    if (route.kind !== "post") {
+      setThread({ status: "idle" });
+      setLoadingThreadBranches({});
+      setThreadBranchResults({});
+      return;
+    }
+
+    const cached = threadCacheRef.current[`${route.actor}:${route.rkey}`];
+    if (cached) {
+      setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
+      setThread({ status: "ready", node: cached });
+      return;
+    }
+
+    const controller = startThreadLoad(route.actor, route.rkey);
     return () => controller.abort();
-  }, [route]);
+  }, [route, startThreadLoad]);
 
   // Re-fetch the open thread (bypassing the cache) after publishing a reply so
   // the new reply appears in the conversation.
@@ -2614,20 +2505,9 @@ export function App() {
     if (route.kind !== "post") {
       return;
     }
-    const cacheKey = `${route.actor}:${route.rkey}`;
-    delete threadCacheRef.current[cacheKey];
-    setThread({ status: "loading" });
-    setThreadBranchResults({});
-    getPostThreadAuthed(route.actor, route.rkey)
-      .then(async (response) => {
-        const thread = await hydrateThreadContinuations(response.thread);
-        threadCacheRef.current[cacheKey] = thread;
-        setThread({ status: "ready", node: thread });
-      })
-      .catch((error) => {
-        setThread({ status: "error", error: error instanceof Error ? error.message : String(error) });
-      });
-  }, [route]);
+    delete threadCacheRef.current[`${route.actor}:${route.rkey}`];
+    startThreadLoad(route.actor, route.rkey);
+  }, [route, startThreadLoad]);
 
   function loadThreadBranch(uri: string) {
     if (thread.status !== "ready" || !thread.node || loadingThreadBranches[uri]) {
@@ -2659,8 +2539,14 @@ export function App() {
       const { [uri]: _removed, ...rest } = current;
       return rest;
     });
-    getPostThreadByUriAuthed(uri)
+    // Cancel the branch fetch when the open thread is torn down (navigation
+    // aborts threadLoadControllerRef), matching how the full-thread loads abort.
+    const signal = threadLoadControllerRef.current?.signal;
+    getPostThreadByUriAuthed(uri, signal)
       .then((response) => {
+        if (signal?.aborted) {
+          return;
+        }
         threadBranchCacheRef.current[uri] = response.thread;
         setThreadBranchResults((current) => ({
           ...current,
@@ -2679,9 +2565,12 @@ export function App() {
         });
       })
       .catch((error) => {
-        setThread((current) => ({
+        if (signal?.aborted) {
+          return;
+        }
+        setThreadBranchResults((current) => ({
           ...current,
-          error: error instanceof Error ? error.message : String(error),
+          [uri]: { error: error instanceof Error ? error.message : String(error) },
         }));
       })
       .finally(() => {
@@ -6727,8 +6616,6 @@ function ProfileDetailHeader({
 // stable id, and editable alt text. Session-only (not persisted).
 type ComposerImageState = { id: string; file: File; url: string; alt: string };
 
-const POST_GRAPHEME_LIMIT = 300;
-
 // Post language metadata. The native field is the post record's BCP-47 `langs`
 // array (app.bsky.feed.post — docs allow multiple values, e.g. ["th","en-US"]),
 // which we write via publishPost/publishThread.
@@ -7099,78 +6986,6 @@ function EmojiPicker({ onSelect, disabled }: { onSelect: (emoji: string) => void
   );
 }
 
-type GraphemeSegmenter = {
-  segment(input: string): Iterable<{ segment: string; index: number }>;
-};
-
-function graphemeSegments(text: string): Array<{ segment: string; index: number }> {
-  const Segmenter = (
-    Intl as typeof Intl & {
-      Segmenter?: new (locales: string | undefined, options: { granularity: "grapheme" }) => GraphemeSegmenter;
-    }
-  ).Segmenter;
-  if (Segmenter) {
-    return Array.from(new Segmenter(undefined, { granularity: "grapheme" }).segment(text));
-  }
-  let index = 0;
-  return Array.from(text).map((segment) => {
-    const current = { segment, index };
-    index += segment.length;
-    return current;
-  });
-}
-
-function graphemeLength(text: string) {
-  return graphemeSegments(text).length;
-}
-
-function codeUnitIndexAfterGraphemes(text: string, count: number) {
-  const segments = graphemeSegments(text);
-  if (segments.length <= count) {
-    return text.length;
-  }
-  const segment = segments[count - 1];
-  return segment.index + segment.segment.length;
-}
-
-function lastMatchEnd(text: string, pattern: RegExp, minimumEnd: number) {
-  let fallback = -1;
-  let preferred = -1;
-  for (const match of text.matchAll(pattern)) {
-    const end = (match.index ?? 0) + match[0].length;
-    fallback = end;
-    if (end >= minimumEnd) {
-      preferred = end;
-    }
-  }
-  return preferred >= 0 ? preferred : Math.max(0, fallback);
-}
-
-function splitTextForThread(text: string, limit = POST_GRAPHEME_LIMIT) {
-  const posts: string[] = [];
-  let remaining = text.replace(/\r\n/g, "\n").trim();
-  while (remaining && graphemeLength(remaining) > limit) {
-    const hardEnd = codeUnitIndexAfterGraphemes(remaining, limit);
-    const windowText = remaining.slice(0, hardEnd);
-    const minimumEnd = Math.floor(hardEnd * 0.66);
-    const splitAt =
-      lastMatchEnd(windowText, /\n\s*\n/g, minimumEnd) ||
-      lastMatchEnd(windowText, /[.!?…]["')\]]?\s+/g, minimumEnd) ||
-      lastMatchEnd(windowText, /[,;:]\s+/g, minimumEnd) ||
-      lastMatchEnd(windowText, /\s+/g, minimumEnd) ||
-      hardEnd;
-    const chunk = remaining.slice(0, splitAt).trim();
-    if (chunk) {
-      posts.push(chunk);
-    }
-    remaining = remaining.slice(splitAt).trimStart();
-  }
-  if (remaining) {
-    posts.push(remaining);
-  }
-  return posts;
-}
-
 // Default a reply's post language to the parent post's language (matching
 // bsky, which seeds the composer from `replyTo?.langs`), normalized to a base
 // code we offer; falls back to the user's saved/browser default.
@@ -7237,7 +7052,15 @@ function PostComposer({
 
   const generatedPosts = splitTextForThread(draftText);
   const generatedPostCount = Math.max(generatedPosts.length, 1);
+  // A single post is capped on both graphemes and UTF-8 bytes. Track both and
+  // surface whichever is more binding. New posts auto-split (splitTextForThread
+  // honors both budgets), so this gate only blocks the reply path, which is a
+  // single un-split post. Today the grapheme cap always bites first; the byte
+  // cap is here so a raised grapheme limit can't let a multi-byte reply through.
   const remaining = POST_GRAPHEME_LIMIT - graphemeLength(draftText);
+  const byteRemaining = POST_BYTE_LIMIT - utf8ByteLength(draftText);
+  const remainingDisplay = Math.min(remaining, byteRemaining);
+  const isOverLimit = remainingDisplay < 0;
   // Real attached images live in component state (not the persisted draft):
   // File objects and object-URLs can't be JSON-serialized to localStorage, so
   // they are session-only — text drafts persist across reloads, images don't.
@@ -7355,7 +7178,7 @@ function PostComposer({
   }
 
   async function handleSubmit() {
-    if (posting || !hasContent || (isReply && remaining < 0)) {
+    if (posting || !hasContent || (isReply && isOverLimit)) {
       return;
     }
     setPosting(true);
@@ -7476,10 +7299,10 @@ function PostComposer({
           }}
         />
         {isReply ? (
-          <span className={`composer-count${remaining < 0 ? " over-limit" : ""}`}>{remaining}</span>
+          <span className={`composer-count${isOverLimit ? " over-limit" : ""}`}>{remainingDisplay}</span>
         ) : (
           <span className="composer-count">
-            {draftText.trim() && generatedPostCount > 1 ? `${generatedPostCount} posts` : remaining}
+            {draftText.trim() && generatedPostCount > 1 ? `${generatedPostCount} posts` : remainingDisplay}
           </span>
         )}
       </div>
@@ -7520,7 +7343,7 @@ function PostComposer({
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={!canReply || posting || remaining < 0 || !hasContent}
+              disabled={!canReply || posting || isOverLimit || !hasContent}
             >
               {posting ? "Replying..." : "Reply"}
             </button>
@@ -8086,35 +7909,6 @@ function ExternalLinkCard({
   );
 }
 
-function threadMarkerMatch(text: string) {
-  const markerPattern = /(?:^|\s)[\t\u200e\u200f\u202a-\u202e\u2066-\u2069]*(\d{1,3})\s*\/\s*(\d{1,3})(?:\s*🧵)?[\t\u200e\u200f\u202a-\u202e\u2066-\u2069]*$/u;
-  const match = text.match(markerPattern);
-  if (!match) {
-    return null;
-  }
-  const index = Number(match[1]);
-  const total = Number(match[2]);
-  return total > 1 && index >= 1 && index <= total ? { index, total } : null;
-}
-
-function canHideCombinedThreadMarkers(posts: FeedPost[]) {
-  const total = posts.length;
-  if (total <= 1) {
-    return false;
-  }
-  return posts.every((post, index) => {
-    const marker = threadMarkerMatch(post.record.text || "");
-    return marker?.index === index + 1 && marker.total === total;
-  });
-}
-
-function combinedThreadText(post: FeedPost, hideThreadMarker: boolean) {
-  const text = post.record.text || "";
-  return hideThreadMarker
-    ? text.replace(/(?:^|\s)[\t\u200e\u200f\u202a-\u202e\u2066-\u2069]*\d{1,3}\s*\/\s*\d{1,3}(?:\s*🧵)?[\t\u200e\u200f\u202a-\u202e\u2066-\u2069]*$/u, "").trim()
-    : text.trim();
-}
-
 function formatExternalUrlLabel(uri: string) {
   try {
     const url = new URL(uri);
@@ -8216,7 +8010,10 @@ function ThreadedPostCard({
   const likeView = likeCtx?.getState(rootPost);
   const bookmarkView = bookmarkCtx?.getState(rootPost);
   const postTimeLabel = formatPostTime(postSortAt(rootPost));
-  const replyCount = posts.reduce((total, post) => total + (post.replyCount ?? 0), 0);
+  // Each continuation part is itself a reply to the previous part, so it is
+  // counted in that part's replyCount. Subtract the in-thread hops so the chip
+  // reflects external replies to the thread, not the thread's own continuations.
+  const replyCount = Math.max(0, posts.reduce((total, post) => total + (post.replyCount ?? 0), 0) - (posts.length - 1));
   const repostCount = posts.reduce((total, post) => total + (post.repostCount ?? 0), 0);
   const quoteCount = posts.reduce((total, post) => total + (post.quoteCount ?? 0), 0);
   const likeCount = posts.reduce((total, post) => total + (post.likeCount ?? 0), 0);
@@ -8293,7 +8090,7 @@ function ThreadedPostCard({
               <p className={preservesLineBreaks ? "post-text has-line-breaks" : "post-text"}>
                 {index > 0 && <span className="combined-thread-break" aria-hidden="true" />}
                 {text
-                  ? renderRichText(text, post.record.facets, onOpenProfile, onOpenTag)
+                  ? renderRichText(post.record.facets?.length ? post.record.text || "" : text, post.record.facets, onOpenProfile, onOpenTag)
                   : `Post ${index + 1} has no plain text.`}
               </p>
               <PostImageVideoMedia post={post} onOpenImage={onOpenImage} />
@@ -8935,7 +8732,10 @@ function CombinedThreadViewCard({
   const likeView = likeCtx?.getState(rootPost);
   const bookmarkView = bookmarkCtx?.getState(rootPost);
   const postTimeLabel = formatPostTime(postSortAt(rootPost));
-  const replyCount = posts.reduce((total, post) => total + (post.replyCount ?? 0), 0);
+  // Each continuation part is itself a reply to the previous part, so it is
+  // counted in that part's replyCount. Subtract the in-thread hops so the chip
+  // reflects external replies to the thread, not the thread's own continuations.
+  const replyCount = Math.max(0, posts.reduce((total, post) => total + (post.replyCount ?? 0), 0) - (posts.length - 1));
   const repostCount = posts.reduce((total, post) => total + (post.repostCount ?? 0), 0);
   const quoteCount = posts.reduce((total, post) => total + (post.quoteCount ?? 0), 0);
   const likeCount = posts.reduce((total, post) => total + (post.likeCount ?? 0), 0);
@@ -9018,7 +8818,7 @@ function CombinedThreadViewCard({
               <p className={text.includes("\n") ? "post-text has-line-breaks" : "post-text"}>
                 {index > 0 && <span className="combined-thread-break" aria-hidden="true" />}
                 {text
-                  ? renderRichText(text, post.record.facets, onOpenProfile, onOpenTag)
+                  ? renderRichText(post.record.facets?.length ? post.record.text || "" : text, post.record.facets, onOpenProfile, onOpenTag)
                   : `Post ${index + 1} has no plain text.`}
               </p>
               <PostEmbeds
@@ -9179,7 +8979,7 @@ function PostCard({
   onOpenProfile,
   onReply,
   replyActive = false,
-  s,
+  forceFullCard,
   onToggleListPost,
 }: {
   currentDid?: string;
@@ -9190,7 +8990,9 @@ function PostCard({
   onOpenProfile?: (profile: Profile) => void;
   onReply?: (post: FeedPost) => void;
   replyActive?: boolean;
-  s?: boolean;
+  // In thread context we always want the full post card, never the compact
+  // media-only variant that "media" density would otherwise substitute.
+  forceFullCard?: boolean;
   onToggleListPost?: (listId: string, post: FeedPost) => void;
 }) {
   const post = item.post;
@@ -9223,7 +9025,7 @@ function PostCard({
     ...sensitiveLabels.map(moderationLabelText),
   ];
 
-  if (density === "media" && !s && (images.length > 0 || !!video)) {
+  if (density === "media" && !forceFullCard && (images.length > 0 || !!video)) {
     return (
       <MediaOnlyPostCard
         post={post}
@@ -9842,7 +9644,7 @@ function renderThreadContextNode(
         <PostCard
           item={{ post: node.post }}
           currentDid={savedState.currentDid}
-          s
+          forceFullCard
           onOpenImage={handlers.onOpenImage}
           onOpenPost={handlers.onOpenPost}
           onOpenProfile={handlers.onOpenProfile}
@@ -10432,7 +10234,7 @@ function renderThreadNode(
       <PostCard
         item={{ post: node.post }}
         currentDid={savedState.currentDid}
-        s
+        forceFullCard
         onOpenImage={handlers.onOpenImage}
         onOpenPost={handlers.onOpenPost}
         onOpenProfile={handlers.onOpenProfile}
@@ -10484,7 +10286,12 @@ function renderThreadNode(
           {`Load ${knownReplyCount - replies.length} more replies`}
         </button>
       )}
-      {!isLoadingBranch && branchResult && (
+      {!isLoadingBranch && branchResult?.error && (
+        <div className="branch-load-status branch-load-error" role="alert">
+          Couldn't load replies — {branchResult.error}
+        </div>
+      )}
+      {!isLoadingBranch && branchResult && branchResult.error === undefined && (
         <div className="branch-load-status" role="status">
           {branchResult.added > 0
             ? `Loaded ${branchResult.added.toLocaleString()} more ${branchResult.added === 1 ? "reply" : "replies"}`

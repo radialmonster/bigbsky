@@ -776,13 +776,32 @@ export async function publishThread(posts: ComposerPostInput[], langs?: string[]
   }
   let root: PostRef | null = null;
   let parent: PostRef | null = null;
+  let published = 0;
   for (const post of clean) {
     const reply: ReplyRef | undefined = root && parent ? { root, parent } : undefined;
-    const ref = await publishPost({ text: post.text, images: post.images, reply, langs });
+    let ref: PostRef;
+    try {
+      ref = await publishPost({ text: post.text, images: post.images, reply, langs });
+    } catch (error) {
+      // A thread publishes one record at a time and the network can't be rolled
+      // back, so a mid-thread failure leaves the earlier posts live. Surface that
+      // honestly instead of a bare "couldn't post" — a blind retry would publish
+      // a second partial thread. The first post failing is a clean no-op, so let
+      // that error through unchanged.
+      if (published === 0) {
+        throw error;
+      }
+      const reason = error instanceof Error ? error.message : "unknown error";
+      throw new Error(
+        `Posted ${published} of ${clean.length} posts before failing (${reason}). ` +
+          `The earlier posts are already live — edit or delete them rather than retrying the whole thread.`,
+      );
+    }
     if (!root) {
       root = ref;
     }
     parent = ref;
+    published += 1;
   }
   return root as PostRef;
 }
