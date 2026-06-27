@@ -655,10 +655,6 @@ function writeTimelineScrollCache(cache: Record<string, number>) {
 // logic all agree about the live offset.
 const MOBILE_SCROLL_QUERY = "(max-width: 720px)";
 
-function isMobileScroller() {
-  return typeof window !== "undefined" && window.matchMedia(MOBILE_SCROLL_QUERY).matches;
-}
-
 // Live scroll offset of whichever element is actually scrolling. Only one
 // candidate is non-zero at a time, so the max always picks the live offset
 // regardless of which element scrolls.
@@ -669,19 +665,42 @@ function readScrollOffset(timeline: HTMLElement | null): number {
   return Math.max(
     window.scrollY,
     document.scrollingElement?.scrollTop ?? 0,
+    document.documentElement?.scrollTop ?? 0,
     document.body?.scrollTop ?? 0,
     timeline?.scrollTop ?? 0,
   );
 }
 
-// Scroll the active container to `top`. Targets the document on mobile and the
-// `.timeline` element on desktop, mirroring `readScrollOffset`.
-function scrollOffsetTo(timeline: HTMLElement | null, top: number, behavior?: ScrollBehavior) {
-  if (isMobileScroller()) {
-    window.scrollTo({ top, behavior });
-  } else {
-    timeline?.scrollTo({ top, behavior });
+function scrollElementTo(element: Element | null | undefined, top: number, behavior?: ScrollBehavior) {
+  if (!element) {
+    return;
   }
+  if (typeof element.scrollTo === "function") {
+    element.scrollTo({ top, behavior });
+  } else {
+    element.scrollTop = top;
+  }
+}
+
+// Scroll every plausible feed scroller. The button visibility uses
+// `readScrollOffset`, which can be driven by the document, body, or `.timeline`
+// depending on breakpoint/browser. Writing all of them keeps the action paired
+// with whichever one made the button appear.
+function scrollOffsetTo(timeline: HTMLElement | null, top: number, behavior?: ScrollBehavior) {
+  window.scrollTo({ top, behavior });
+  scrollElementTo(document.scrollingElement, top, behavior);
+  scrollElementTo(document.documentElement, top, behavior);
+  scrollElementTo(document.body, top, behavior);
+  scrollElementTo(timeline, top, behavior);
+}
+
+function scrollFeedToTop(timeline: HTMLElement | null) {
+  scrollOffsetTo(timeline, 0, "smooth");
+  window.setTimeout(() => {
+    if (readScrollOffset(timeline) > 1) {
+      scrollOffsetTo(timeline, 0);
+    }
+  }, 300);
 }
 
 // While a saved offset is being restored, the document briefly sits near the
@@ -10830,7 +10849,10 @@ function BackToTopButton({ containerRef, watchKey }: { containerRef: RefObject<H
     <button
       type="button"
       className="back-to-top"
-      onClick={() => scrollOffsetTo(containerRef.current, 0, "smooth")}
+      onClick={() => {
+        scrollFeedToTop(containerRef.current);
+        setVisible(false);
+      }}
       aria-label="Scroll to top of feed"
       title="Back to top"
     >
