@@ -3,6 +3,7 @@
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --bsky-blue: #0560ff;
+  --bsky-blue-strong: #034dcc;
   --bsky-blue-soft: #75afff;
   --bsky-dark: #232e3e;
   --app-bg: #0b111c;
@@ -15,6 +16,24 @@
   --app-text-muted: #aebdcc;
   --app-text-soft: #7f90a6;
   --app-danger: #ff8a7a;
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 14px;
+  --space-6: 16px;
+  --space-7: 18px;
+  --space-8: 22px;
+  --app-control-sm: 32px;
+  --app-control-md: 34px;
+  --app-input-height: 38px;
+  --app-radius-sm: 6px;
+  --app-radius: 8px;
+  --app-radius-lg: 10px;
+  --app-radius-pill: 999px;
+  --app-panel-padding: var(--space-6);
+  --app-card-gap: var(--space-3);
+  --app-grid-gap: var(--space-4);
   background: var(--app-bg);
   color: var(--app-text);
   font-synthesis: none;
@@ -113,7 +132,7 @@ button {
 }
 
 .rail-button.rail-compose:hover {
-  background: var(--bsky-blue-strong, var(--bsky-blue));
+  background: var(--bsky-blue-strong);
   color: #fff;
 }
 
@@ -309,11 +328,11 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 8px;
+  gap: var(--app-card-gap);
   width: 100%;
-  height: 34px;
+  height: var(--app-control-md);
   padding: 0 10px;
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface-2);
   color: var(--app-text);
   font-size: 13px;
@@ -369,15 +388,15 @@ button {
 }
 
 .feed-map-header button {
-  width: 34px;
-  height: 34px;
+  width: var(--app-control-md);
+  height: var(--app-control-md);
   background: var(--app-surface-2);
   color: var(--app-text-muted);
 }
 
 .feed-search {
   width: 100%;
-  height: 38px;
+  height: var(--app-input-height);
   margin-bottom: 18px;
   padding: 0 11px;
   border: 1px solid var(--app-border);
@@ -740,7 +759,7 @@ button {
 
 .search-workspace input {
   min-width: 0;
-  height: 38px;
+  height: var(--app-input-height);
   border: 0;
   outline: 0;
   background: transparent;
@@ -754,8 +773,8 @@ button {
 .clear-search-button {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: var(--app-control-md);
+  height: var(--app-control-md);
   border-radius: 8px;
   background: var(--app-surface-2);
   color: var(--app-text-muted);
@@ -777,7 +796,7 @@ button {
 }
 
 .search-options select {
-  height: 38px;
+  height: var(--app-input-height);
   max-width: 142px;
   border: 1px solid var(--app-border);
   border-radius: 8px;
@@ -786,18 +805,27 @@ button {
   color: var(--app-text);
 }
 
-.composer-footer > button {
+.composer-footer > button,
+.self-profile-actions button,
+.self-profile-actions a,
+.bsky-list-actions button,
+.bsky-list-actions a,
+.profile-detail-actions button,
+.profile-detail-actions a {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  min-height: 34px;
+  min-height: var(--app-control-md);
   padding: 0 12px;
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface-2);
   color: var(--app-text);
   font-size: 13px;
   font-weight: 700;
   text-decoration: none;
+}
+
+.composer-footer > button {
+  gap: 7px;
 }
 
 .composer textarea {
@@ -817,12 +845,12 @@ button {
 
 .composer-thread {
   display: grid;
-  gap: 12px;
+  gap: var(--app-grid-gap);
 }
 
 .composer-draft {
   border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: rgba(255, 255, 255, 0.025);
 }
 
@@ -830,7 +858,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 34px;
+  min-height: var(--app-control-md);
   padding: 0 10px;
   border-bottom: 1px solid var(--app-border);
   color: var(--app-text-soft);
@@ -946,7 +974,7 @@ button {
   margin: 0 0 14px;
   padding: 12px 16px;
   border: 1px solid var(--bsky-blue);
-  border-radius: 10px;
+  border-radius: var(--app-radius);
   background: color-mix(in srgb, var(--bsky-blue) 14%, var(--app-surface));
 }
 
@@ -962,13 +990,13 @@ button {
 
 .reauth-banner-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--app-card-gap);
 }
 
 .reauth-banner-actions button {
-  min-height: 34px;
+  min-height: var(--app-control-md);
   padding: 0 14px;
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface-2);
   color: var(--app-text);
   font-size: 13px;
@@ -978,9 +1006,9 @@ button {
 /* Standalone re-auth button (notifications error, list sub-error). */
 .surface-retry button.reauth-primary,
 .bsky-list-suberror button.reauth-primary {
-  min-height: 34px;
+  min-height: var(--app-control-md);
   padding: 0 14px;
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--bsky-blue);
   color: #fff;
   font-weight: 700;
@@ -1114,9 +1142,9 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  min-height: 38px;
+  min-height: var(--app-input-height);
   padding: 0 10px;
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: transparent;
   color: var(--app-text);
   font-weight: 600;
@@ -1197,9 +1225,9 @@ button {
 .composer-emoji-option {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
+  width: var(--app-control-md);
+  height: var(--app-control-md);
+  border-radius: var(--app-radius);
   background: transparent;
   font-size: 1.25rem;
   line-height: 1;
@@ -1212,9 +1240,9 @@ button {
 /* Primary send button (reply composer) and load-more share the filled style. */
 .composer-send button:last-child,
 .load-more {
-  min-height: 38px;
+  min-height: var(--app-input-height);
   padding: 0 16px;
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--bsky-blue);
   color: #fff;
   font-weight: 700;
@@ -1222,9 +1250,9 @@ button {
 
 /* Secondary Cancel button reads as muted, not a primary action. */
 .composer-send-cancel {
-  min-height: 38px;
+  min-height: var(--app-input-height);
   padding: 0 14px;
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: transparent;
   color: var(--app-text-muted);
   font-weight: 700;
@@ -1311,33 +1339,6 @@ button {
   line-height: 1.5;
 }
 
-.info-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.info-actions button,
-.info-actions a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 8px;
-  background: var(--app-surface-2);
-  color: var(--app-text);
-  font-size: 13px;
-  font-weight: 800;
-  text-decoration: none;
-}
-
-.info-actions button:hover,
-.info-actions a:hover {
-  background: rgba(5, 96, 255, 0.18);
-  color: var(--bsky-blue-soft);
-}
-
 .info-page {
   display: grid;
   align-content: start;
@@ -1410,51 +1411,27 @@ button {
   color: var(--app-text);
 }
 
-.info-hero dl {
-  display: grid;
-  gap: 10px;
-  align-content: start;
-  margin: 0;
-}
-
-.info-hero dl div {
-  padding: 12px;
-  border: 1px solid var(--app-border);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.025);
-}
-
-.info-hero dt {
-  color: var(--app-text-soft);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.info-hero dd {
-  margin: 4px 0 0;
-  font-weight: 800;
-}
-
 .surface-grid,
 .feed-directory-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
-  gap: 12px;
+  gap: var(--app-grid-gap);
   width: 100%;
   margin-top: 14px;
 }
 
 .surface-card {
   min-height: 142px;
-  padding: 16px;
+  padding: var(--app-panel-padding);
   border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
 }
 
 .surface-card span,
-.settings-panel span {
+.settings-panel span,
+.notification-item > span,
+.local-list-card > span {
   display: inline-flex;
   min-height: 24px;
   align-items: center;
@@ -1472,7 +1449,10 @@ button {
   font-size: 16px;
 }
 
-.surface-card p {
+.surface-card p,
+.notification-item p,
+.local-list-card p,
+.local-list-timeline-header p {
   margin: 0;
   color: var(--app-text-muted);
   font-size: 13px;
@@ -1482,16 +1462,16 @@ button {
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
-  gap: 12px;
+  gap: var(--app-grid-gap);
   width: 100%;
   margin-top: 14px;
 }
 
 .settings-panel {
   min-height: 230px;
-  padding: 16px;
+  padding: var(--app-panel-padding);
   border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
 }
 
@@ -1509,7 +1489,7 @@ button {
 
 .settings-panel dl {
   display: grid;
-  gap: 8px;
+  gap: var(--app-card-gap);
   margin: 12px 0 0;
 }
 
@@ -1532,10 +1512,10 @@ button {
 }
 
 .settings-panel button {
-  min-height: 38px;
+  min-height: var(--app-input-height);
   margin-top: 14px;
   padding: 0 14px;
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface-2);
   color: var(--app-text);
   font-weight: 700;
@@ -1566,10 +1546,10 @@ button {
 }
 
 .settings-select select {
-  min-height: 38px;
+  min-height: var(--app-input-height);
   padding: 0 10px;
   border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface-2);
   color: var(--app-text);
   font-size: 14px;
@@ -1586,12 +1566,12 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--app-card-gap);
   width: 100%;
-  min-height: 38px;
+  min-height: var(--app-input-height);
   padding: 0 10px;
   border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface-2);
   color: var(--app-text);
   font-size: 14px;
@@ -1616,7 +1596,7 @@ button {
   flex-direction: column;
   max-height: 320px;
   border: 1px solid var(--app-border);
-  border-radius: 10px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
   overflow: hidden;
@@ -1625,7 +1605,7 @@ button {
 .home-picker-search {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--app-card-gap);
   padding: 8px 10px;
   border-bottom: 1px solid var(--app-border);
   color: var(--app-text-muted);
@@ -1668,7 +1648,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--app-card-gap);
   padding: 8px 12px;
   font-size: 14px;
   font-weight: 600;
@@ -1706,7 +1686,7 @@ button {
 .settings-control-group {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--app-card-gap);
   margin-top: 14px;
 }
 
@@ -1787,7 +1767,15 @@ button {
   margin: 0;
 }
 
-.self-profile-card dt {
+.self-profile-card dt,
+.local-list-timeline-header span,
+.feed-directory-card span,
+.feed-density-control span,
+.profile-detail-stats dt,
+.feed-result-card span,
+.thread-detail-header dt,
+.thread-parent-context > header span,
+.thread-context-item small {
   color: var(--app-text-soft);
   font-size: 11px;
   font-weight: 800;
@@ -1807,23 +1795,10 @@ button {
   gap: 8px;
 }
 
-.self-profile-actions button,
-.self-profile-actions a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 8px;
-  background: var(--app-surface-2);
-  color: var(--app-text);
-  font-weight: 700;
-  text-decoration: none;
-}
-
 .self-profile-tabs {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
-  gap: 12px;
+  gap: var(--app-grid-gap);
   width: 100%;
 }
 
@@ -1833,9 +1808,9 @@ button {
   align-content: start;
   gap: 6px;
   min-height: 120px;
-  padding: 16px;
+  padding: var(--app-panel-padding);
   border: 1px solid var(--app-border);
-  border-radius: 10px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
   text-align: left;
   text-decoration: none;
@@ -1880,9 +1855,10 @@ button {
   margin-top: 14px;
 }
 
-.sign-in-form input {
+.sign-in-form input,
+.local-list-form input {
   min-width: 0;
-  height: 38px;
+  height: var(--app-input-height);
   padding: 0 10px;
   border: 1px solid var(--app-border);
   border-radius: 8px;
@@ -1891,14 +1867,19 @@ button {
   color: var(--app-text);
 }
 
-.sign-in-form button {
-  min-height: 38px;
-  margin: 0;
+.sign-in-form button,
+.local-list-form button,
+.local-list-card button {
+  min-height: var(--app-input-height);
   padding: 0 12px;
   border-radius: 8px;
   background: var(--bsky-blue);
   color: #fff;
   font-weight: 700;
+}
+
+.sign-in-form button {
+  margin: 0;
 }
 
 .sign-in-form button:disabled {
@@ -1914,7 +1895,20 @@ button {
 }
 
 .account-identity strong,
-.account-identity small {
+.account-identity small,
+.feed-result-card strong,
+.profile-result-card strong,
+.post-header strong,
+.post-header span,
+.quote-header strong,
+.quote-header span,
+.pinned-profiles-panel span,
+.pinned-profiles-panel strong,
+.pinned-profiles-panel small,
+.recent-panel span,
+.recent-panel small,
+.image-viewer-footer strong,
+.image-viewer-footer span {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -1929,10 +1923,10 @@ button {
 .surface-action {
   display: inline-flex;
   align-items: center;
-  min-height: 38px;
+  min-height: var(--app-input-height);
   margin-top: 16px;
   padding: 0 14px;
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--bsky-blue);
   color: #fff;
   font-weight: 700;
@@ -1950,15 +1944,15 @@ button.surface-action {
   margin: 14px 0;
   padding: 3px;
   border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: #0f1724;
 }
 
 .notification-tabs button {
   min-width: 110px;
-  min-height: 34px;
+  min-height: var(--app-control-md);
   padding: 0 12px;
-  border-radius: 6px;
+  border-radius: var(--app-radius-sm);
   background: transparent;
   color: var(--app-text-muted);
   font-weight: 700;
@@ -2058,9 +2052,9 @@ button.surface-action {
   display: grid;
   grid-template-columns: 116px minmax(0, 1fr);
   gap: 14px;
-  padding: 15px;
+  padding: var(--app-panel-padding);
   border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
 }
 
@@ -2080,33 +2074,10 @@ button.surface-action {
   font-weight: 800;
 }
 
-.notification-item > span,
-.local-list-card > span {
-  display: inline-flex;
-  width: fit-content;
-  min-height: 24px;
-  align-items: center;
-  padding: 0 8px;
-  border: 1px solid var(--app-border);
-  border-radius: 999px;
-  color: var(--app-text-muted);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
 .notification-item h3,
 .local-list-card h3 {
   margin: 0 0 6px;
   font-size: 16px;
-}
-
-.notification-item p,
-.local-list-card p {
-  margin: 0;
-  color: var(--app-text-muted);
-  font-size: 13px;
-  line-height: 1.42;
 }
 
 .local-list-form {
@@ -2121,27 +2092,6 @@ button.surface-action {
   background: var(--app-surface);
 }
 
-.local-list-form input {
-  min-width: 0;
-  height: 38px;
-  padding: 0 10px;
-  border: 1px solid var(--app-border);
-  border-radius: 8px;
-  outline: 0;
-  background: #0f1724;
-  color: var(--app-text);
-}
-
-.local-list-form button,
-.local-list-card button {
-  min-height: 38px;
-  padding: 0 12px;
-  border-radius: 8px;
-  background: var(--bsky-blue);
-  color: #fff;
-  font-weight: 700;
-}
-
 .local-list-form button:disabled {
   cursor: not-allowed;
   background: #41516a;
@@ -2150,7 +2100,7 @@ button.surface-action {
 .local-list-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--app-grid-gap);
   max-width: 980px;
 }
 
@@ -2175,7 +2125,7 @@ button.surface-action {
 .bsky-list-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
+  gap: var(--app-grid-gap);
   max-width: 980px;
 }
 
@@ -2183,9 +2133,9 @@ button.surface-action {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 15px;
+  padding: var(--app-panel-padding);
   border: 1px solid var(--app-border);
-  border-radius: 10px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
 }
 
@@ -2198,7 +2148,7 @@ button.surface-action {
 .bsky-list-avatar {
   width: 44px;
   height: 44px;
-  border-radius: 9px;
+  border-radius: var(--app-radius);
   object-fit: cover;
   flex-shrink: 0;
 }
@@ -2237,22 +2187,8 @@ button.surface-action {
 
 .bsky-list-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--app-card-gap);
   margin-top: auto;
-}
-
-.bsky-list-actions button,
-.bsky-list-actions a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 32px;
-  padding: 0 12px;
-  border-radius: 8px;
-  background: var(--app-surface-2);
-  color: var(--app-text);
-  font-size: 13px;
-  font-weight: 700;
-  text-decoration: none;
 }
 
 .surface-retry {
@@ -2263,9 +2199,9 @@ button.surface-action {
 }
 
 .surface-retry button {
-  min-height: 34px;
+  min-height: var(--app-control-md);
   padding: 0 14px;
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface-2);
   color: var(--app-text);
   font-weight: 700;
@@ -2286,7 +2222,7 @@ button.surface-action {
   margin: 0 0 18px;
   padding: 14px;
   border: 1px solid var(--app-border);
-  border-radius: 10px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
 }
 
@@ -2302,25 +2238,25 @@ button.surface-action {
 
 .list-member-add {
   display: flex;
-  gap: 8px;
+  gap: var(--app-card-gap);
   margin-bottom: 10px;
 }
 
 .list-member-add input {
   flex: 1;
-  min-height: 32px;
+  min-height: var(--app-control-sm);
   padding: 0 10px;
   border: 1px solid var(--app-border);
-  border-radius: 7px;
+  border-radius: var(--app-radius);
   background: var(--app-surface-2);
   color: var(--app-text);
   font-size: 13px;
 }
 
 .list-member-add button {
-  min-height: 32px;
+  min-height: var(--app-control-sm);
   padding: 0 14px;
-  border-radius: 7px;
+  border-radius: var(--app-radius);
   background: var(--bsky-blue);
   color: #fff;
   font-weight: 700;
@@ -2344,9 +2280,9 @@ button.surface-action {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--app-card-gap);
   padding: 6px 8px;
-  border-radius: 7px;
+  border-radius: var(--app-radius);
   background: var(--app-surface-2);
 }
 
@@ -2405,9 +2341,9 @@ button.surface-action {
   min-height: 178px;
   align-content: start;
   gap: 9px;
-  padding: 15px;
+  padding: var(--app-panel-padding);
   border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
 }
 
@@ -2441,35 +2377,21 @@ button.surface-action {
 
 .local-list-timeline-header {
   margin-bottom: 12px;
-  padding: 15px;
+  padding: var(--app-panel-padding);
   border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
-}
-
-.local-list-timeline-header span {
-  color: var(--app-text-soft);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
 }
 
 .local-list-timeline-header h3 {
   margin: 7px 0 5px;
 }
 
-.local-list-timeline-header p {
-  margin: 0;
-  color: var(--app-text-muted);
-  font-size: 13px;
-  line-height: 1.42;
-}
-
 .feed-directory-card {
   min-height: 132px;
-  padding: 15px;
+  padding: var(--app-panel-padding);
   border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
 }
 
@@ -2486,13 +2408,6 @@ button.surface-action {
 .feed-directory-card strong,
 .feed-directory-card small {
   display: block;
-}
-
-.feed-directory-card span {
-  color: var(--app-text-soft);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
 }
 
 .feed-directory-card strong {
@@ -2548,19 +2463,12 @@ button.surface-action {
   margin-top: 12px;
 }
 
-.feed-density-control span {
-  color: var(--app-text-soft);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
 .feed-density-control select {
   width: 100%;
-  min-height: 32px;
+  min-height: var(--app-control-sm);
   padding: 0 9px;
   border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface-2);
   color: var(--app-text);
   font: inherit;
@@ -2569,10 +2477,10 @@ button.surface-action {
 }
 
 .directory-pin {
-  min-height: 32px;
+  min-height: var(--app-control-sm);
   margin-top: 12px;
   padding: 0 10px;
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface-2);
   color: var(--app-text);
   font-size: 12px;
@@ -2587,14 +2495,14 @@ button.surface-action {
 .feed-directory-card-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--app-card-gap);
 }
 
 .directory-unfollow {
-  min-height: 32px;
+  min-height: var(--app-control-sm);
   margin-top: 12px;
   padding: 0 10px;
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: transparent;
   color: var(--bsky-blue-soft);
   box-shadow: inset 0 0 0 1px var(--bsky-blue-soft);
@@ -2625,7 +2533,7 @@ button.surface-action {
      980px, which left ~half the column empty. min(100%, 400px) keeps a
      single column on narrow/mobile widths without horizontal overflow. */
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr));
-  gap: 12px;
+  gap: var(--app-grid-gap);
   margin-top: 14px;
 }
 
@@ -2710,9 +2618,9 @@ button.surface-action {
 .discover-feed-card {
   display: flex;
   flex-direction: column;
-  padding: 14px;
+  padding: var(--app-panel-padding);
   border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
 }
 
@@ -2909,33 +2817,12 @@ button.surface-action {
   gap: 8px;
 }
 
-.profile-detail-actions button,
-.profile-detail-actions a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 8px;
-  background: var(--app-surface-2);
-  color: var(--app-text);
-  font-size: 13px;
-  font-weight: 700;
-  text-decoration: none;
-}
-
 .profile-detail-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin: 0;
   padding: 0 16px 14px;
-}
-
-.profile-detail-stats dt {
-  color: var(--app-text-soft);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
 }
 
 .profile-detail-stats dd {
@@ -2953,9 +2840,9 @@ button.surface-action {
 }
 
 .profile-tabs button {
-  min-height: 34px;
+  min-height: var(--app-control-md);
   padding: 0 12px;
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: transparent;
   color: var(--app-text-muted);
   font-weight: 700;
@@ -2989,21 +2876,6 @@ button.surface-action {
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-}
-
-.feed-result-card span {
-  color: var(--app-text-soft);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.feed-result-card strong,
-.profile-result-card strong {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .feed-result-card small,
@@ -3150,14 +3022,6 @@ button.surface-action {
   grid-template-columns: 46px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
-}
-
-.post-header strong,
-.post-header span {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .author-button {
@@ -3644,10 +3508,10 @@ button.surface-action {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 34px;
+  min-height: var(--app-control-md);
   margin-right: 10px;
   padding: 0 10px;
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface-2);
   color: var(--app-text);
   font-size: 13px;
@@ -3766,14 +3630,6 @@ button.surface-action {
   padding: 5px 9px;
   border-radius: 8px;
   font-size: 14px;
-}
-
-.quote-header strong,
-.quote-header span {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .quote-header strong {
@@ -4206,37 +4062,21 @@ button.surface-action {
   align-items: start;
 }
 
-.compact .post-card.text-only .post-header,
-.compact .post-card.text-only .thread-open-chip,
-.compact .thread-combined-card .post-header,
-.compact .thread-combined-card .thread-open-chip {
+.compact :is(.post-card.text-only, .thread-combined-card) :is(.post-header, .thread-open-chip) {
   grid-column: 1;
 }
 
-.compact .post-card.text-only .reason,
-.compact .post-card.text-only .post-badges,
-.compact .post-card.text-only .post-text,
-.compact .post-card.text-only .post-actions,
-.compact .thread-combined-card .combined-thread-text,
-.compact .thread-combined-card .post-actions {
+.compact .post-card.text-only :is(.reason, .post-badges, .post-text, .post-actions),
+.compact .thread-combined-card :is(.combined-thread-text, .post-actions) {
   grid-column: 2;
 }
 
-.compact .post-card.media-hidden .post-header,
-.compact .post-card.media-hidden .thread-open-chip,
-.compact .post-card.media-hidden .reason,
-.compact .post-card.media-hidden .post-badges,
-.compact .post-card.media-hidden .moderation-notice,
-.compact .post-card.media-hidden .post-text,
-.compact .post-card.media-hidden .post-image-video-media,
-.compact .post-card.media-hidden .link-card,
-.compact .post-card.media-hidden .quote-card,
-.compact .post-card.media-hidden .post-actions {
+.compact .post-card.media-hidden
+  :is(.post-header, .thread-open-chip, .reason, .post-badges, .moderation-notice, .post-text, .post-image-video-media, .link-card, .quote-card, .post-actions) {
   grid-column: 1 / -1;
 }
 
-.compact .post-card.text-only .post-text,
-.compact .post-card.media-hidden .post-text {
+.compact .post-card:is(.text-only, .media-hidden) .post-text {
   margin-top: 0;
 }
 
@@ -4392,15 +4232,11 @@ button.surface-action {
   white-space: nowrap;
 }
 
-.compact .post-card.media-hidden .quote-card:not(.revealed) > .quote-link-card,
-.compact .post-card.media-hidden .quote-card:not(.revealed) > .image-grid,
-.compact .post-card.media-hidden .quote-card:not(.revealed) > .video-card {
+.compact .post-card.media-hidden .quote-card:not(.revealed) > :is(.quote-link-card, .image-grid, .video-card) {
   display: none;
 }
 
-.compact .post-card.text-only .thread-open-chip,
-.compact .post-card.media-hidden .thread-open-chip,
-.compact .thread-combined-card .thread-open-chip {
+.compact :is(.post-card.text-only, .post-card.media-hidden, .thread-combined-card) .thread-open-chip {
   margin: 4px 0 0 33px;
   min-height: 24px;
   padding: 0 9px;
@@ -4411,9 +4247,7 @@ button.surface-action {
   font-weight: 800;
 }
 
-.compact .post-card.text-only .thread-open-chip svg,
-.compact .post-card.media-hidden .thread-open-chip svg,
-.compact .thread-combined-card .thread-open-chip svg {
+.compact :is(.post-card.text-only, .post-card.media-hidden, .thread-combined-card) .thread-open-chip svg {
   width: 13px;
   height: 13px;
 }
@@ -4533,13 +4367,6 @@ button.surface-action {
   grid-template-columns: repeat(4, minmax(64px, 1fr));
   gap: 10px;
   margin: 0;
-}
-
-.thread-detail-header dt {
-  color: var(--app-text-soft);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
 }
 
 .thread-detail-header dd {
@@ -4837,14 +4664,6 @@ button.surface-action {
   gap: 12px;
 }
 
-.thread-parent-context > header span,
-.thread-context-item small {
-  color: var(--app-text-soft);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
 .thread-parent-context > header strong {
   color: var(--app-text-muted);
   font-size: 13px;
@@ -4906,7 +4725,7 @@ button.surface-action {
   padding: 12px;
   max-width: 420px;
   border: 1px solid var(--app-border);
-  border-radius: 10px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
   color: var(--app-text-muted);
   font-size: 13px;
@@ -4926,8 +4745,8 @@ button.surface-action {
   padding: 14px 18px;
   max-width: 420px;
   border: 1px solid var(--app-border);
-  border-radius: 8px;
-  background: var(--app-panel);
+  border-radius: var(--app-radius);
+  background: var(--app-surface);
   color: var(--app-text-muted);
   text-align: center;
 }
@@ -4976,6 +4795,10 @@ button.surface-action {
   color: var(--app-text-muted);
   font-size: 13px;
   font-weight: 700;
+}
+
+.branch-load-status.branch-load-error {
+  color: var(--app-danger);
 }
 
 .thread-continuation,
@@ -5071,7 +4894,7 @@ button.surface-action {
 .panel-clear {
   padding: 2px 8px;
   border: 1px solid var(--app-border);
-  border-radius: 999px;
+  border-radius: var(--app-radius-pill);
   background: transparent;
   color: var(--app-text-soft);
   font-size: 12px;
@@ -5086,7 +4909,7 @@ button.surface-action {
 .profile-panel,
 .context-panel {
   margin-bottom: 14px;
-  padding: 14px;
+  padding: var(--space-5);
 }
 
 .profile-panel h2 {
@@ -5101,7 +4924,7 @@ button.surface-action {
   place-items: center;
   width: 44px;
   height: 44px;
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: rgba(5, 96, 255, 0.18);
   color: var(--bsky-blue-soft);
 }
@@ -5166,9 +4989,9 @@ button.surface-action {
 
 .context-panel button {
   width: 100%;
-  min-height: 34px;
+  min-height: var(--app-control-md);
   margin-top: 8px;
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface-2);
   color: var(--app-text);
   text-align: left;
@@ -5192,9 +5015,9 @@ button.surface-action {
 .context-actions a {
   display: inline-flex;
   align-items: center;
-  min-height: 34px;
+  min-height: var(--app-control-md);
   padding: 0 10px;
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface-2);
   color: var(--app-text);
   font-size: 13px;
@@ -5204,7 +5027,7 @@ button.surface-action {
 
 .pinned-searches-panel {
   display: grid;
-  gap: 8px;
+  gap: var(--app-card-gap);
 }
 
 .pinned-searches-panel div,
@@ -5232,13 +5055,13 @@ button.surface-action {
 
 .pinned-profiles-panel {
   display: grid;
-  gap: 8px;
+  gap: var(--app-card-gap);
 }
 
 .pinned-profiles-panel button:first-child {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
-  gap: 8px;
+  gap: var(--app-card-gap);
   align-items: center;
   height: auto;
   min-height: 42px;
@@ -5248,16 +5071,6 @@ button.surface-action {
 .pinned-profiles-panel .avatar {
   width: 28px;
   height: 28px;
-}
-
-.pinned-profiles-panel span,
-.pinned-profiles-panel strong,
-.pinned-profiles-panel small {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .pinned-profiles-panel small {
@@ -5288,16 +5101,16 @@ button.surface-action {
 
 .feed-map-panel {
   display: grid;
-  gap: 8px;
+  gap: var(--app-card-gap);
 }
 
 .feed-map-panel div {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 34px;
+  min-height: var(--app-control-md);
   padding: 0 10px;
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface-2);
 }
 
@@ -5315,15 +5128,6 @@ button.surface-action {
   height: auto;
   min-height: 48px;
   padding-block: 8px;
-}
-
-.recent-panel span,
-.recent-panel small {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .recent-panel small {
@@ -5485,14 +5289,6 @@ button.surface-action {
   color: var(--app-text);
 }
 
-.image-viewer-footer strong,
-.image-viewer-footer span {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .image-viewer-footer span {
   margin-top: 2px;
   color: var(--app-text-muted);
@@ -5578,46 +5374,28 @@ button.surface-action {
 }
 
 @media (min-width: 1900px) {
-  .timeline.compact .post-card.has-link:not(.media-hidden),
-  .timeline.compact .post-card.has-quote:not(.media-hidden),
-  .timeline.compact .post-card.has-media:not(.media-hidden) {
+  .timeline.compact .post-card:is(.has-link, .has-quote, .has-media):not(.media-hidden) {
     display: grid;
     grid-template-columns: minmax(280px, 0.92fr) minmax(360px, 1.08fr);
     column-gap: 18px;
     align-items: start;
   }
 
-  .timeline.compact .post-card.has-link:not(.media-hidden) .post-header,
-  .timeline.compact .post-card.has-quote:not(.media-hidden) .post-header,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .post-header,
-  .timeline.compact .post-card.has-link:not(.media-hidden) .reason,
-  .timeline.compact .post-card.has-quote:not(.media-hidden) .reason,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .reason,
-  .timeline.compact .post-card.has-link:not(.media-hidden) .post-badges,
-  .timeline.compact .post-card.has-quote:not(.media-hidden) .post-badges,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .post-badges,
-  .timeline.compact .post-card.has-link:not(.media-hidden) .post-text,
-  .timeline.compact .post-card.has-quote:not(.media-hidden) .post-text,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .post-text,
-  .timeline.compact .post-card.has-link:not(.media-hidden) .post-actions,
-  .timeline.compact .post-card.has-quote:not(.media-hidden) .post-actions,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .post-actions {
+  .timeline.compact
+    .post-card:is(.has-link, .has-quote, .has-media):not(.media-hidden)
+    :is(.post-header, .reason, .post-badges, .post-text, .post-actions) {
     grid-column: 1;
   }
 
   .timeline.compact .post-card.has-link:not(.media-hidden) .link-card,
   .timeline.compact .post-card.has-quote:not(.media-hidden) .quote-card,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .image-grid,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .video-card {
+  .timeline.compact .post-card.has-media:not(.media-hidden) :is(.image-grid, .video-card) {
     grid-column: 2;
     grid-row: 1 / span 8;
     margin-top: 0;
   }
 
-  .timeline.compact .post-card.has-media:not(.media-hidden) .image-grid.count-1 img,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .video-card video,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .video-card img,
-  .timeline.compact .post-card.has-media:not(.media-hidden) .video-placeholder {
+  .timeline.compact .post-card.has-media:not(.media-hidden) :is(.image-grid.count-1 img, .video-card video, .video-card img, .video-placeholder) {
     min-height: var(--post-embed-min);
   }
 }

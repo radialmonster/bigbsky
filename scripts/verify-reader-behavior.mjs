@@ -31,7 +31,8 @@ requirePattern(/onQueryChange=\{setGlobalSearchText\}/, "search input should edi
 requirePattern(/const offset = readScrollOffset\(timeline\);[\s\S]*scrollCacheRef\.current\[activeScrollKey\] = offset/, "timeline scroll should be cached per active feed/profile key from the active scroller");
 requirePattern(/shouldSuppressScrollSave\(offset\)/, "save-on-scroll should be suppressed while a saved offset is being restored");
 requirePattern(/function readScrollOffset\(timeline: HTMLElement \| null\)[\s\S]*window\.scrollY[\s\S]*timeline\?\.scrollTop/s, "scroll offset should read whichever container is actually scrolling (mobile document vs desktop timeline)");
-requirePattern(/function scrollOffsetTo\(timeline: HTMLElement \| null[\s\S]*isMobileScroller\(\)[\s\S]*window\.scrollTo[\s\S]*timeline\?\.scrollTo/s, "scroll restoration should target the document on mobile and the timeline on desktop");
+requirePattern(/function scrollOffsetTo\(timeline: HTMLElement \| null[\s\S]*window\.scrollTo[\s\S]*document\.scrollingElement[\s\S]*document\.body[\s\S]*timeline/s, "scroll restoration should write every plausible feed scroller so back-to-top targets the same scroller that made it visible");
+requirePattern(/function scrollFeedToTop\(timeline: HTMLElement \| null\)\s*\{\s*scrollOffsetTo\(timeline, 0\);\s*\}/, "back-to-top should jump instantly to top so VirtualPostList's height-compensation can't cancel a smooth scroll partway");
 requirePattern(/`profile:\$\{route\.actor\}:\$\{profileFeedFilterForTab\(profileTab\)\}`/, "profile timeline scroll keys should match the per-tab author-feed cache key");
 requirePattern(/restoreScrollOffset\(timelineRef, scrollCacheRef\.current\[cacheKey\] \|\| 0\)/, "cached feed/profile loads should restore cached scroll offset");
 requirePattern(/const timelineScrollStorageKey = "bigbsky:timeline-scroll"/, "timeline scroll offsets should use a browser-local session cache key");

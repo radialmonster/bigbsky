@@ -62,7 +62,7 @@ requirePattern(css, /@media \(max-width: 720px\) \{[\s\S]*\.app-shell \{[\s\S]*g
 // content should use that width.
 forbidPattern(css, /\.post-text \{[^}]*max-width/s, "post prose must not be capped narrower than the wide content column");
 forbidPattern(css, /\.post-card \.post-actions \{[^}]*max-width: 720px/s, "post text-flow elements must not be capped narrower than the wide content column");
-requirePattern(css, /@media \(min-width: 1900px\) \{[\s\S]*\.timeline\.compact \.post-card\.has-link:not\(\.media-hidden\),[\s\S]*display: grid;[\s\S]*grid-template-columns: minmax\(280px, 0\.92fr\) minmax\(360px, 1\.08fr\);/s, "very wide compact rich cards should become two-zone cards when media is visible");
+requirePattern(css, /@media \(min-width: 1900px\) \{[\s\S]*\.timeline\.compact \.post-card:is\(\.has-link, \.has-quote, \.has-media\):not\(\.media-hidden\) \{[\s\S]*display: grid;[\s\S]*grid-template-columns: minmax\(280px, 0\.92fr\) minmax\(360px, 1\.08fr\);/s, "very wide compact rich cards should become two-zone cards when media is visible");
 requirePattern(css, /\.compact \.post-card\.text-only,[\s\S]*\.compact \.post-card\.media-hidden \{[\s\S]*display: grid;/s, "compact media-hidden cards should use dense desktop rows");
 requirePattern(css, /@media \(max-width: 720px\) \{[\s\S]*\.compact \.post-card\.text-only,[\s\S]*\.compact \.post-card\.media-hidden \{[\s\S]*display: block;/s, "wide-only compact layout should collapse on mobile");
 

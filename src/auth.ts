@@ -776,13 +776,32 @@ export async function publishThread(posts: ComposerPostInput[], langs?: string[]
   }
   let root: PostRef | null = null;
   let parent: PostRef | null = null;
+  let published = 0;
   for (const post of clean) {
     const reply: ReplyRef | undefined = root && parent ? { root, parent } : undefined;
-    const ref = await publishPost({ text: post.text, images: post.images, reply, langs });
+    let ref: PostRef;
+    try {
+      ref = await publishPost({ text: post.text, images: post.images, reply, langs });
+    } catch (error) {
+      // A thread publishes one record at a time and the network can't be rolled
+      // back, so a mid-thread failure leaves the earlier posts live. Surface that
+      // honestly instead of a bare "couldn't post" — a blind retry would publish
+      // a second partial thread. The first post failing is a clean no-op, so let
+      // that error through unchanged.
+      if (published === 0) {
+        throw error;
+      }
+      const reason = error instanceof Error ? error.message : "unknown error";
+      throw new Error(
+        `Posted ${published} of ${clean.length} posts before failing (${reason}). ` +
+          `The earlier posts are already live — edit or delete them rather than retrying the whole thread.`,
+      );
+    }
     if (!root) {
       root = ref;
     }
     parent = ref;
+    published += 1;
   }
   return root as PostRef;
 }
@@ -945,8 +964,9 @@ export async function unblockAccount(blockUri: string): Promise<void> {
 
 // --- Moderation / block-list curation ---
 // Scopes repo:app.bsky.graph.list / .listitem / .listblock are all granted.
-// (Subscribing to a *mute* list would need app.bsky.graph.muteActorList, which
-// is NOT in scope, so only block-list subscription is implemented here.)
+// app.bsky.graph.muteActorList / unmuteActorList are also in scope (see
+// public/oauth-client-metadata.json) and muteList/unmuteList are implemented
+// below; this section just covers block-list (listblock) subscription.
 
 // Create a moderation list (the kind used for block/mute lists). Returns the
 // new list's at:// uri. Throws if signed out.

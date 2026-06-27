@@ -8,6 +8,18 @@
   `Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" -ArgumentList "--remote-debugging-port=9222 --user-data-dir=$env:LOCALAPPDATA\Codex\ChromeProfiles\fb-tools-test --start-maximized --auto-open-devtools-for-tabs --disable-first-run-ui --no-first-run about:blank" -WindowStyle Hidden`
 - To start the local BigBsky dev server, run `npm run dev` from the repo root. Vite serves it at `http://127.0.0.1:5173/` by default.
 
+- [x] Fix slow image-viewer zoom/pan (jank, esp. on mobile).
+  - Reported: opening a post's picture in the in-app viewer and pinch-zooming / panning is very slow on mobile (desktop unclear).
+  - Root cause: `ImageViewer` in `src/App.tsx` called `setZoom(...)` on every `pointermove` during pinch/pan. Each call re-rendered the entire viewer (image + thumbnail strip + footer + controls) and React reconciled per pointer event — many per frame on touch — so the gesture stuttered. The transform itself was already GPU-friendly (`translate3d`+`scale`, `will-change: transform`); the cost was React, not compositing.
+  - Done (drive the gesture imperatively, commit to state only at the end):
+    - Added `imgRef`, `transformFrameRef`, `zoomDirtyRef`. New `applyTransform(z)` writes `translate3d(x,y,0) scale(s)` straight to the DOM node; `scheduleTransform()` coalesces writes to one per `requestAnimationFrame`; `commitZoom()` flushes the live value into React state once no pointers remain.
+    - `handlePointerMove` pinch/pan branches now update `zoomRef.current` + `zoomDirtyRef` and call `scheduleTransform()` instead of `setZoom` — zero React renders during the gesture.
+    - `handlePointerUp` / `onPointerCancel` call `commitZoom()` when the last pointer lifts, so the rendered `zoomed` className and click behavior reflect the final zoom.
+    - Removed the inline `style={{ transform }}` from the `<img>` (was rebound every render) in favor of a `useLayoutEffect` that applies the committed `zoom` to the node; it reads the live `zoomRef` while `zoomDirtyRef` is set so a mid-gesture re-render (e.g. original image finishing load and swapping `displayedSrc`) can't snap the transform back. `resetZoom` (double-click / index change) updates ref + state together. Added an unmount cleanup that cancels a pending rAF.
+  - Verified: `npm run build` passes (tsc, vite, audit initial JS 119 kB gzip, reader + layout + rich-text verifiers all green). Gesture smoothness needs a real touch device / non-headless browser to feel (pinch + rAF don't exercise meaningfully under headless CDP) — left for an operator spot-check.
+  - Relevant files/functions found:
+    - `src/App.tsx`: `ImageViewer` (`applyTransform`, `scheduleTransform`, `commitZoom`, `resetZoom`, `handlePointerMove`, `handlePointerUp`, the transform `useLayoutEffect`, `imgRef`).
+    - `src/styles.css`: `.image-viewer img` (already `will-change: transform`, `transform-origin: center center`).
 - [ ] Define the next BigBsky viewer/reader improvements.
   - Relevant files/functions found:
     - `README.md`: product scope and positioning for BigBsky as a desktop-focused Bluesky reader.
@@ -20,6 +32,20 @@
     - `scripts/verify-layout-behavior.mjs`: existing layout verification.
     - `scripts/audit-build.mjs`: build audit step.
     - `src/App.tsx`: `DevInspector` surfaces runtime route/service-worker/cache metrics.
+- [ ] Investigate layout-specific CSS tokens and visual-regression coverage.
+  - Follow-up from the `src/styles.css` consistency pass. The safe tokenization work covered shared spacing, radius, panel padding, grid gaps, and common controls. Do **not** blindly normalize the remaining layout-specific values; many encode behavior and need browser verification.
+  - Risky areas to audit deliberately:
+    - App shell columns and responsive breakpoints: `.app-shell` grid tracks (`76px`, `288px`, `320px`, `640px`) plus `1323px`, `1003px`, `720px`, and `1900px` media queries.
+    - Mobile top bar/rail offsets: `.left-rail`, `.workspace-header`, `.workspace` mobile `55px` heights and padding offsets, tied to hide-on-scroll behavior.
+    - Timeline/thread geometry: `.timeline` padding, `.thread-node` / `.thread-alert` depth math (`--thread-depth * 22px`), branch dividers, and thread context connectors.
+    - Virtualized feed/media sizing: `VirtualPostList` measurement assumptions, post/card margins, image/video min heights, link-card thumbnail `clamp(...)`, compact/media-only layouts, and wide-desktop embed columns.
+    - Surface grids: card min widths (`280px`, `340px`, `360px`, `400px`) that determine wrapping and density on desktop/tablet/mobile.
+  - Safer first step: introduce semantic tokens with identical values only (for example `--rail-width`, `--feed-map-width`, `--right-rail-width`, `--content-min-width`, `--mobile-header-height`, `--thread-indent`, `--timeline-padding-inline`) and verify no visual or scroll behavior change.
+  - Verification needed before value changes: desktop/wide/mobile screenshots, horizontal-overflow checks, mobile header hide/reveal check, scroll-restoration smoke test, media/link-card framing review, and `npm run build` including layout verifier.
+  - Relevant files/functions found:
+    - `src/styles.css`: `.app-shell`, responsive media queries, `.workspace-header`, `.timeline`, `.thread-view`, `.thread-node`, `.link-card`, `.image-grid`, `.video-card`, compact/media-only rules.
+    - `src/App.tsx`: `VirtualPostList`, scroll helpers/restoration, `BackToTopButton`.
+    - `scripts/verify-layout-behavior.mjs`: current static layout guardrails to preserve or replace with visual/behavioral checks.
 - [x] Fix inconsistent mobile top-bar (workspace-header) show/hide on scroll.
   - Reported: on mobile the top menu bar should hide when scrolling down and reveal when scrolling up, but it was inconsistent.
   - Root cause: the scroll container differs by breakpoint. On desktop the bounded `.timeline` element scrolls. On mobile the media query makes `body`/`#root` `height:auto; overflow-y:auto` while `<html>` stays `overflow:hidden`, so the document (html/body), not `.timeline`, is the scroller — and `timeline.scrollTop` stays ~0. The header effect computed `Math.max(window.scrollY, timeline.scrollTop)`, which is browser-dependent for body/document scrollers, so the offset (and thus the hide/show decision) was unreliable.
