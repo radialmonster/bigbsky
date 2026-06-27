@@ -15,6 +15,11 @@ Thumbs.db
 # Local Codex/Hermes planning state
 .hermes/
 
+# Cloned upstream reference repos under docs/ (read-only, not committed).
+# Ignores docs/ subfolders (e.g. docs/atproto, docs/social-app) while keeping
+# the tracked planning markdown files at the top level of docs/.
+docs/*/
+
 # Environment/secrets
 .env
 .env.*
