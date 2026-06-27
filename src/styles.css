@@ -603,15 +603,30 @@ button {
   text-transform: capitalize;
 }
 
-.width-wide {
-  grid-template-columns: 76px 260px minmax(780px, 1.35fr) 280px;
+/* Optional side columns. The feeds column and the right context column can each
+   be hidden by the user (the X on each, persisted), which removes the element
+   from the grid and re-templates the remaining tracks so the content column
+   (1fr) absorbs the freed space. `:where()` keeps these at the same specificity
+   as the base `.app-shell` rule so the narrow-screen media queries below can
+   override by source order regardless of how many state classes are present;
+   the both-hidden rule is last so it wins when both classes are set. */
+.app-shell:where(.feeds-hidden) {
+  grid-template-columns: 76px minmax(0, 1fr) 320px;
 }
 
-.width-focus {
-  grid-template-columns: 76px 228px minmax(860px, 1.5fr) 0;
+.app-shell:where(.right-hidden) {
+  grid-template-columns: 76px 288px minmax(0, 1fr);
 }
 
-.width-focus .right-rail {
+.app-shell:where(.feeds-hidden):where(.right-hidden) {
+  grid-template-columns: 76px minmax(0, 1fr);
+}
+
+.feeds-hidden .feed-map {
+  display: none;
+}
+
+.right-hidden .right-rail {
   display: none;
 }
 
@@ -5000,6 +5015,28 @@ button.surface-action {
   border-left: 1px solid var(--app-border);
 }
 
+/* Close (X) controls for the optional columns. The feeds one rides in the
+   feed-map header action row (inherits the 34px header-button sizing); the
+   right one is a standalone block right-aligned above the search box. */
+.feed-map-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.right-rail-close {
+  display: block;
+  width: 30px;
+  height: 30px;
+  margin: 0 0 6px auto;
+  background: var(--app-surface-2);
+  color: var(--app-text-muted);
+}
+
+.column-close:hover {
+  color: var(--app-text);
+}
+
 .search-box {
   display: flex;
   align-items: center;
@@ -5585,31 +5622,36 @@ button.surface-action {
   }
 }
 
-/* Intermediate tier (landscape tablets, small laptops): below the full
-   4-column minimum of 1324px (76 + 288 + 640 + 320) the right rail would be
-   pushed off-screen because the center column can't shrink past its 640px
-   floor. Drop only the right rail and keep the feeds list + a wide content
-   column. This tier needs >= 1004px (76 + 288 + 640); center uses
-   minmax(0, 1fr) so it shrinks cleanly instead of overflowing. */
+/* Responsive backstop for the optional columns. Independent of the user's
+   feeds/right toggles above, the layout force-hides columns when the viewport
+   can't fit them, so they can never overflow off-screen:
+     - below 1324px (the 4-column minimum 76 + 288 + 640 + 320) the right
+       column can't fit, so it is always hidden here;
+     - below 1004px (the 3-column minimum 76 + 288 + 640) the feeds column also
+       can't fit, so it collapses to the icon rail + single content column.
+   These rules sit after the base grids and match their specificity (the base
+   state grids use :where(), so plain .app-shell wins by source order). */
 @media (max-width: 1323px) {
+  .right-rail {
+    display: none;
+  }
+
   .app-shell {
     grid-template-columns: 76px 288px minmax(0, 1fr);
   }
 
-  .right-rail {
-    display: none;
+  .app-shell:where(.feeds-hidden) {
+    grid-template-columns: 76px minmax(0, 1fr);
   }
 }
 
-/* Below the 3-column minimum (~1004px): also drop the feeds list and fall
-   back to the icon rail + single content column. */
 @media (max-width: 1003px) {
-  .app-shell {
-    grid-template-columns: 68px minmax(0, 1fr);
-  }
-
   .feed-map {
     display: none;
+  }
+
+  .app-shell {
+    grid-template-columns: 68px minmax(0, 1fr);
   }
 
   .workspace-header {
