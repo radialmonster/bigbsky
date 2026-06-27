@@ -20,6 +20,20 @@
     - `scripts/verify-layout-behavior.mjs`: existing layout verification.
     - `scripts/audit-build.mjs`: build audit step.
     - `src/App.tsx`: `DevInspector` surfaces runtime route/service-worker/cache metrics.
+- [ ] Investigate layout-specific CSS tokens and visual-regression coverage.
+  - Follow-up from the `src/styles.css` consistency pass. The safe tokenization work covered shared spacing, radius, panel padding, grid gaps, and common controls. Do **not** blindly normalize the remaining layout-specific values; many encode behavior and need browser verification.
+  - Risky areas to audit deliberately:
+    - App shell columns and responsive breakpoints: `.app-shell` grid tracks (`76px`, `288px`, `320px`, `640px`) plus `1323px`, `1003px`, `720px`, and `1900px` media queries.
+    - Mobile top bar/rail offsets: `.left-rail`, `.workspace-header`, `.workspace` mobile `55px` heights and padding offsets, tied to hide-on-scroll behavior.
+    - Timeline/thread geometry: `.timeline` padding, `.thread-node` / `.thread-alert` depth math (`--thread-depth * 22px`), branch dividers, and thread context connectors.
+    - Virtualized feed/media sizing: `VirtualPostList` measurement assumptions, post/card margins, image/video min heights, link-card thumbnail `clamp(...)`, compact/media-only layouts, and wide-desktop embed columns.
+    - Surface grids: card min widths (`280px`, `340px`, `360px`, `400px`) that determine wrapping and density on desktop/tablet/mobile.
+  - Safer first step: introduce semantic tokens with identical values only (for example `--rail-width`, `--feed-map-width`, `--right-rail-width`, `--content-min-width`, `--mobile-header-height`, `--thread-indent`, `--timeline-padding-inline`) and verify no visual or scroll behavior change.
+  - Verification needed before value changes: desktop/wide/mobile screenshots, horizontal-overflow checks, mobile header hide/reveal check, scroll-restoration smoke test, media/link-card framing review, and `npm run build` including layout verifier.
+  - Relevant files/functions found:
+    - `src/styles.css`: `.app-shell`, responsive media queries, `.workspace-header`, `.timeline`, `.thread-view`, `.thread-node`, `.link-card`, `.image-grid`, `.video-card`, compact/media-only rules.
+    - `src/App.tsx`: `VirtualPostList`, scroll helpers/restoration, `BackToTopButton`.
+    - `scripts/verify-layout-behavior.mjs`: current static layout guardrails to preserve or replace with visual/behavioral checks.
 - [x] Fix inconsistent mobile top-bar (workspace-header) show/hide on scroll.
   - Reported: on mobile the top menu bar should hide when scrolling down and reveal when scrolling up, but it was inconsistent.
   - Root cause: the scroll container differs by breakpoint. On desktop the bounded `.timeline` element scrolls. On mobile the media query makes `body`/`#root` `height:auto; overflow-y:auto` while `<html>` stays `overflow:hidden`, so the document (html/body), not `.timeline`, is the scroller — and `timeline.scrollTop` stays ~0. The header effect computed `Math.max(window.scrollY, timeline.scrollTop)`, which is browser-dependent for body/document scrollers, so the offset (and thus the hide/show decision) was unreliable.
