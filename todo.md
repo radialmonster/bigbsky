@@ -566,3 +566,13 @@
     effect cleanup.
   - Relevant files/functions found:
     - `src/App.tsx`: the `setCopied`/`setShareState` `setTimeout` call sites.
+- [x] Link to the PDS account-management page (`/account`) from Settings.
+  - Trigger: atproto-website commit cb63c5e documented a new **PDS-hosted** account-management web UI at the `/account` path on the user's OAuth authorization server (sign out device sessions, review/revoke authorized OAuth apps, change password). It's docs/a web page only — no new lexicon, endpoint, or scope; nothing to "call". A browser OAuth public client like BigBsky can't manage sessions itself, so the only integration is linking users to it. See https://atproto.com/guides/account-management.
+  - Host research (important): the page is served by the OAuth **authorization server** (`serverMetadata.issuer`), NOT the data PDS. Verified by curl: `https://bsky.social/account` (the entryway/issuer for Bluesky-hosted accounts) returns the `@atproto/oauth-provider` account UI (400 only because the raw request has no browser session), while the data PDS host `*.host.bsky.network/account` returns 404. For self-hosted accounts the issuer IS the PDS, so `issuer + /account` is correct in both cases.
+  - Done:
+    - `src/auth.ts`: added `getAccountManagementUrl()` — `await ensureSession()`, then `new URL("/account", session.serverMetadata.issuer)`; returns null when signed out / no issuer / bad URL.
+    - `src/App.tsx`: `SurfaceView` loads it into `accountManagementUrl` state via a `useEffect` keyed on `auth.session?.did` (clears when signed out, cancel-guarded). Rendered as a `.settings-link` ("Manage account & sessions", new tab) in the signed-in Account panel above Sign out, with explanatory copy. Imported `getAccountManagementUrl`.
+  - Verified: `npm run build` passes (tsc, vite, audit initial JS 120 kB gzip, reader + layout + rich-text verifiers all green). Drove the signed-in dev server via `scripts/cdp.mjs` at `/settings`: the Account panel renders "Manage account & sessions" → `https://bsky.social/account` (issuer + /account), exactly the confirmed account-UI host.
+  - Relevant files/functions found:
+    - `src/auth.ts`: `getAccountManagementUrl`, `ensureSession`, `OAuthSession.serverMetadata`.
+    - `src/App.tsx`: `SurfaceView` Account panel, `.settings-link`.

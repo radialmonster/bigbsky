@@ -101,6 +101,7 @@ import {
   bookmarkPost,
   followAccount,
   followFeed,
+  getAccountManagementUrl,
   getAuthorFeedAuthed,
   getFeedAuthed,
   getBookmarks,
@@ -4528,6 +4529,32 @@ function SurfaceView({
   // Tracks the saved feed currently being dragged for reorder (drop highlight).
   const [draggingFeedUri, setDraggingFeedUri] = useState<string | null>(null);
   const canReorderFeeds = !!auth.session && subscribedFeeds.length > 1;
+  // Link to the user's PDS/entryway account-management page (/account on the OAuth
+  // authorization server) — sessions, authorized apps, password. Resolved from the
+  // live session; null until loaded or when signed out. See getAccountManagementUrl.
+  const [accountManagementUrl, setAccountManagementUrl] = useState<string | null>(null);
+  const signedInDidForAccount = auth.session?.did;
+  useEffect(() => {
+    if (!signedInDidForAccount) {
+      setAccountManagementUrl(null);
+      return;
+    }
+    let cancelled = false;
+    getAccountManagementUrl()
+      .then((url) => {
+        if (!cancelled) {
+          setAccountManagementUrl(url);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAccountManagementUrl(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [signedInDidForAccount]);
   const surfaces: Record<string, { copy: string; cards: Array<{ title: string; detail: string; status: string }> }> = {
     explore: {
       copy: "Search posts, people, and feeds, or jump into a trending topic. To browse and discover feeds, use the Feeds page.",
@@ -4779,6 +4806,15 @@ function SurfaceView({
                     <dd>{auth.session.did}</dd>
                   </div>
                 </dl>
+                <p>
+                  Manage sign-in sessions, review and revoke the apps authorized on your account, and change your
+                  password on your hosting provider's account page.
+                </p>
+                {accountManagementUrl && (
+                  <a className="settings-link" href={accountManagementUrl} target="_blank" rel="noreferrer">
+                    Manage account &amp; sessions
+                  </a>
+                )}
                 <p>Sign-out revokes the stored OAuth session when possible and always clears local browser auth state.</p>
                 <button type="button" onClick={onSignOut}>
                   Sign out

@@ -375,6 +375,27 @@ async function ensureSession(): Promise<OAuthSession | null> {
   return activeSession;
 }
 
+// The atproto OAuth authorization server (the data PDS for self-hosted accounts,
+// or the entryway like https://bsky.social for Bluesky-hosted accounts) serves a
+// web-based account-management UI at `/account`: review/sign out device sessions,
+// review/revoke the OAuth apps you've authorized, and change your password. See
+// https://atproto.com/guides/account-management. A browser OAuth public client
+// can't manage sessions itself, so we just link users to it. The host is the
+// session's authorization-server `issuer` (NOT the data PDS host, which 404s on
+// /account for Bluesky-hosted accounts). Returns null when signed out / unknown.
+export async function getAccountManagementUrl(): Promise<string | null> {
+  const session = await ensureSession();
+  const issuer = session?.serverMetadata?.issuer;
+  if (!issuer) {
+    return null;
+  }
+  try {
+    return new URL("/account", issuer).toString();
+  } catch {
+    return null;
+  }
+}
+
 // Fetch the signed-in user's saved/pinned feeds from their AT Protocol
 // preferences and resolve display metadata. Returns [] when signed out. This is
 // an authenticated read routed through the user's session; no BigBsky backend.
