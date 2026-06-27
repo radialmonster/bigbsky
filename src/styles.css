@@ -3,6 +3,7 @@
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --bsky-blue: #0560ff;
+  --bsky-blue-strong: #034dcc;
   --bsky-blue-soft: #75afff;
   --bsky-dark: #232e3e;
   --app-bg: #0b111c;
@@ -15,6 +16,13 @@
   --app-text-muted: #aebdcc;
   --app-text-soft: #7f90a6;
   --app-danger: #ff8a7a;
+  --app-control-sm: 32px;
+  --app-control-md: 34px;
+  --app-input-height: 38px;
+  --app-radius-sm: 6px;
+  --app-radius: 8px;
+  --app-panel-padding: 16px;
+  --app-grid-gap: 12px;
   background: var(--app-bg);
   color: var(--app-text);
   font-synthesis: none;
@@ -113,7 +121,7 @@ button {
 }
 
 .rail-button.rail-compose:hover {
-  background: var(--bsky-blue-strong, var(--bsky-blue));
+  background: var(--bsky-blue-strong);
   color: #fff;
 }
 
@@ -369,15 +377,15 @@ button {
 }
 
 .feed-map-header button {
-  width: 34px;
-  height: 34px;
+  width: var(--app-control-md);
+  height: var(--app-control-md);
   background: var(--app-surface-2);
   color: var(--app-text-muted);
 }
 
 .feed-search {
   width: 100%;
-  height: 38px;
+  height: var(--app-input-height);
   margin-bottom: 18px;
   padding: 0 11px;
   border: 1px solid var(--app-border);
@@ -740,7 +748,7 @@ button {
 
 .search-workspace input {
   min-width: 0;
-  height: 38px;
+  height: var(--app-input-height);
   border: 0;
   outline: 0;
   background: transparent;
@@ -754,8 +762,8 @@ button {
 .clear-search-button {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: var(--app-control-md);
+  height: var(--app-control-md);
   border-radius: 8px;
   background: var(--app-surface-2);
   color: var(--app-text-muted);
@@ -777,7 +785,7 @@ button {
 }
 
 .search-options select {
-  height: 38px;
+  height: var(--app-input-height);
   max-width: 142px;
   border: 1px solid var(--app-border);
   border-radius: 8px;
@@ -1396,16 +1404,16 @@ button {
 .feed-directory-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
-  gap: 12px;
+  gap: var(--app-grid-gap);
   width: 100%;
   margin-top: 14px;
 }
 
 .surface-card {
   min-height: 142px;
-  padding: 16px;
+  padding: var(--app-panel-padding);
   border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
 }
 
@@ -1443,16 +1451,16 @@ button {
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
-  gap: 12px;
+  gap: var(--app-grid-gap);
   width: 100%;
   margin-top: 14px;
 }
 
 .settings-panel {
   min-height: 230px;
-  padding: 16px;
+  padding: var(--app-panel-padding);
   border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
 }
 
@@ -1779,7 +1787,7 @@ button {
 .self-profile-tabs {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
-  gap: 12px;
+  gap: var(--app-grid-gap);
   width: 100%;
 }
 
@@ -1789,9 +1797,9 @@ button {
   align-content: start;
   gap: 6px;
   min-height: 120px;
-  padding: 16px;
+  padding: var(--app-panel-padding);
   border: 1px solid var(--app-border);
-  border-radius: 10px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
   text-align: left;
   text-decoration: none;
@@ -1839,7 +1847,7 @@ button {
 .sign-in-form input,
 .local-list-form input {
   min-width: 0;
-  height: 38px;
+  height: var(--app-input-height);
   padding: 0 10px;
   border: 1px solid var(--app-border);
   border-radius: 8px;
@@ -1851,7 +1859,7 @@ button {
 .sign-in-form button,
 .local-list-form button,
 .local-list-card button {
-  min-height: 38px;
+  min-height: var(--app-input-height);
   padding: 0 12px;
   border-radius: 8px;
   background: var(--bsky-blue);
@@ -2033,9 +2041,9 @@ button.surface-action {
   display: grid;
   grid-template-columns: 116px minmax(0, 1fr);
   gap: 14px;
-  padding: 15px;
+  padding: var(--app-panel-padding);
   border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
 }
 
@@ -2081,7 +2089,7 @@ button.surface-action {
 .local-list-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--app-grid-gap);
   max-width: 980px;
 }
 
@@ -2106,7 +2114,7 @@ button.surface-action {
 .bsky-list-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
+  gap: var(--app-grid-gap);
   max-width: 980px;
 }
 
@@ -2114,9 +2122,9 @@ button.surface-action {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 15px;
+  padding: var(--app-panel-padding);
   border: 1px solid var(--app-border);
-  border-radius: 10px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
 }
 
@@ -2129,7 +2137,7 @@ button.surface-action {
 .bsky-list-avatar {
   width: 44px;
   height: 44px;
-  border-radius: 9px;
+  border-radius: var(--app-radius);
   object-fit: cover;
   flex-shrink: 0;
 }
@@ -2203,7 +2211,7 @@ button.surface-action {
   margin: 0 0 18px;
   padding: 14px;
   border: 1px solid var(--app-border);
-  border-radius: 10px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
 }
 
@@ -2322,9 +2330,9 @@ button.surface-action {
   min-height: 178px;
   align-content: start;
   gap: 9px;
-  padding: 15px;
+  padding: var(--app-panel-padding);
   border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
 }
 
@@ -2358,9 +2366,9 @@ button.surface-action {
 
 .local-list-timeline-header {
   margin-bottom: 12px;
-  padding: 15px;
+  padding: var(--app-panel-padding);
   border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
 }
 
@@ -2370,9 +2378,9 @@ button.surface-action {
 
 .feed-directory-card {
   min-height: 132px;
-  padding: 15px;
+  padding: var(--app-panel-padding);
   border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
 }
 
@@ -2446,7 +2454,7 @@ button.surface-action {
 
 .feed-density-control select {
   width: 100%;
-  min-height: 32px;
+  min-height: var(--app-control-sm);
   padding: 0 9px;
   border: 1px solid var(--app-border);
   border-radius: 8px;
@@ -2458,7 +2466,7 @@ button.surface-action {
 }
 
 .directory-pin {
-  min-height: 32px;
+  min-height: var(--app-control-sm);
   margin-top: 12px;
   padding: 0 10px;
   border-radius: 8px;
@@ -2480,7 +2488,7 @@ button.surface-action {
 }
 
 .directory-unfollow {
-  min-height: 32px;
+  min-height: var(--app-control-sm);
   margin-top: 12px;
   padding: 0 10px;
   border-radius: 8px;
@@ -2514,7 +2522,7 @@ button.surface-action {
      980px, which left ~half the column empty. min(100%, 400px) keeps a
      single column on narrow/mobile widths without horizontal overflow. */
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr));
-  gap: 12px;
+  gap: var(--app-grid-gap);
   margin-top: 14px;
 }
 
@@ -2599,9 +2607,9 @@ button.surface-action {
 .discover-feed-card {
   display: flex;
   flex-direction: column;
-  padding: 14px;
+  padding: var(--app-panel-padding);
   border: 1px solid var(--app-border);
-  border-radius: 8px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
 }
 
@@ -4706,7 +4714,7 @@ button.surface-action {
   padding: 12px;
   max-width: 420px;
   border: 1px solid var(--app-border);
-  border-radius: 10px;
+  border-radius: var(--app-radius);
   background: var(--app-surface);
   color: var(--app-text-muted);
   font-size: 13px;
@@ -4726,8 +4734,8 @@ button.surface-action {
   padding: 14px 18px;
   max-width: 420px;
   border: 1px solid var(--app-border);
-  border-radius: 8px;
-  background: var(--app-panel);
+  border-radius: var(--app-radius);
+  background: var(--app-surface);
   color: var(--app-text-muted);
   text-align: center;
 }
