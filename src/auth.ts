@@ -52,6 +52,14 @@ function safeLocalStorageRemove(key: string) {
   }
 }
 
+function safeLocalStorageGet(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
 function isDeletedSessionError(error: unknown) {
   return /session.*deleted|deleted.*session/i.test(String(error));
 }
@@ -80,6 +88,12 @@ export type AuthInitResult = {
   session: AuthSnapshot | null;
   status: "signed-out" | "restored" | "callback" | "error";
   message?: string;
+  // Background profile hydration (display name / avatar / counts). Present only
+  // on the restore path, which returns a fast snapshot built from the persisted
+  // did/handle. Resolves with the hydrated fields, or null if the profile read
+  // fails (the caller keeps the fast snapshot). Consumed by App.tsx to fill in
+  // identity fields after the feed has already started loading.
+  profilePromise?: Promise<Partial<AuthSnapshot> | null>;
 };
 
 function isLoopbackOrigin() {
@@ -122,7 +136,12 @@ async function getClient() {
   return clientPromise;
 }
 
-async function snapshotSession(session: OAuthSession, restoredFromCallback = false): Promise<AuthSnapshot> {
+// Full snapshot including the profile round-trip. Used on the OAuth callback
+// path: the persisted handle hint may belong to a different/previously-signed-in
+// account, so we can't trust it and must read the profile before resolving.
+// Callbacks redirect to /settings (not a feed), so this round-trip is not on the
+// Home critical path users see on returning visits.
+async function snapshotSessionFull(session: OAuthSession, restoredFromCallback = false): Promise<AuthSnapshot> {
   activeSession = session;
   const { Agent } = await import("@atproto/api");
   const agent = new Agent(session);
@@ -144,6 +163,49 @@ async function snapshotSession(session: OAuthSession, restoredFromCallback = fal
   return snapshot;
 }
 
+// Fast snapshot produced WITHOUT a network round-trip: the DID comes from the
+// session itself (Agent construction is synchronous, no network) and the handle
+// from the hint persisted alongside the DID on the last successful load. This is
+// the returning-user path: the persisted handle is written together with the DID
+// (and cleared together on sign-out), so it matches the restored session. If the
+// handle is stale (the user changed it since last visit), the background
+// hydration below corrects it shortly after — it never affects which feed loads,
+// only identity display.
+async function buildFastSnapshot(session: OAuthSession, restoredFromCallback = false): Promise<AuthSnapshot> {
+  activeSession = session;
+  const { Agent } = await import("@atproto/api");
+  const did = new Agent(session).accountDid;
+  const handle = safeLocalStorageGet(activeHandleKey) ?? "";
+  safeLocalStorageSet(activeDidKey, did);
+  return { did, handle, restoredFromCallback };
+}
+
+// Background profile hydration: fetch display name / avatar / counts and refresh
+// the persisted handle hint. Returns null on failure so the caller keeps the fast
+// snapshot rather than surfacing a profile-read error — a transient AppView/PDS
+// hiccup never blocks the signed-in experience.
+async function hydrateSessionProfile(session: OAuthSession): Promise<Partial<AuthSnapshot> | null> {
+  try {
+    const { Agent } = await import("@atproto/api");
+    const agent = new Agent(session);
+    const profile = await agent.getProfile({ actor: agent.accountDid });
+    const data = profile.data as Profile;
+    if (data.handle) {
+      safeLocalStorageSet(activeHandleKey, data.handle);
+    }
+    return {
+      handle: data.handle,
+      displayName: data.displayName,
+      avatar: data.avatar,
+      followersCount: data.followersCount,
+      followsCount: data.followsCount,
+      postsCount: data.postsCount,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function initAuthSession(): Promise<AuthInitResult> {
   try {
     const hasCallback = looksLikeOAuthCallback();
@@ -155,15 +217,28 @@ export async function initAuthSession(): Promise<AuthInitResult> {
     const client = await getClient();
     const result = await client.init();
     if (result?.session) {
+      const isCallback = "state" in result;
+      // Callback path: don't trust the persisted handle hint (could belong to a
+      // different account), so take the full snapshot with the profile read.
       return {
-        session: await snapshotSession(result.session, "state" in result),
-        status: "state" in result ? "callback" : "restored",
+        session: await snapshotSessionFull(result.session, isCallback),
+        status: isCallback ? "callback" : "restored",
       };
     }
 
     if (activeDid) {
       const restored = await client.restore(activeDid);
-      return { session: await snapshotSession(restored), status: "restored" };
+      // Returning-user path: return the fast snapshot immediately and hydrate
+      // display fields in the background. This moves getProfile off the critical
+      // path — the feed loader keys off signedInDid (present in the fast
+      // snapshot), so it starts as soon as the session is restored instead of
+      // after the profile round-trip. profilePromise is consumed by App.tsx to
+      // merge the hydrated fields into authState once they land.
+      return {
+        session: await buildFastSnapshot(restored),
+        status: "restored",
+        profilePromise: hydrateSessionProfile(restored),
+      };
     }
 
     return { session: null, status: "signed-out" };

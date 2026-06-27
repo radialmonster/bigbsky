@@ -1406,6 +1406,24 @@ export function App() {
         window.history.replaceState(null, "", "/settings");
         setRoute({ kind: "surface", name: "settings" });
       }
+
+      // Restore path only: merge background-hydrated display fields (display
+      // name / avatar / counts) into the session once the profile read lands.
+      // Guarded by the DID so a sign-out / account switch in the interim can't
+      // graft a stale profile onto a different session. signedInDid is unchanged
+      // by this merge, so it never reloads or swaps the feed — only identity
+      // fields update.
+      const restoredDid = result.session?.did;
+      result.profilePromise?.then((profile) => {
+        if (cancelled || !profile) {
+          return;
+        }
+        setAuthState((current) =>
+          current.session && current.session.did === restoredDid
+            ? { ...current, session: { ...current.session, ...profile } }
+            : current,
+        );
+      });
     });
 
     return () => {
