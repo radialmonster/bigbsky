@@ -67,6 +67,7 @@ import {
   searchActors,
 } from "./api";
 import { segmentRichText } from "./richtext";
+import { postSortAt, postSortTime } from "./lib/time";
 import {
   type AuthSnapshot,
   type ListMember,
@@ -884,44 +885,6 @@ function isSelfThreadReply(item: FeedItem, rootPost?: FeedPost) {
   }
   const rootAuthorDid = rootPost?.author.did || item.reply?.root?.author.did;
   return !!rootAuthorDid && item.post.author.did === rootAuthorDid;
-}
-
-// Bluesky timestamp guidance: `createdAt` is user-supplied and can be wrong
-// (future-dated spam, stale device clocks) while `indexedAt` is stamped by the
-// AppView. Sort/group on a "sortAt" compromise — trust `createdAt` unless it
-// claims to be in the future beyond a small clock-skew window, in which case
-// fall back to `indexedAt`. https://docs.bsky.app/docs/advanced-guides/timestamps
-const CLOCK_SKEW_WINDOW_MS = 2 * 60 * 1000;
-
-function parseTimestamp(value?: string) {
-  if (!value) {
-    return Number.NaN;
-  }
-  return new Date(value).getTime();
-}
-
-// The `sortAt` ISO string to trust for a post: prefer `createdAt`, but fall
-// back to `indexedAt` when `createdAt` claims to be in the future beyond the
-// clock-skew window. Shared by sorting (`postSortTime`) and display
-// (`formatPostTime` call sites) so a future-dated/stale `createdAt` is neither
-// sorted on nor shown.
-function postSortAt(post: FeedPost): string | undefined {
-  const createdAtIso = post.record.createdAt;
-  const indexedAtIso = post.indexedAt;
-  const createdAt = parseTimestamp(createdAtIso);
-  const now = Date.now();
-  if (!Number.isNaN(createdAt) && createdAt <= now + CLOCK_SKEW_WINDOW_MS) {
-    return createdAtIso;
-  }
-  if (!Number.isNaN(parseTimestamp(indexedAtIso))) {
-    return indexedAtIso;
-  }
-  return createdAtIso;
-}
-
-function postSortTime(post: FeedPost) {
-  const sortAt = parseTimestamp(postSortAt(post));
-  return Number.isNaN(sortAt) ? 0 : sortAt;
 }
 
 type ThreadedFeedItem = {

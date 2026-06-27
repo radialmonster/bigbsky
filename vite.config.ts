@@ -1,8 +1,17 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    // jsdom is the default test environment so DOM-touching helpers (scroll
+    // math, components) work; pure-node tests are unaffected by it. Individual
+    // files can opt into a different environment with a `@vitest-environment`
+    // docblock if needed.
+    environment: "jsdom",
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+  },
   build: {
     outDir: "dist",
     sourcemap: false,
