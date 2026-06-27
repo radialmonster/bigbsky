@@ -786,10 +786,15 @@ button {
   color: var(--app-text);
 }
 
-.composer-footer > button {
+.composer-footer > button,
+.self-profile-actions button,
+.self-profile-actions a,
+.bsky-list-actions button,
+.bsky-list-actions a,
+.profile-detail-actions button,
+.profile-detail-actions a {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
   min-height: 34px;
   padding: 0 12px;
   border-radius: 8px;
@@ -798,6 +803,10 @@ button {
   font-size: 13px;
   font-weight: 700;
   text-decoration: none;
+}
+
+.composer-footer > button {
+  gap: 7px;
 }
 
 .composer textarea {
@@ -1401,7 +1410,9 @@ button {
 }
 
 .surface-card span,
-.settings-panel span {
+.settings-panel span,
+.notification-item > span,
+.local-list-card > span {
   display: inline-flex;
   min-height: 24px;
   align-items: center;
@@ -1419,7 +1430,10 @@ button {
   font-size: 16px;
 }
 
-.surface-card p {
+.surface-card p,
+.notification-item p,
+.local-list-card p,
+.local-list-timeline-header p {
   margin: 0;
   color: var(--app-text-muted);
   font-size: 13px;
@@ -1734,7 +1748,15 @@ button {
   margin: 0;
 }
 
-.self-profile-card dt {
+.self-profile-card dt,
+.local-list-timeline-header span,
+.feed-directory-card span,
+.feed-density-control span,
+.profile-detail-stats dt,
+.feed-result-card span,
+.thread-detail-header dt,
+.thread-parent-context > header span,
+.thread-context-item small {
   color: var(--app-text-soft);
   font-size: 11px;
   font-weight: 800;
@@ -1752,19 +1774,6 @@ button {
   grid-column: 1 / -1;
   flex-wrap: wrap;
   gap: 8px;
-}
-
-.self-profile-actions button,
-.self-profile-actions a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 8px;
-  background: var(--app-surface-2);
-  color: var(--app-text);
-  font-weight: 700;
-  text-decoration: none;
 }
 
 .self-profile-tabs {
@@ -1827,7 +1836,8 @@ button {
   margin-top: 14px;
 }
 
-.sign-in-form input {
+.sign-in-form input,
+.local-list-form input {
   min-width: 0;
   height: 38px;
   padding: 0 10px;
@@ -1838,14 +1848,19 @@ button {
   color: var(--app-text);
 }
 
-.sign-in-form button {
+.sign-in-form button,
+.local-list-form button,
+.local-list-card button {
   min-height: 38px;
-  margin: 0;
   padding: 0 12px;
   border-radius: 8px;
   background: var(--bsky-blue);
   color: #fff;
   font-weight: 700;
+}
+
+.sign-in-form button {
+  margin: 0;
 }
 
 .sign-in-form button:disabled {
@@ -1861,7 +1876,20 @@ button {
 }
 
 .account-identity strong,
-.account-identity small {
+.account-identity small,
+.feed-result-card strong,
+.profile-result-card strong,
+.post-header strong,
+.post-header span,
+.quote-header strong,
+.quote-header span,
+.pinned-profiles-panel span,
+.pinned-profiles-panel strong,
+.pinned-profiles-panel small,
+.recent-panel span,
+.recent-panel small,
+.image-viewer-footer strong,
+.image-viewer-footer span {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -2027,33 +2055,10 @@ button.surface-action {
   font-weight: 800;
 }
 
-.notification-item > span,
-.local-list-card > span {
-  display: inline-flex;
-  width: fit-content;
-  min-height: 24px;
-  align-items: center;
-  padding: 0 8px;
-  border: 1px solid var(--app-border);
-  border-radius: 999px;
-  color: var(--app-text-muted);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
 .notification-item h3,
 .local-list-card h3 {
   margin: 0 0 6px;
   font-size: 16px;
-}
-
-.notification-item p,
-.local-list-card p {
-  margin: 0;
-  color: var(--app-text-muted);
-  font-size: 13px;
-  line-height: 1.42;
 }
 
 .local-list-form {
@@ -2066,27 +2071,6 @@ button.surface-action {
   border: 1px solid var(--app-border);
   border-radius: 8px;
   background: var(--app-surface);
-}
-
-.local-list-form input {
-  min-width: 0;
-  height: 38px;
-  padding: 0 10px;
-  border: 1px solid var(--app-border);
-  border-radius: 8px;
-  outline: 0;
-  background: #0f1724;
-  color: var(--app-text);
-}
-
-.local-list-form button,
-.local-list-card button {
-  min-height: 38px;
-  padding: 0 12px;
-  border-radius: 8px;
-  background: var(--bsky-blue);
-  color: #fff;
-  font-weight: 700;
 }
 
 .local-list-form button:disabled {
@@ -2186,20 +2170,6 @@ button.surface-action {
   display: flex;
   gap: 8px;
   margin-top: auto;
-}
-
-.bsky-list-actions button,
-.bsky-list-actions a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 32px;
-  padding: 0 12px;
-  border-radius: 8px;
-  background: var(--app-surface-2);
-  color: var(--app-text);
-  font-size: 13px;
-  font-weight: 700;
-  text-decoration: none;
 }
 
 .surface-retry {
@@ -2394,22 +2364,8 @@ button.surface-action {
   background: var(--app-surface);
 }
 
-.local-list-timeline-header span {
-  color: var(--app-text-soft);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
 .local-list-timeline-header h3 {
   margin: 7px 0 5px;
-}
-
-.local-list-timeline-header p {
-  margin: 0;
-  color: var(--app-text-muted);
-  font-size: 13px;
-  line-height: 1.42;
 }
 
 .feed-directory-card {
@@ -2433,13 +2389,6 @@ button.surface-action {
 .feed-directory-card strong,
 .feed-directory-card small {
   display: block;
-}
-
-.feed-directory-card span {
-  color: var(--app-text-soft);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
 }
 
 .feed-directory-card strong {
@@ -2493,13 +2442,6 @@ button.surface-action {
   display: grid;
   gap: 5px;
   margin-top: 12px;
-}
-
-.feed-density-control span {
-  color: var(--app-text-soft);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
 }
 
 .feed-density-control select {
@@ -2856,33 +2798,12 @@ button.surface-action {
   gap: 8px;
 }
 
-.profile-detail-actions button,
-.profile-detail-actions a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 8px;
-  background: var(--app-surface-2);
-  color: var(--app-text);
-  font-size: 13px;
-  font-weight: 700;
-  text-decoration: none;
-}
-
 .profile-detail-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin: 0;
   padding: 0 16px 14px;
-}
-
-.profile-detail-stats dt {
-  color: var(--app-text-soft);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
 }
 
 .profile-detail-stats dd {
@@ -2936,21 +2857,6 @@ button.surface-action {
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-}
-
-.feed-result-card span {
-  color: var(--app-text-soft);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.feed-result-card strong,
-.profile-result-card strong {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .feed-result-card small,
@@ -3097,14 +3003,6 @@ button.surface-action {
   grid-template-columns: 46px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
-}
-
-.post-header strong,
-.post-header span {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .author-button {
@@ -3713,14 +3611,6 @@ button.surface-action {
   padding: 5px 9px;
   border-radius: 8px;
   font-size: 14px;
-}
-
-.quote-header strong,
-.quote-header span {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .quote-header strong {
@@ -4460,13 +4350,6 @@ button.surface-action {
   margin: 0;
 }
 
-.thread-detail-header dt {
-  color: var(--app-text-soft);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
 .thread-detail-header dd {
   margin: 2px 0 0;
   font-weight: 800;
@@ -4760,14 +4643,6 @@ button.surface-action {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-}
-
-.thread-parent-context > header span,
-.thread-context-item small {
-  color: var(--app-text-soft);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
 }
 
 .thread-parent-context > header strong {
@@ -5175,16 +5050,6 @@ button.surface-action {
   height: 28px;
 }
 
-.pinned-profiles-panel span,
-.pinned-profiles-panel strong,
-.pinned-profiles-panel small {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .pinned-profiles-panel small {
   color: var(--app-text-muted);
   font-size: 12px;
@@ -5240,15 +5105,6 @@ button.surface-action {
   height: auto;
   min-height: 48px;
   padding-block: 8px;
-}
-
-.recent-panel span,
-.recent-panel small {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .recent-panel small {
@@ -5408,14 +5264,6 @@ button.surface-action {
   border-radius: 8px;
   background: rgba(22, 31, 47, 0.9);
   color: var(--app-text);
-}
-
-.image-viewer-footer strong,
-.image-viewer-footer span {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .image-viewer-footer span {
