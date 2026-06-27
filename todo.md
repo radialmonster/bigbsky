@@ -438,20 +438,17 @@
     - `src/auth.ts`: `syncSavedFeedsOrder`.
     - `src/App.tsx`: `persistFeedOrder`.
 
-## From the 2026-06-26 code review (`docs/code-review.md`)
+## From the 2026-06-26 code review
 
-- [ ] Fix the composer object-URL leak (stale-closure bug).
-  - Severity: medium. `src/App.tsx:7275-7281`. The mount-only cleanup effect
-    (`useEffect(..., [])`) closes over the **mount render's** `images` (usually
-    empty), so on unmount it revokes that stale empty set — object URLs created
-    after mount leak whenever the composer closes without sending (e.g. dismissing
-    a reply with images attached). The `// eslint-disable-next-line
-    react-hooks/exhaustive-deps` is hiding exactly this.
-  - Fix: hold the current `images` in a ref and read it in cleanup, e.g.
-    `const imagesRef = useRef(images); imagesRef.current = images;` then
-    `useEffect(() => () => imagesRef.current.forEach((i) => URL.revokeObjectURL(i.url)), [])`.
-  - Relevant files/functions found:
-    - `src/App.tsx`: the revoke-URL `useEffect` (~`:7276`), `PostComposer` image state.
+(This was an in-session review; `docs/code-review.md` was never committed — only
+`docs/plan.md` and `docs/cloudflare-pages-setup.md` exist under `docs/`.)
+
+- [x] Fix the composer object-URL leak (stale-closure bug). **Done.**
+  - `src/App.tsx:7138-7194` now uses the recommended `imagesRef` pattern:
+    `const imagesRef = useRef(images); imagesRef.current = images;` mirrors the
+    current images, and the `[]`-effect cleanup revokes `imagesRef.current`, so
+    URLs created after mount are no longer leaked when the composer closes
+    without sending.
 - [ ] Decompose the `src/App.tsx` monolith (dominant structural issue).
   - Severity: critical. `src/App.tsx` is 10,283 lines, 176 functions, ~60 React
     components, 244 hook calls; the single `App()` (`src/App.tsx:1424`–`~3960`)
@@ -508,10 +505,12 @@
       (static-source regex checks).
     - `scripts/verify-richtext.mjs` (executable esbuild-transpiled harness).
     - `package.json`: `build` script; no `test` script, no vitest/jest/RTL.
-- [ ] Bound the `resolvedHandleCache` Map.
-  - Severity: medium. `src/api.ts:379`. Entries get a 5-min TTL on *read* but
-    are never evicted, so the `Map` grows for the lifetime of the tab in a long
-    session. Add a sweep on write (drop `expires < now`) or cap the size.
+- [x] Bound the `resolvedHandleCache` Map. **Done.**
+  - `src/api.ts` `resolveHandle` now sweeps expired entries (`expires <= now`)
+    on every write, so the `Map` is bounded by the number of distinct handles
+    resolved within one 5-min TTL window instead of growing for the tab's
+    lifetime. Covered by `src/api.test.ts` (TTL caching + post-expiry re-resolve
+    + sweep behavior, fetch mocked, fake timers).
   - Relevant files/functions found:
     - `src/api.ts`: `resolvedHandleCache`, `resolveHandle`, `RESOLVE_HANDLE_TTL_MS`.
 - [ ] Harden the `signOut` SDK-disposal workaround against version drift.

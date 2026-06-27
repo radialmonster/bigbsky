@@ -393,9 +393,19 @@ export async function resolveHandle(handleOrDid: string, signal?: AbortSignal) {
     { handle: handleOrDid },
     signal,
   );
+  const now = Date.now();
+  // Sweep expired entries on write so the Map stays bounded by the number of
+  // distinct handles resolved within one TTL window, rather than growing for
+  // the lifetime of a long-lived tab. Entries are only ever read while live
+  // (the `expires > now` check above), so dropping the expired ones is free.
+  for (const [handle, entry] of resolvedHandleCache) {
+    if (entry.expires <= now) {
+      resolvedHandleCache.delete(handle);
+    }
+  }
   resolvedHandleCache.set(handleOrDid, {
     did: result.did,
-    expires: Date.now() + RESOLVE_HANDLE_TTL_MS,
+    expires: now + RESOLVE_HANDLE_TTL_MS,
   });
   return result.did;
 }
