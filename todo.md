@@ -8,6 +8,18 @@
   `Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" -ArgumentList "--remote-debugging-port=9222 --user-data-dir=$env:LOCALAPPDATA\Codex\ChromeProfiles\fb-tools-test --start-maximized --auto-open-devtools-for-tabs --disable-first-run-ui --no-first-run about:blank" -WindowStyle Hidden`
 - To start the local BigBsky dev server, run `npm run dev` from the repo root. Vite serves it at `http://127.0.0.1:5173/` by default.
 
+- [x] Fix slow image-viewer zoom/pan (jank, esp. on mobile).
+  - Reported: opening a post's picture in the in-app viewer and pinch-zooming / panning is very slow on mobile (desktop unclear).
+  - Root cause: `ImageViewer` in `src/App.tsx` called `setZoom(...)` on every `pointermove` during pinch/pan. Each call re-rendered the entire viewer (image + thumbnail strip + footer + controls) and React reconciled per pointer event — many per frame on touch — so the gesture stuttered. The transform itself was already GPU-friendly (`translate3d`+`scale`, `will-change: transform`); the cost was React, not compositing.
+  - Done (drive the gesture imperatively, commit to state only at the end):
+    - Added `imgRef`, `transformFrameRef`, `zoomDirtyRef`. New `applyTransform(z)` writes `translate3d(x,y,0) scale(s)` straight to the DOM node; `scheduleTransform()` coalesces writes to one per `requestAnimationFrame`; `commitZoom()` flushes the live value into React state once no pointers remain.
+    - `handlePointerMove` pinch/pan branches now update `zoomRef.current` + `zoomDirtyRef` and call `scheduleTransform()` instead of `setZoom` — zero React renders during the gesture.
+    - `handlePointerUp` / `onPointerCancel` call `commitZoom()` when the last pointer lifts, so the rendered `zoomed` className and click behavior reflect the final zoom.
+    - Removed the inline `style={{ transform }}` from the `<img>` (was rebound every render) in favor of a `useLayoutEffect` that applies the committed `zoom` to the node; it reads the live `zoomRef` while `zoomDirtyRef` is set so a mid-gesture re-render (e.g. original image finishing load and swapping `displayedSrc`) can't snap the transform back. `resetZoom` (double-click / index change) updates ref + state together. Added an unmount cleanup that cancels a pending rAF.
+  - Verified: `npm run build` passes (tsc, vite, audit initial JS 119 kB gzip, reader + layout + rich-text verifiers all green). Gesture smoothness needs a real touch device / non-headless browser to feel (pinch + rAF don't exercise meaningfully under headless CDP) — left for an operator spot-check.
+  - Relevant files/functions found:
+    - `src/App.tsx`: `ImageViewer` (`applyTransform`, `scheduleTransform`, `commitZoom`, `resetZoom`, `handlePointerMove`, `handlePointerUp`, the transform `useLayoutEffect`, `imgRef`).
+    - `src/styles.css`: `.image-viewer img` (already `will-change: transform`, `transform-origin: center center`).
 - [ ] Define the next BigBsky viewer/reader improvements.
   - Relevant files/functions found:
     - `README.md`: product scope and positioning for BigBsky as a desktop-focused Bluesky reader.

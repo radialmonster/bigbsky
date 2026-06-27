@@ -31,7 +31,7 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { createContext, lazy, Suspense, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, lazy, Suspense, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   type ActorSearchResponse,
@@ -9819,11 +9819,48 @@ function ImageViewer({
   }>({ moved: false });
   const suppressNextClickRef = useRef(false);
   const zoomRef = useRef(zoom);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const transformFrameRef = useRef<number | null>(null);
+  const zoomDirtyRef = useRef(false);
   const displayedSrc = selected && loadedOriginals.has(selected.src) ? selected.src : selected?.previewSrc || selected?.src;
   const clearSelection = useCallback(() => {
     window.getSelection()?.removeAllRanges();
   }, []);
+  // Write the transform straight to the DOM node so a pinch/pan gesture never
+  // has to round-trip through React state (which would re-render the whole
+  // viewer — thumbnails and all — on every pointermove and cause the jank).
+  const applyTransform = useCallback((z: { scale: number; x: number; y: number }) => {
+    const node = imgRef.current;
+    if (node) {
+      node.style.transform = `translate3d(${z.x}px, ${z.y}px, 0) scale(${z.scale})`;
+    }
+  }, []);
+  // Coalesce the imperative writes to one per animation frame.
+  const scheduleTransform = useCallback(() => {
+    if (transformFrameRef.current != null) {
+      return;
+    }
+    transformFrameRef.current = requestAnimationFrame(() => {
+      transformFrameRef.current = null;
+      applyTransform(zoomRef.current);
+    });
+  }, [applyTransform]);
+  // Commit the live gesture value back into React state once the gesture ends,
+  // so the rendered className/click behavior reflect the final zoom.
+  const commitZoom = useCallback(() => {
+    if (transformFrameRef.current != null) {
+      cancelAnimationFrame(transformFrameRef.current);
+      transformFrameRef.current = null;
+    }
+    if (zoomDirtyRef.current) {
+      zoomDirtyRef.current = false;
+      applyTransform(zoomRef.current);
+      setZoom(zoomRef.current);
+    }
+  }, [applyTransform]);
   const resetZoom = useCallback(() => {
+    zoomDirtyRef.current = false;
+    zoomRef.current = { scale: 1, x: 0, y: 0 };
     setZoom({ scale: 1, x: 0, y: 0 });
   }, []);
   const goPrevious = useCallback(() => {
@@ -9948,11 +9985,14 @@ function ImageViewer({
         const nextScale = clampZoom(gesture.pinchStart.scale * (distance / Math.max(1, gesture.pinchStart.distance)));
         gesture.moved = true;
         suppressNextClickRef.current = true;
-        setZoom((current) => ({
+        const current = zoomRef.current;
+        zoomRef.current = {
           scale: nextScale,
           x: nextScale <= 1.01 ? 0 : current.x,
           y: nextScale <= 1.01 ? 0 : current.y,
-        }));
+        };
+        zoomDirtyRef.current = true;
+        scheduleTransform();
         return;
       }
 
@@ -9962,15 +10002,17 @@ function ImageViewer({
         if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
           gesture.moved = true;
           suppressNextClickRef.current = true;
-          setZoom((current) => ({
-            ...current,
-            x: gesture.panStart ? gesture.panStart.originX + deltaX : current.x,
-            y: gesture.panStart ? gesture.panStart.originY + deltaY : current.y,
-          }));
+          zoomRef.current = {
+            ...zoomRef.current,
+            x: gesture.panStart.originX + deltaX,
+            y: gesture.panStart.originY + deltaY,
+          };
+          zoomDirtyRef.current = true;
+          scheduleTransform();
         }
       }
     },
-    [clampZoom, imageDistance],
+    [clampZoom, imageDistance, scheduleTransform],
   );
   const handlePointerUp = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -9982,6 +10024,10 @@ function ImageViewer({
       }
       if (pointerPositionsRef.current.size === 0) {
         gestureRef.current.panStart = undefined;
+      }
+      // Flush the live gesture value into React state once no fingers remain.
+      if (pointerPositionsRef.current.size === 0) {
+        commitZoom();
       }
       if (wasGestureMove || zoomRef.current.scale > 1.02) {
         suppressNextClickRef.current = true;
@@ -10006,18 +10052,33 @@ function ImageViewer({
         goPrevious();
       }
     },
-    [goNext, goPrevious],
+    [commitZoom, goNext, goPrevious],
   );
 
   useEffect(() => {
     zoomRef.current = zoom;
   }, [zoom]);
 
+  // Apply the committed zoom to the DOM node. Gesture moves write the transform
+  // imperatively; this keeps the node in sync with React state (mount, reset,
+  // double-click, gesture commit) without binding transform to every render.
+  useLayoutEffect(() => {
+    applyTransform(zoomDirtyRef.current ? zoomRef.current : zoom);
+  }, [applyTransform, zoom, displayedSrc]);
+
   useEffect(() => {
     resetZoom();
     pointerPositionsRef.current.clear();
     gestureRef.current = { moved: false };
   }, [image.index, resetZoom]);
+
+  useEffect(() => {
+    return () => {
+      if (transformFrameRef.current != null) {
+        cancelAnimationFrame(transformFrameRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const imagesToPreload = [
@@ -10065,6 +10126,9 @@ function ImageViewer({
       onPointerCancel={(event) => {
         pointerPositionsRef.current.delete(event.pointerId);
         gestureRef.current = { moved: false };
+        if (pointerPositionsRef.current.size === 0) {
+          commitZoom();
+        }
       }}
       onMouseDown={clearSelection}
       onMouseUp={clearSelection}
@@ -10124,11 +10188,11 @@ function ImageViewer({
         </>
       )}
       <img
+        ref={imgRef}
         className={zoom.scale > 1.02 ? "zoomed" : ""}
         src={displayedSrc}
         alt={selected.alt}
         draggable={false}
-        style={{ transform: `translate3d(${zoom.x}px, ${zoom.y}px, 0) scale(${zoom.scale})` }}
         onDragStart={(event) => {
           event.preventDefault();
           clearSelection();
