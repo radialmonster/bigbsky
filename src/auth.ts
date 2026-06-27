@@ -217,23 +217,38 @@ export async function initAuthSession(): Promise<AuthInitResult> {
     const client = await getClient();
     const result = await client.init();
     if (result?.session) {
+      // client.init() resolves BOTH the OAuth callback and the silent
+      // returning-user restore (initRestore reads the persisted (sub) and calls
+      // restore()). Only the callback carries "state"; a plain restore does not.
       const isCallback = "state" in result;
-      // Callback path: don't trust the persisted handle hint (could belong to a
-      // different account), so take the full snapshot with the profile read.
+      if (isCallback) {
+        // Callback path: don't trust the persisted handle hint (could belong to
+        // a different account), so take the full snapshot with the profile read.
+        // The callback redirects to /settings, not a feed, so this round-trip is
+        // not on the Home critical path.
+        return {
+          session: await snapshotSessionFull(result.session, true),
+          status: "callback",
+        };
+      }
+      // Returning-user restore (the common path): return the fast snapshot
+      // immediately and hydrate display fields in the background. This moves
+      // getProfile off the critical path — the feed loader keys off signedInDid
+      // (present in the fast snapshot), so it starts as soon as the session is
+      // restored instead of after the profile round-trip. profilePromise is
+      // consumed by App.tsx to merge the hydrated fields into authState once
+      // they land.
       return {
-        session: await snapshotSessionFull(result.session, isCallback),
-        status: isCallback ? "callback" : "restored",
+        session: await buildFastSnapshot(result.session),
+        status: "restored",
+        profilePromise: hydrateSessionProfile(result.session),
       };
     }
 
     if (activeDid) {
+      // Fallback restore: client.init() returned no session (the atproto (sub)
+      // hint was missing) but our own active-did survived. Same fast path.
       const restored = await client.restore(activeDid);
-      // Returning-user path: return the fast snapshot immediately and hydrate
-      // display fields in the background. This moves getProfile off the critical
-      // path — the feed loader keys off signedInDid (present in the fast
-      // snapshot), so it starts as soon as the session is restored instead of
-      // after the profile round-trip. profilePromise is consumed by App.tsx to
-      // merge the hydrated fields into authState once they land.
       return {
         session: await buildFastSnapshot(restored),
         status: "restored",
