@@ -4585,8 +4585,11 @@ button.surface-action {
 
 /* A lone trailing image (e.g. the 3rd of 3) has no partner to align to, so the
    paired-row "cover" treatment would stretch it to full width and crop it to
-   the clamped row height. Render it at its natural aspect instead — contained,
-   centered, height-capped — exactly like a single-image post. Never crop. */
+   the clamped row height. Instead let it fill the row width and take its
+   natural height (from the inline aspect-ratio), capping only at the viewport
+   height so a tall portrait scales up to match the images above it — like a
+   single-image post. object-fit: contain means a height-capped portrait is
+   centred rather than cropped. */
 .post-image-video-media .image-masonry .image-row-solo {
   aspect-ratio: auto;
   max-height: none;
@@ -4594,17 +4597,14 @@ button.surface-action {
 }
 
 .post-image-video-media .image-masonry .image-row-solo .image-button {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   height: auto;
   max-width: 100%;
 }
 
 .post-image-video-media .image-masonry .image-row-solo .image-button img {
-  width: auto;
+  width: 100%;
   height: auto;
-  max-width: 100%;
-  /* Match the single-image view: a lone image may grow as tall as the
-     viewport rather than being boxed into the paired-row height. */
   max-height: calc(100vh - 140px);
   object-fit: contain;
 }
