@@ -4583,6 +4583,30 @@ button.surface-action {
   object-fit: cover;
 }
 
+/* A lone trailing image (e.g. the 3rd of 3) has no partner to align to, so the
+   paired-row "cover" treatment would stretch it to full width and crop it to
+   the clamped row height. Render it at its natural aspect instead — contained,
+   centered, height-capped — exactly like a single-image post. Never crop. */
+.post-image-video-media .image-masonry .image-row-solo {
+  aspect-ratio: auto;
+  max-height: none;
+  justify-content: center;
+}
+
+.post-image-video-media .image-masonry .image-row-solo .image-button {
+  flex: 0 1 auto;
+  height: auto;
+  max-width: 100%;
+}
+
+.post-image-video-media .image-masonry .image-row-solo .image-button img {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: calc(100vh - 140px);
+  object-fit: contain;
+}
+
 .post-image-video-media + .post-actions {
   margin-top: 12px;
 }

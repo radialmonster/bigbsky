@@ -8352,7 +8352,7 @@ function PostImageVideoMedia({ post, onOpenImage }: { post: FeedPost; onOpenImag
           <div className={`image-grid image-masonry count-${Math.min(images.length, 4)}`}>
             {pairedImageRows(images.slice(0, maxPostImages)).map((row, rowIndex) => (
               <div
-                className="image-row"
+                className={row.length === 1 ? "image-row image-row-solo" : "image-row"}
                 key={`image-row-${post.uri}-${rowIndex}`}
                 style={{ "--media-row-aspect": row.reduce((total, image) => total + imageAspectRatio(image), 0) } as CSSProperties}
               >
@@ -8377,7 +8377,17 @@ function PostImageVideoMedia({ post, onOpenImage }: { post: FeedPost; onOpenImag
                       }}
                       aria-label={image.alt ? "Open image" : "Open full size image"}
                     >
-                      <img alt={image.alt || ""} src={image.thumb || image.fullsize} loading="lazy" decoding="async" />
+                      <img
+                        alt={image.alt || ""}
+                        src={image.thumb || image.fullsize}
+                        loading="lazy"
+                        decoding="async"
+                        style={
+                          row.length === 1 && image.aspectRatio?.width && image.aspectRatio?.height
+                            ? { aspectRatio: `${image.aspectRatio.width} / ${image.aspectRatio.height}` }
+                            : undefined
+                        }
+                      />
                       {images.length > maxPostImages && flatIndex === maxPostImages - 1 && (
                         <span className="more-media-badge">+{images.length - maxPostImages}</span>
                       )}
