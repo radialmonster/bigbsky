@@ -4603,6 +4603,8 @@ button.surface-action {
   width: auto;
   height: auto;
   max-width: 100%;
+  /* Match the single-image view: a lone image may grow as tall as the
+     viewport rather than being boxed into the paired-row height. */
   max-height: calc(100vh - 140px);
   object-fit: contain;
 }
