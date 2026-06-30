@@ -293,6 +293,10 @@ export function isListUri(uri: string) {
   return uri.includes("/app.bsky.graph.list/");
 }
 
+export function isFeedGeneratorUri(uri: string) {
+  return uri.includes("/app.bsky.feed.generator/");
+}
+
 export function getListFeed(list: string, cursor?: string, signal?: AbortSignal) {
   return getJson<FeedResponse>(
     "app.bsky.feed.getListFeed",

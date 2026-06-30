@@ -584,6 +584,10 @@ button {
   text-overflow: ellipsis;
 }
 
+.workspace-header-follow {
+  flex: 0 0 auto;
+}
+
 .nav-toggle {
   display: grid;
   place-items: center;

@@ -53,6 +53,7 @@ import {
   getQuotes,
   getRepostedBy,
   isListUri,
+  isFeedGeneratorUri,
   getEmbedImages,
   getExternalEmbed,
   getAuthorFeed,
@@ -3174,6 +3175,15 @@ export function App() {
         : isProfileRoute
           ? displayName(profile ?? undefined)
           : feedMetadata?.displayName || activeSource.label;
+  // Show a Follow button beside the feed title when a signed-in user is viewing
+  // a custom feed generator they have not yet subscribed to. Lists and the
+  // Following timeline are not followable feeds, and signed-out viewers cannot
+  // subscribe, so the button is hidden in those cases.
+  const canFollowActiveFeed =
+    route.kind === "feed" &&
+    !!signedInDid &&
+    isFeedGeneratorUri(activeSource.uri) &&
+    !followedFeedUris.has(activeSource.uri);
   const activeScrollKey =
     route.kind === "profile" && profileTab !== "feeds" && profileTab !== "lists" && profileTab !== "new-post"
       ? `profile:${route.actor}:${profileFeedFilterForTab(profileTab)}`
@@ -3609,6 +3619,18 @@ export function App() {
       <main className="workspace">
         <header className={mobileHeaderVisible ? "workspace-header" : "workspace-header mobile-hidden"}>
           <h1>{workspaceTitle}</h1>
+          {canFollowActiveFeed && (
+            <button
+              type="button"
+              className="discover-feed-follow workspace-header-follow"
+              onClick={() => toggleFollowFeed(activeSource.uri, feedMetadata?.displayName || activeSource.label)}
+              disabled={followBusyUri === activeSource.uri}
+              aria-label={`Follow ${feedMetadata?.displayName || activeSource.label}`}
+            >
+              {followBusyUri === activeSource.uri ? <Loader2 className="spin" size={14} /> : <Plus size={14} />}
+              Follow
+            </button>
+          )}
           <button
             className="nav-toggle"
             type="button"

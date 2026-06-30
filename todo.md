@@ -259,16 +259,16 @@
     effect cleanup.
   - Relevant files/functions found:
     - `src/App.tsx`: the `setCopied`/`setShareState` `setTimeout` call sites.
-- [ ] Add a Follow button to the feed-page header for unsubscribed feeds.
-  - Desired behavior: when a signed-in user browses a feed page (URL like `/feed/at%3A%2F%2Fdid%3Aplc%3Atvxpsn2ctygb4p3hv5e346tb%2Fapp.bsky.feed.generator%2Faaacqpx6p7n7i`), the top of the feed column already shows the feed name. To the right of that name, if the user is **not** currently subscribed to the feed, render a Follow button the user can click to follow (subscribe to) that feed. When already subscribed, show no button (or a subdued Following/Unfollow state, TBD).
-  - Notes:
-    - Subscription state should derive from the existing `subscribedFeeds` list (mirrors `app.bsky.actor.savedFeeds`), so the follow/unfollow path reuses `followFeed`/`unfollowFeed` and refreshes that list on success.
-    - Only render when signed in (no Follow affordance for logged-out viewers — they can't subscribe).
-    - Style the Follow button to match the Follow button already used on `/feeds` (reuse the same component/CSS class so the two surfaces stay visually consistent).
-    - Reuse the same on-click handler / follow logic as the `/feeds` Follow button — do not duplicate the function. Lift/share it if it's currently inline to the `/feeds` surface so both call sites invoke one function.
-    - Follow is an authenticated write, so verify via the build/type path and a real signed-in CDP/browser check (same limitation as prior composer/follow write work); the read-only CDP check can only confirm the button renders for an unsubscribed feed and is absent for a subscribed one.
+- [ ] Add a Follow button to the feed-page header for unsubscribed feeds. (IMPLEMENTED 2026-06-30 — remaining: signed-in confirmation only.)
+  - Done (2026-06-30): added a Follow button beside the feed title in the `.workspace-header`.
+    - `src/App.tsx`: new derived `canFollowActiveFeed` = `route.kind === "feed" && signedInDid && isFeedGeneratorUri(activeSource.uri) && !followedFeedUris.has(activeSource.uri)` (so it shows only for a signed-in viewer on a custom feed generator they have not subscribed to; hidden for the Following timeline, lists, and signed-out viewers). When true, a Follow button renders between the `<h1>` title and the `.nav-toggle` in the workspace header. It reuses the existing `toggleFollowFeed(activeSource.uri, label)` handler (the same one the `/feeds` + Discover surfaces use — no duplicated logic), shows a `Loader2` spinner while `followBusyUri === activeSource.uri`, and disables during the write. Per the spec, when already subscribed the button simply does not render (no Following/Unfollow state in the header — that lives on `/feeds`).
+    - Styling reuses the `/feeds`/Discover Follow class `discover-feed-follow` (blue pill + `Plus` icon + "Follow"), plus a `workspace-header-follow` class with `flex: 0 0 auto` in `src/styles.css` so it doesn't shrink in the header flex row.
+    - `src/api.ts`: added `isFeedGeneratorUri(uri)` helper (mirrors `isListUri`), imported in `src/App.tsx`.
+    - Verified: `npm run build` passes (tsc, vite, audit initial JS 121 kB gzip, reader + layout + rich-text verifiers all green). Drove the dev server via `scripts/cdp.mjs` on `/feed/at://…/app.bsky.feed.generator/aaacqpx6p7n7i` ("Graphic Design on bsky"): signed-out → feed title renders and the Follow button is correctly **absent**, no console errors. Injecting the exact `discover-feed-follow workspace-header-follow` markup into the live header confirmed it renders as a blue pill cleanly to the right of the title (visually consistent with `/feeds`). Killed the dev server afterward.
+  - Remaining: confirm in a real **signed-in** session that the button (a) appears for an unsubscribed feed generator, (b) follows the feed on click (subscribes via `followFeed`, optimistic list update), (c) disappears once subscribed, and (d) the saved feed shows up in `/feeds` + the official bsky.app client. This is the same authenticated-write limitation as prior composer/follow work — not exercisable on the local origin (no OAuth session present), needs the deployed origin with the operator signed in.
   - Relevant files/functions found:
-    - `src/App.tsx`: feed-page header rendering (feed name at top of the feed column), `subscribedFeeds` state, feed route handling in `getRouteState` / `SurfaceView`.
+    - `src/App.tsx`: `.workspace-header` render (`canFollowActiveFeed`, `toggleFollowFeed`, `followedFeedUris`, `followBusyUri`), `activeSource`.
+    - `src/api.ts`: `isFeedGeneratorUri`, `isListUri`.
     - `src/auth.ts`: `followFeed`, `unfollowFeed`, `getSubscribedFeeds` (saved-feeds preference read/write).
 - [ ] Investigate feeds loading pre-scrolled when clicked from the feed column.
   - Reported: clicking a feed in the feed-selector column sometimes opens the feed already scrolled down partway (not at top). The trigger pattern is not yet identified — happens intermittently, not on every click.
