@@ -68,6 +68,7 @@ import {
 } from "./api";
 import { segmentRichText } from "./richtext";
 import { postSortAt } from "./lib/time";
+import { orderBySavedOrder } from "./lib/feed-order";
 import {
   MOBILE_SCROLL_QUERY,
   armScrollRestore,
@@ -1681,16 +1682,10 @@ export function App() {
   // The signed-in user's saved feeds, reordered by the browser-local feedOrder
   // (URIs). Feeds with a saved position sort by it; the rest keep their account
   // order after them (stable sort). Drives both the /feeds grid and the selector.
-  const orderedSubscribedFeeds = useMemo(() => {
-    if (feedOrder.length === 0) {
-      return subscribedFeeds;
-    }
-    const rank = new Map(feedOrder.map((uri, index) => [uri, index]));
-    const fallback = feedOrder.length;
-    return [...subscribedFeeds].sort(
-      (a, b) => (rank.get(a.uri) ?? fallback) - (rank.get(b.uri) ?? fallback),
-    );
-  }, [subscribedFeeds, feedOrder]);
+  const orderedSubscribedFeeds = useMemo(
+    () => orderBySavedOrder(subscribedFeeds, feedOrder),
+    [subscribedFeeds, feedOrder],
+  );
   // Static public feeds plus the signed-in user's subscribed feeds (deduped by
   // URI so a saved copy of a built-in feed does not appear twice).
   const allSources = useMemo(() => {

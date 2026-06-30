@@ -178,6 +178,19 @@
     source-regex guardrails. See the "Replace the regex source-text tests" task
     below for details. Build + tests green. Remaining helper slices: `read*`/`safe*`
     storage readers, `resolveHandle` cache, feed-order sort.
+  - Progress (2026-06-30): **slice 3 — feed-order sort extracted + tested.**
+    Pulled the inline `orderedSubscribedFeeds` useMemo body out of `src/App.tsx`
+    into a pure generic helper `orderBySavedOrder<T extends { uri: string }>(feeds,
+    order)` in `src/lib/feed-order.ts`; the useMemo now just calls it (deps
+    unchanged). Behavior preserved verbatim: empty order returns the input
+    reference unchanged; ranked feeds sort by saved position; unranked (newly
+    subscribed) feeds fall back to the end keeping original relative order (stable
+    sort); saved URIs not currently subscribed are ignored. Added
+    `src/lib/feed-order.test.ts` — 8 tests (no-order identity, reorder, no-mutation,
+    fallback-to-end, stable unranked order, ignore-unknown-uri, empty list, realistic
+    mix). `npm test` green (106 tests / 6 files); `npm run build` green (tsc, vite,
+    audit initial JS 121 kB gzip, reader + layout + rich-text verifiers).
+    Remaining helper slices: `read*`/`safe*` storage readers, `resolveHandle` cache.
   - Suggested lowest-risk first slices, each independently shippable:
     1. Extract pure helpers (the `read*`/`safe*`/`readScrollOffset`/
        `scrollOffsetTo`/`restoreScrollOffset`/`postSortAt` cluster) into
@@ -204,7 +217,8 @@
       - Added `src/lib/scroll.test.ts` — 13 behavioral tests (jsdom): multi-scroller `readScrollOffset` max (window vs timeline, zero/null), the save-suppression guard state machine (arm/release/time-window-expiry, ≤0 arm ignored), and `restoreScrollOffset`'s rAF loop (no-op for ≤0, drives the scroller to target and settles, re-resolves the live element from the ref each frame, and a newer restore supersedes an in-flight one). Tests pin jsdom's document scrollers to a constant 0 (they otherwise persist `scrollTop` writes and would mask the fake timeline) and add `__resetScrollRestoreStateForTests()` to clear the module's restore state between tests.
       - Retired the three now-redundant source-regex guardrails in `verify-reader-behavior.mjs` (the `readScrollOffset`/`scrollOffsetTo`/`scrollFeedToTop` *definition* asserts) since `scroll.test.ts` covers that behavior; the App.tsx *call-site* asserts (`shouldSuppressScrollSave(offset)`, `restoreScrollOffset(...)`, per-key caching) stay.
       - `npm test` green (98 tests / 5 files); `npm run build` green (tsc, vite, audit initial JS 121 kB gzip, reader + layout + rich-text verifiers).
-    - Still open: keep porting the remaining regex assertions to real tests and delete each as it gains behavioral coverage. Next helper extractions to cover: `resolveHandle` cache, `readPinnedFeedMeta` validators, feed-order sort (`readFeedOrder`/`orderedSubscribedFeeds`).
+    - Progress (2026-06-30): **slice 3 — feed-order sort** extracted to `src/lib/feed-order.ts` (`orderBySavedOrder`) with `src/lib/feed-order.test.ts` (8 tests). Covers the `orderedSubscribedFeeds` ordering behavior. `npm test` green (106 tests / 6 files).
+    - Still open: keep porting the remaining regex assertions to real tests and delete each as it gains behavioral coverage. Next helper extractions to cover: `resolveHandle` cache, `readPinnedFeedMeta` validators (`isPinnedFeedMeta`).
   - Severity: high. `scripts/verify-reader-behavior.mjs` and
     `scripts/verify-layout-behavior.mjs` are 100% `readFileSync` + regex (e.g.
     `verify-layout-behavior.mjs:29` asserts a specific scroll-compensation
