@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   parseBooleanRecord,
+  parseComposerDraft,
   parseFiniteNumberRecord,
   parseNonEmptyStringArray,
+  parseObjectArray,
   parseStringArray,
 } from "./preferences";
 
@@ -89,5 +91,52 @@ describe("parseFiniteNumberRecord", () => {
 
   it("preserves negative and fractional offsets", () => {
     expect(parseFiniteNumberRecord('{"a": -5, "b": 12.5}')).toEqual({ a: -5, b: 12.5 });
+  });
+});
+
+describe("parseObjectArray", () => {
+  const hasId = (value: unknown): value is { id: string } =>
+    Boolean(value) && typeof (value as { id?: unknown }).id === "string";
+
+  it("returns [] for null / malformed / non-array", () => {
+    expect(parseObjectArray(null, hasId)).toEqual([]);
+    expect(parseObjectArray("nope", hasId)).toEqual([]);
+    expect(parseObjectArray('{"id":"x"}', hasId)).toEqual([]);
+  });
+
+  it("keeps entries the predicate accepts and drops the rest", () => {
+    const raw = JSON.stringify([{ id: "a" }, { id: 1 }, null, { name: "b" }, { id: "c" }]);
+    expect(parseObjectArray(raw, hasId)).toEqual([{ id: "a" }, { id: "c" }]);
+  });
+
+  it("applies the limit after filtering", () => {
+    const raw = JSON.stringify([{ id: "a" }, "skip", { id: "b" }, { id: "c" }]);
+    expect(parseObjectArray(raw, hasId, 2)).toEqual([{ id: "a" }, { id: "b" }]);
+  });
+
+  it("accepts a permissive predicate (Array-check + cap only)", () => {
+    const raw = JSON.stringify([{ x: 1 }, { y: 2 }, { z: 3 }]);
+    expect(parseObjectArray(raw, (v): v is object => Boolean(v), 2)).toEqual([{ x: 1 }, { y: 2 }]);
+  });
+});
+
+describe("parseComposerDraft", () => {
+  it("returns a single empty post for null / malformed / missing posts", () => {
+    expect(parseComposerDraft(null)).toEqual({ posts: [""] });
+    expect(parseComposerDraft("nope")).toEqual({ posts: [""] });
+    expect(parseComposerDraft('{"posts": "x"}')).toEqual({ posts: [""] });
+    expect(parseComposerDraft('{"posts": []}')).toEqual({ posts: [""] });
+  });
+
+  it("joins multiple string posts into one combined draft with blank-line separators", () => {
+    expect(parseComposerDraft('{"posts": ["one", "two"]}')).toEqual({ posts: ["one\n\ntwo"] });
+  });
+
+  it("drops non-string post entries before joining", () => {
+    expect(parseComposerDraft('{"posts": ["one", 2, null, "three"]}')).toEqual({ posts: ["one\n\nthree"] });
+  });
+
+  it("returns a single post unchanged", () => {
+    expect(parseComposerDraft('{"posts": ["solo"]}')).toEqual({ posts: ["solo"] });
   });
 });

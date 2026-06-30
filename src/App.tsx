@@ -79,8 +79,10 @@ import {
 } from "./lib/storage";
 import {
   parseBooleanRecord,
+  parseComposerDraft,
   parseFiniteNumberRecord,
   parseNonEmptyStringArray,
+  parseObjectArray,
   parseStringArray,
 } from "./lib/preferences";
 import { safeHttpUrl } from "./lib/url";
@@ -474,45 +476,29 @@ function readShowMediaPreferences() {
 }
 
 function readRecentItems() {
-  try {
-    const items = JSON.parse(localStorage.getItem(recentStorageKey) || "[]") as RecentItem[];
-    return Array.isArray(items) ? items.slice(0, 8) : [];
-  } catch {
-    return [];
-  }
+  // No per-entry shape validation historically — only Array-check + cap of 8.
+  return parseObjectArray<RecentItem>(safeLocalStorageGet(recentStorageKey), (_item): _item is RecentItem => true, 8);
 }
 
 function readLocalLists() {
-  try {
-    const lists = JSON.parse(localStorage.getItem(localListsStorageKey) || "[]") as LocalList[];
-    return Array.isArray(lists)
-      ? lists
-          .filter((list) => list && typeof list.id === "string" && typeof list.name === "string")
-          .map((list) => ({
-            ...list,
-            posts: Array.isArray(list.posts)
-              ? list.posts.filter((post) => post && typeof post.uri === "string").slice(0, 100)
-              : [],
-          }))
-          .slice(0, 20)
-      : [];
-  } catch {
-    return [];
-  }
+  return parseObjectArray<LocalList>(
+    safeLocalStorageGet(localListsStorageKey),
+    (list): list is LocalList =>
+      Boolean(list) &&
+      typeof (list as LocalList).id === "string" &&
+      typeof (list as LocalList).name === "string",
+  )
+    .map((list) => ({
+      ...list,
+      posts: Array.isArray(list.posts)
+        ? list.posts.filter((post) => post && typeof post.uri === "string").slice(0, 100)
+        : [],
+    }))
+    .slice(0, 20);
 }
 
 function readComposerDraft() {
-  try {
-    const draft = JSON.parse(localStorage.getItem(composerDraftStorageKey) || "{}") as {
-      posts?: string[];
-    };
-    const posts = Array.isArray(draft.posts) ? draft.posts.filter((post) => typeof post === "string") : [];
-    return {
-      posts: posts.length > 0 ? [posts.join("\n\n")] : [""],
-    };
-  } catch {
-    return { posts: [""] };
-  }
+  return parseComposerDraft(safeLocalStorageGet(composerDraftStorageKey));
 }
 
 // Side-column visibility. The far-left icon rail is always present; the feeds
@@ -573,16 +559,14 @@ function readPinnedSearches() {
 }
 
 function readPinnedProfiles() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(pinnedProfilesStorageKey) || "[]") as Profile[];
-    return Array.isArray(stored)
-      ? stored
-          .filter((profile) => profile && typeof profile.did === "string" && typeof profile.handle === "string")
-          .slice(0, 16)
-      : [];
-  } catch {
-    return [];
-  }
+  return parseObjectArray<Profile>(
+    safeLocalStorageGet(pinnedProfilesStorageKey),
+    (profile): profile is Profile =>
+      Boolean(profile) &&
+      typeof (profile as Profile).did === "string" &&
+      typeof (profile as Profile).handle === "string",
+    16,
+  );
 }
 
 function readPinnedNotifications() {
