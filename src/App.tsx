@@ -9389,21 +9389,48 @@ function QuotedPostCard({
         null
       ) : (
         <>
-          {embeddedImages.length > 0 && (
-            <div className={`image-grid quote-images count-${Math.min(embeddedImages.length, 4)}`}>
-              {embeddedImages.slice(0, maxPostImages).map((image) => (
-                <img
-                  alt={image.alt || ""}
-                  key={image.thumb || image.fullsize}
-                  src={image.thumb || image.fullsize}
-                  loading="lazy"
-                  decoding="async"
-                  style={
-                    image.aspectRatio?.width && image.aspectRatio?.height
-                      ? { aspectRatio: `${image.aspectRatio.width} / ${image.aspectRatio.height}` }
-                      : undefined
-                  }
-                />
+          {embeddedImages.length === 1 && (
+            <div className="image-grid quote-images count-1">
+              <img
+                alt={embeddedImages[0].alt || ""}
+                src={embeddedImages[0].thumb || embeddedImages[0].fullsize}
+                loading="lazy"
+                decoding="async"
+                style={
+                  embeddedImages[0].aspectRatio?.width && embeddedImages[0].aspectRatio?.height
+                    ? { aspectRatio: `${embeddedImages[0].aspectRatio.width} / ${embeddedImages[0].aspectRatio.height}` }
+                    : undefined
+                }
+              />
+            </div>
+          )}
+          {embeddedImages.length > 1 && (
+            // Multi-image quote galleries reuse the regular post's masonry rows
+            // (pairedImageRows + --media-row-aspect / --media-aspect) so they
+            // fill the quote width and cap at the viewport height, instead of the
+            // old flat 2-up grid that sized each image ad hoc.
+            <div className={`image-grid quote-images image-masonry count-${Math.min(embeddedImages.length, 4)}`}>
+              {pairedImageRows(embeddedImages.slice(0, maxPostImages)).map((row, rowIndex) => (
+                <div
+                  className={row.length === 1 ? "image-row image-row-solo" : "image-row"}
+                  key={`quote-image-row-${record.uri}-${rowIndex}`}
+                  style={{ "--media-row-aspect": row.reduce((total, image) => total + imageAspectRatio(image), 0) } as CSSProperties}
+                >
+                  {row.map((image) => (
+                    <img
+                      alt={image.alt || ""}
+                      key={image.thumb || image.fullsize}
+                      src={image.thumb || image.fullsize}
+                      loading="lazy"
+                      decoding="async"
+                      style={
+                        row.length === 1 && image.aspectRatio?.width && image.aspectRatio?.height
+                          ? ({ aspectRatio: `${image.aspectRatio.width} / ${image.aspectRatio.height}`, "--media-aspect": imageAspectRatio(image) } as CSSProperties)
+                          : ({ "--media-aspect": imageAspectRatio(image) } as CSSProperties)
+                      }
+                    />
+                  ))}
+                </div>
               ))}
             </div>
           )}
