@@ -172,6 +172,12 @@
     15 tests). This is the first of the "extract pure helpers into `src/lib/`"
     slice below and proves the tests-first path. Build + tests green. Continue the
     slice with the remaining `read*`/`safe*`/scroll-math/feed-order helpers.
+  - Progress (2026-06-30): **slice 2** — extracted the scroll-math /
+    scroll-restoration cluster into `src/lib/scroll.ts` with a 13-test behavioral
+    suite (`src/lib/scroll.test.ts`) and retired the now-redundant scroll-function
+    source-regex guardrails. See the "Replace the regex source-text tests" task
+    below for details. Build + tests green. Remaining helper slices: `read*`/`safe*`
+    storage readers, `resolveHandle` cache, feed-order sort.
   - Suggested lowest-risk first slices, each independently shippable:
     1. Extract pure helpers (the `read*`/`safe*`/`readScrollOffset`/
        `scrollOffsetTo`/`restoreScrollOffset`/`postSortAt` cluster) into
@@ -194,7 +200,11 @@
   - Progress (2026-06-26): **Vitest is now installed and wired up** — the test net the App.tsx decomposition needs before it starts.
     - Added `vitest@^3` + `jsdom@^25` devDeps; `test` (`vitest run`) and `test:watch` scripts in `package.json`; a `test` block in `vite.config.ts` (jsdom env, `src/**/*.{test,spec}.{ts,tsx}` include).
     - First real behavioral suite shipped alongside the first decomposition slice: extracted the pure timestamp cluster (`CLOCK_SKEW_WINDOW_MS`, `parseTimestamp`, `postSortAt`, `postSortTime`) from `src/App.tsx` into `src/lib/time.ts` (App.tsx now imports it; all `postSortAt`/`postSortTime` call sites unchanged), and added `src/lib/time.test.ts` — 15 tests over the docs' edge cases (spoofable future-dated `createdAt`, exact clock-skew-window edge, missing/unparseable `indexedAt`, ordering). `npm test` green; `npm run build` still green (tsc, audit, reader + layout + rich-text verifiers).
-    - Still open: the regex verifiers (`verify-reader-behavior.mjs`, `verify-layout-behavior.mjs`) remain as migration guardrails — keep porting their assertions to real tests and delete each as it gains behavioral coverage. Next helper extractions to cover: scroll math (`readScrollOffset`/`scrollOffsetTo`/`restoreScrollOffset`, jsdom), `resolveHandle` cache, `readPinnedFeedMeta` validators, feed-order sort (`readFeedOrder`/`orderedSubscribedFeeds`).
+    - Progress (2026-06-30): **slice 2 — scroll math extracted + tested.** Moved the scroll-geometry / scroll-restoration cluster (`MOBILE_SCROLL_QUERY`, `readScrollOffset`, `scrollElementTo`, `scrollOffsetTo`, `scrollFeedToTop`, the `scrollRestoreGuard`/`scrollRestoreToken` state, `armScrollRestore`, `shouldSuppressScrollSave`, `SCROLL_RESTORE_*` frame budgets, and `restoreScrollOffset`) out of `src/App.tsx` into `src/lib/scroll.ts`. App.tsx now imports the public surface (`MOBILE_SCROLL_QUERY`, `armScrollRestore`, `readScrollOffset`, `restoreScrollOffset`, `scrollFeedToTop`, `shouldSuppressScrollSave`); `scrollOffsetTo`/`scrollElementTo`/`nowMs` are module-internal. All call sites unchanged.
+      - Added `src/lib/scroll.test.ts` — 13 behavioral tests (jsdom): multi-scroller `readScrollOffset` max (window vs timeline, zero/null), the save-suppression guard state machine (arm/release/time-window-expiry, ≤0 arm ignored), and `restoreScrollOffset`'s rAF loop (no-op for ≤0, drives the scroller to target and settles, re-resolves the live element from the ref each frame, and a newer restore supersedes an in-flight one). Tests pin jsdom's document scrollers to a constant 0 (they otherwise persist `scrollTop` writes and would mask the fake timeline) and add `__resetScrollRestoreStateForTests()` to clear the module's restore state between tests.
+      - Retired the three now-redundant source-regex guardrails in `verify-reader-behavior.mjs` (the `readScrollOffset`/`scrollOffsetTo`/`scrollFeedToTop` *definition* asserts) since `scroll.test.ts` covers that behavior; the App.tsx *call-site* asserts (`shouldSuppressScrollSave(offset)`, `restoreScrollOffset(...)`, per-key caching) stay.
+      - `npm test` green (98 tests / 5 files); `npm run build` green (tsc, vite, audit initial JS 121 kB gzip, reader + layout + rich-text verifiers).
+    - Still open: keep porting the remaining regex assertions to real tests and delete each as it gains behavioral coverage. Next helper extractions to cover: `resolveHandle` cache, `readPinnedFeedMeta` validators, feed-order sort (`readFeedOrder`/`orderedSubscribedFeeds`).
   - Severity: high. `scripts/verify-reader-behavior.mjs` and
     `scripts/verify-layout-behavior.mjs` are 100% `readFileSync` + regex (e.g.
     `verify-layout-behavior.mjs:29` asserts a specific scroll-compensation
