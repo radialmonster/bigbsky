@@ -9974,8 +9974,10 @@ function ImageViewer({
   const suppressNextClickRef = useRef(false);
   const zoomRef = useRef(zoom);
   const imgRef = useRef<HTMLImageElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const transformFrameRef = useRef<number | null>(null);
   const zoomDirtyRef = useRef(false);
+  const wheelCommitRef = useRef<number | null>(null);
   const displayedSrc = selected && loadedOriginals.has(selected.src) ? selected.src : selected?.previewSrc || selected?.src;
   const clearSelection = useCallback(() => {
     window.getSelection()?.removeAllRanges();
@@ -10077,6 +10079,91 @@ function ImageViewer({
     return Math.hypot(b.x - a.x, b.y - a.y);
   }, []);
   const clampZoom = useCallback((value: number) => Math.max(1, Math.min(4, value)), []);
+  // Keep the panned/zoomed image from drifting entirely off-screen. The bounds
+  // are derived from the scaled overflow past the viewport (plus a little slack
+  // so the edges can be brought comfortably into view).
+  const clampTranslate = useCallback((z: { scale: number; x: number; y: number }) => {
+    const node = imgRef.current;
+    if (!node || z.scale <= 1.01) {
+      return { scale: z.scale, x: 0, y: 0 };
+    }
+    const scaledW = node.offsetWidth * z.scale;
+    const scaledH = node.offsetHeight * z.scale;
+    const maxX = Math.max(0, (scaledW - window.innerWidth) / 2 + 40);
+    const maxY = Math.max(0, (scaledH - window.innerHeight) / 2 + 40);
+    return {
+      scale: z.scale,
+      x: Math.max(-maxX, Math.min(maxX, z.x)),
+      y: Math.max(-maxY, Math.min(maxY, z.y)),
+    };
+  }, []);
+  // Zoom toward a screen point (cursor / double-click / pinch focus) so the
+  // content under that point stays put — the native image-viewer feel. With
+  // transform-origin: center, the new translate is `t + (point - center)·(1 - r)`
+  // where `r` is the scale ratio and `center` is the current on-screen image
+  // center. We flush any pending transform first so the measured rect matches
+  // the live `zoomRef` value rather than a frame-stale one.
+  const applyZoomAtPoint = useCallback(
+    (nextScaleRaw: number, clientX: number, clientY: number, commit: boolean) => {
+      const node = imgRef.current;
+      if (!node) {
+        return;
+      }
+      const current = zoomRef.current;
+      const nextScale = clampZoom(nextScaleRaw);
+      if (Math.abs(nextScale - current.scale) < 0.0005) {
+        return;
+      }
+      if (transformFrameRef.current != null) {
+        cancelAnimationFrame(transformFrameRef.current);
+        transformFrameRef.current = null;
+      }
+      applyTransform(current);
+      const rect = node.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const ratio = nextScale / current.scale;
+      const next =
+        nextScale <= 1.01
+          ? { scale: 1, x: 0, y: 0 }
+          : clampTranslate({
+              scale: nextScale,
+              x: current.x + (clientX - centerX) * (1 - ratio),
+              y: current.y + (clientY - centerY) * (1 - ratio),
+            });
+      zoomRef.current = next;
+      if (commit) {
+        zoomDirtyRef.current = false;
+        applyTransform(next);
+        setZoom(next);
+      } else {
+        zoomDirtyRef.current = true;
+        scheduleTransform();
+      }
+    },
+    [applyTransform, clampTranslate, clampZoom, scheduleTransform],
+  );
+  // Mouse wheel / trackpad pinch (arrives as a ctrl+wheel) zooms toward the
+  // cursor. The gesture has no pointerup, so we drive the transform imperatively
+  // and debounce a single React commit once the wheel settles.
+  const handleWheel = useCallback(
+    (event: WheelEvent) => {
+      event.preventDefault();
+      const factor = Math.exp(-event.deltaY * 0.0015);
+      applyZoomAtPoint(zoomRef.current.scale * factor, event.clientX, event.clientY, false);
+      if (zoomRef.current.scale > 1.02) {
+        suppressNextClickRef.current = true;
+      }
+      if (wheelCommitRef.current != null) {
+        window.clearTimeout(wheelCommitRef.current);
+      }
+      wheelCommitRef.current = window.setTimeout(() => {
+        wheelCommitRef.current = null;
+        commitZoom();
+      }, 140);
+    },
+    [applyZoomAtPoint, commitZoom],
+  );
   const handlePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       clearSelection();
@@ -10156,17 +10243,17 @@ function ImageViewer({
         if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
           gesture.moved = true;
           suppressNextClickRef.current = true;
-          zoomRef.current = {
+          zoomRef.current = clampTranslate({
             ...zoomRef.current,
             x: gesture.panStart.originX + deltaX,
             y: gesture.panStart.originY + deltaY,
-          };
+          });
           zoomDirtyRef.current = true;
           scheduleTransform();
         }
       }
     },
-    [clampZoom, imageDistance, scheduleTransform],
+    [clampTranslate, clampZoom, imageDistance, scheduleTransform],
   );
   const handlePointerUp = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -10231,8 +10318,22 @@ function ImageViewer({
       if (transformFrameRef.current != null) {
         cancelAnimationFrame(transformFrameRef.current);
       }
+      if (wheelCommitRef.current != null) {
+        window.clearTimeout(wheelCommitRef.current);
+      }
     };
   }, []);
+
+  // Bind the wheel listener natively (non-passive) so we can preventDefault and
+  // stop the page/browser from zooming or scrolling under the overlay.
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) {
+      return;
+    }
+    node.addEventListener("wheel", handleWheel, { passive: false });
+    return () => node.removeEventListener("wheel", handleWheel);
+  }, [handleWheel]);
 
   useEffect(() => {
     const imagesToPreload = [
@@ -10270,6 +10371,7 @@ function ImageViewer({
 
   return (
     <div
+      ref={containerRef}
       className={infoVisible ? "image-viewer" : "image-viewer info-hidden"}
       role="dialog"
       aria-modal="true"
@@ -10357,7 +10459,12 @@ function ImageViewer({
         }}
         onDoubleClick={(event) => {
           event.stopPropagation();
-          resetZoom();
+          suppressNextClickRef.current = true;
+          if (zoomRef.current.scale > 1.02) {
+            resetZoom();
+          } else {
+            applyZoomAtPoint(2.5, event.clientX, event.clientY, true);
+          }
         }}
       />
       {infoVisible && (

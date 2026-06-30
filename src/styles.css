@@ -5245,8 +5245,16 @@ button.surface-action {
   -webkit-user-select: none;
 }
 
+.image-viewer > img {
+  cursor: zoom-in;
+}
+
 .image-viewer > img.zoomed {
   cursor: grab;
+}
+
+.image-viewer > img.zoomed:active {
+  cursor: grabbing;
 }
 
 .image-viewer img::selection {

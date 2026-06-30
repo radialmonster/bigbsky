@@ -20,6 +20,18 @@
   - Relevant files/functions found:
     - `src/App.tsx`: `ImageViewer` (`applyTransform`, `scheduleTransform`, `commitZoom`, `resetZoom`, `handlePointerMove`, `handlePointerUp`, the transform `useLayoutEffect`, `imgRef`).
     - `src/styles.css`: `.image-viewer img` (already `will-change: transform`, `transform-origin: center center`).
+- [x] Enable desktop zoom + pan in the image viewer (mouse-native).
+  - Reported: the in-app `ImageViewer` (`src/App.tsx`) only zoomed via touch pinch — on desktop with a mouse there was no way to zoom at all (no wheel handler; double-click only *reset*, and the pan branch needs `scale > 1.02`, unreachable without pinch). Goal: native-feeling desktop zoom/pan.
+  - Done (all imperative-transform-driven to keep the existing no-jank model — gestures write straight to the DOM node and commit to React state once settled):
+    - **Wheel-to-zoom toward the cursor**: added a native (non-passive) `wheel` listener bound via `useEffect`/`containerRef` so it can `preventDefault` (stops page/browser zoom under the overlay). Trackpad pinch arrives as ctrl+wheel and is handled by the same path. `factor = exp(-deltaY * 0.0015)`. The gesture has no pointerup, so it drives the transform imperatively (`scheduleTransform`) and debounces a single `commitZoom()` 140ms after the wheel settles (so the `zoomed` class / grab cursor / click-suppression update without re-rendering the whole viewer per tick).
+    - **Zoom toward a point**: new `applyZoomAtPoint(nextScale, clientX, clientY, commit)`. With `transform-origin: center`, the focal-preserving translate is `t' = t + (point − center)·(1 − r)` where `r` is the scale ratio and `center` is the live on-screen image center. It flushes any pending rAF transform and `getBoundingClientRect`s so `center` matches the live `zoomRef` (not a frame-stale value). Used by wheel and double-click.
+    - **Double-click toggles** instead of always resetting: zoomed → `resetZoom()`; not zoomed → `applyZoomAtPoint(2.5, cursor)` (zoom in centered on the cursor).
+    - **Bounded pan**: new `clampTranslate(z)` constrains the translate to the scaled overflow past the viewport (`(scaledW − innerWidth)/2 + 40` slack), so the image can't be flung fully off-screen. Applied in the pan branch of `handlePointerMove`, in `applyZoomAtPoint`, and snaps x/y to 0 when scale returns to ~1.
+    - **Cursors** (`src/styles.css`): `.image-viewer > img` shows `zoom-in`; `.zoomed` shows `grab`; `.zoomed:active` shows `grabbing`.
+  - Verified: `npm run build` passes (tsc, vite, audit initial JS 121 kB gzip, reader + layout + rich-text verifiers all green). Drove the running dev server via `scripts/cdp.mjs` (real Chrome on :9222) against a home-feed gallery post: opening the viewer shows the `zoom-in` cursor; three zoom-in wheel ticks toward a point gave `scale ≈ 1.197³ = 1.716` and committed the `zoomed` class + `grab` cursor; a wheel zoom with the focal point at the **image center stayed exactly centered (fracX/fracY = 0.500)**, confirming the zoom-toward-point math; a near-edge focal point legitimately drifts because `clampTranslate` won't pan past the image edge (native behavior); double-click from 1× zooms to 2.5× (grab cursor), double-click while zoomed resets to `scale(1)` (zoom-in cursor). Closed the viewer afterward to leave the operator session clean.
+  - Relevant files/functions found:
+    - `src/App.tsx`: `ImageViewer` (`applyZoomAtPoint`, `handleWheel`, `clampTranslate`, the native wheel `useEffect`, `containerRef`, `wheelCommitRef`, `applyTransform`/`scheduleTransform`/`commitZoom`, double-click handler, pan branch of `handlePointerMove`).
+    - `src/styles.css`: `.image-viewer > img` (`zoom-in`), `.image-viewer > img.zoomed` (`grab`), `.image-viewer > img.zoomed:active` (`grabbing`).
 - [ ] Define the next BigBsky viewer/reader improvements.
   - Relevant files/functions found:
     - `README.md`: product scope and positioning for BigBsky as a desktop-focused Bluesky reader.
@@ -672,3 +684,14 @@ extracted/extended so the fixes are unit-tested in `src/lib/threads.test.ts`.)
   - Relevant files/functions found:
     - `src/auth.ts`: `getAccountManagementUrl`, `ensureSession`, `OAuthSession.serverMetadata`.
     - `src/App.tsx`: `SurfaceView` Account panel, `.settings-link`.
+- [ ] Add a Follow button to the feed-page header for unsubscribed feeds.
+  - Desired behavior: when a signed-in user browses a feed page (URL like `/feed/at%3A%2F%2Fdid%3Aplc%3Atvxpsn2ctygb4p3hv5e346tb%2Fapp.bsky.feed.generator%2Faaacqpx6p7n7i`), the top of the feed column already shows the feed name. To the right of that name, if the user is **not** currently subscribed to the feed, render a Follow button the user can click to follow (subscribe to) that feed. When already subscribed, show no button (or a subdued Following/Unfollow state, TBD).
+  - Notes:
+    - Subscription state should derive from the existing `subscribedFeeds` list (mirrors `app.bsky.actor.savedFeeds`), so the follow/unfollow path reuses `followFeed`/`unfollowFeed` and refreshes that list on success.
+    - Only render when signed in (no Follow affordance for logged-out viewers — they can't subscribe).
+    - Style the Follow button to match the Follow button already used on `/feeds` (reuse the same component/CSS class so the two surfaces stay visually consistent).
+    - Reuse the same on-click handler / follow logic as the `/feeds` Follow button — do not duplicate the function. Lift/share it if it's currently inline to the `/feeds` surface so both call sites invoke one function.
+    - Follow is an authenticated write, so verify via the build/type path and a real signed-in CDP/browser check (same limitation as prior composer/follow write work); the read-only CDP check can only confirm the button renders for an unsubscribed feed and is absent for a subscribed one.
+  - Relevant files/functions found:
+    - `src/App.tsx`: feed-page header rendering (feed name at top of the feed column), `subscribedFeeds` state, feed route handling in `getRouteState` / `SurfaceView`.
+    - `src/auth.ts`: `followFeed`, `unfollowFeed`, `getSubscribedFeeds` (saved-feeds preference read/write).
