@@ -521,13 +521,16 @@
     Pin the version and add a regression check.
   - Relevant files/functions found:
     - `src/auth.ts`: `signOut`, `clearOAuthLocalSession`.
-- [ ] Router nits: hoist the `surfaces` Set and handle trailing slashes/case.
-  - Severity: low. `src/router.ts:40` re-allocates the `surfaces` `Set` on every
-    `getRouteState` call — hoist it module-scope. No handling of trailing slashes
-    (`/feeds/`) or non-lowercase paths — they silently fall through to the
-    default feed route.
+- [x] Router nits: hoist the `surfaces` Set and handle trailing slashes/case.
+  - Done (2026-06-29):
+    - Hoisted the per-call `new Set([...])` to a module-scope `SURFACES` constant so it is allocated once instead of on every `getRouteState` call.
+    - Made route **keyword** matching case-insensitive: a lowercased `seg0`/`seg2` (and `parts[1]` for the oauth callback) now drives every keyword comparison, and the resolved surface name is normalized to lowercase, so `/Settings`, `/FEEDS`, `/Profile/foo`, `/OAuth/Callback` resolve instead of silently falling through to the default feed route.
+    - **Verified against the atproto specs** (in `docs/atproto-website/.../specs/`) that the keyword-only lowercasing is correct: handles are *not* case-sensitive and are normalized to lowercase (`handle/en.mdx:25,166`; `@atproto/syntax` `normalizeHandle` = `handle.toLowerCase()`), so passing the actor through unchanged is safe; **record keys ARE case-sensitive** (`record-key/en.mdx:53`), so the code lowercases only the `"post"` keyword (`seg2`) and preserves `parts[3]` (the rkey) and the actor verbatim.
+    - Trailing/duplicate slashes were already collapsed by `.filter(Boolean)` (`/feeds/`, `//feeds` → same route); added a comment documenting that and a test locking it in.
+  - Added `src/router.test.ts` (12 Vitest cases): every route shape, q-param parsing, surface list, default fallback, undecodable-path fallback, and the new trailing-slash + case-insensitive-keyword robustness cases. `npm test` green (74 tests total), `npm run build` green (tsc, vite, audit initial JS 120 kB gzip, reader + layout + rich-text verifiers).
   - Relevant files/functions found:
-    - `src/router.ts`: `getRouteState`, the `surfaces` `Set`.
+    - `src/router.ts`: `getRouteState`, the module-scope `SURFACES` `Set`.
+    - `src/router.test.ts`: behavioral coverage for `getRouteState`.
 - [ ] Gate the per-request `CustomEvent` dispatch behind `import.meta.env.DEV`.
   - Severity: low. `src/api.ts:153` dispatches a `bigbsky:api-request`
     `CustomEvent` on every request for the DevInspector, including in production.
