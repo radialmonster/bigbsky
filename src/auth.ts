@@ -12,6 +12,11 @@ import {
   resolveHandle,
   searchPosts,
 } from "./api";
+import {
+  safeLocalStorageGet,
+  safeLocalStorageRemove,
+  safeLocalStorageSet,
+} from "./lib/storage";
 
 const productionClientId = "https://bigbsky.com/oauth-client-metadata.json";
 const handleResolver = "https://bsky.social";
@@ -34,30 +39,6 @@ async function readPostBookmarked(agent: InstanceType<typeof import("@atproto/ap
   const response = await asAppViewAgent(agent).app.bsky.feed.getPostThread({ uri, depth: 0, parentHeight: 0 });
   const thread = response.data.thread as ThreadNode;
   return "post" in thread ? !!thread.post.viewer?.bookmarked : false;
-}
-
-function safeLocalStorageSet(key: string, value: string) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // Browser-local auth hints are best-effort; OAuth state lives in the client store.
-  }
-}
-
-function safeLocalStorageRemove(key: string) {
-  try {
-    localStorage.removeItem(key);
-  } catch {
-    // Ignore storage-denied environments.
-  }
-}
-
-function safeLocalStorageGet(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
 }
 
 function isDeletedSessionError(error: unknown) {

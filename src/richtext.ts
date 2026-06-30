@@ -1,4 +1,5 @@
 import type { RichTextFacet } from "./api";
+import { safeHttpUrl } from "./lib/url";
 
 // Pure, framework-free segmentation of Bluesky rich-text facets.
 //
@@ -19,21 +20,6 @@ export type RichTextSegment =
 const LINK_TYPE = "app.bsky.richtext.facet#link";
 const MENTION_TYPE = "app.bsky.richtext.facet#mention";
 const TAG_TYPE = "app.bsky.richtext.facet#tag";
-
-// Minimal http(s) URL guard, mirroring App.tsx's safeHttpUrl. A facet link
-// whose uri is not a normal web URL is downgraded to plain text rather than
-// rendered as a clickable anchor.
-function safeHttpUri(value?: string | null): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "http:" ? url.href : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 export function segmentRichText(
   text: string,
@@ -103,7 +89,7 @@ export function segmentRichText(
     const type = feature?.$type;
 
     if (type === LINK_TYPE && feature?.uri) {
-      const uri = safeHttpUri(feature.uri);
+      const uri = safeHttpUrl(feature.uri);
       if (uri) {
         segments.push({ kind: "link", text: segment, uri });
       } else {

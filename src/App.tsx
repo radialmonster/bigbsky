@@ -71,6 +71,13 @@ import { postSortAt } from "./lib/time";
 import { orderBySavedOrder } from "./lib/feed-order";
 import { isPinnedFeedMeta } from "./lib/feed-meta";
 import {
+  safeLocalStorageGet,
+  safeLocalStorageRemove,
+  safeLocalStorageSet,
+  safeSessionStorageRemove,
+} from "./lib/storage";
+import { safeHttpUrl } from "./lib/url";
+import {
   MOBILE_SCROLL_QUERY,
   armScrollRestore,
   readScrollOffset,
@@ -251,53 +258,6 @@ function readShowMedia() {
     return localStorage.getItem(showMediaStorageKey) !== "false";
   } catch {
     return true;
-  }
-}
-
-function safeLocalStorageSet(key: string, value: string) {
-  try {
-    localStorage.setItem(key, value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function safeLocalStorageRemove(key: string) {
-  try {
-    localStorage.removeItem(key);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function safeLocalStorageGet(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function safeSessionStorageRemove(key: string) {
-  try {
-    sessionStorage.removeItem(key);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function safeHttpUrl(value?: string | null) {
-  if (!value) {
-    return undefined;
-  }
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "http:" ? url.href : undefined;
-  } catch {
-    return undefined;
   }
 }
 

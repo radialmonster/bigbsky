@@ -205,6 +205,37 @@
     (115 tests / 7 files); `npm run build` green (tsc, vite, audit initial JS
     121 kB gzip, reader + layout + rich-text verifiers).
     Remaining helper slices: `read*`/`safe*` storage readers, `resolveHandle` cache.
+  - Progress (2026-06-30): **slice 5 — safe storage/URL guards extracted, tested,
+    and de-duplicated across modules.** Pulled the best-effort Web Storage helpers
+    (`safeLocalStorageGet`/`safeLocalStorageSet`/`safeLocalStorageRemove`/
+    `safeSessionStorageRemove`) into `src/lib/storage.ts` and the http(s) URL guard
+    into `src/lib/url.ts` (`safeHttpUrl`). These were previously **triplicated**:
+    `src/App.tsx` had all five, `src/auth.ts` carried its own copies of the three
+    localStorage helpers (returning void instead of boolean), and `src/richtext.ts`
+    had a private `safeHttpUri` clone. All three now import the shared helpers, so
+    the guard logic lives once. Behavior preserved: auth.ts's call sites ignore the
+    return value, so importing the boolean-returning variants is a no-op for them;
+    richtext's `safeHttpUri(...)` call became `safeHttpUrl(...)` (identical logic).
+    - `resolveHandle` cache: already lives in `src/api.ts` with behavioral tests
+      (`src/api.test.ts`), so the remaining-slices note above was stale on that
+      point — only the `read*`/`safe*` storage readers were left, and the `safe*`
+      half is now done. The higher-level `read*` preference parsers
+      (`readDensityPreferences`, `readColumnPreferences`, `readComposerDraft`, …)
+      remain inline in App.tsx for a future slice.
+    - Added `src/lib/storage.test.ts` (8 tests: round-trip, missing-key null,
+      remove, and the throw-safety of each op via a mocked `Storage.prototype`
+      throwing getItem/setItem/removeItem) and `src/lib/url.test.ts` (5 tests:
+      nullish/empty → undefined, https/http pass-through normalized to href,
+      non-web schemes rejected incl. `javascript:`/`data:`/`file:`/`mailto:`/`at:`/
+      `did:`, unparseable/relative rejected).
+    - Upgraded `scripts/verify-richtext.mjs` from esbuild `transform` (single-file
+      data: module) to esbuild `build` with `bundle: true`, since richtext.ts now
+      has a runtime `./lib/url` import the old transpile couldn't resolve. Bundling
+      inlines the real `safeHttpUrl` and drops the type-only `./api` import, so the
+      harness still exercises the real shipped module graph.
+    - `npm test` green (128 tests / 9 files); `npm run build` green (tsc, vite,
+      audit initial JS 121 kB gzip, reader + layout + rich-text verifiers).
+    Remaining helper slices: the `read*` preference parsers in App.tsx.
   - Suggested lowest-risk first slices, each independently shippable:
     1. Extract pure helpers (the `read*`/`safe*`/`readScrollOffset`/
        `scrollOffsetTo`/`restoreScrollOffset`/`postSortAt` cluster) into
@@ -233,7 +264,8 @@
       - `npm test` green (98 tests / 5 files); `npm run build` green (tsc, vite, audit initial JS 121 kB gzip, reader + layout + rich-text verifiers).
     - Progress (2026-06-30): **slice 3 — feed-order sort** extracted to `src/lib/feed-order.ts` (`orderBySavedOrder`) with `src/lib/feed-order.test.ts` (8 tests). Covers the `orderedSubscribedFeeds` ordering behavior. `npm test` green (106 tests / 6 files).
     - Progress (2026-06-30): **slice 4 — `isPinnedFeedMeta` validator** extracted to `src/lib/feed-meta.ts` with `src/lib/feed-meta.test.ts` (9 tests). `npm test` green (115 tests / 7 files).
-    - Still open: keep porting the remaining regex assertions to real tests and delete each as it gains behavioral coverage. Next helper extractions to cover: `resolveHandle` cache, the `read*`/`safe*` storage readers.
+    - Progress (2026-06-30): **slice 5 — safe storage/URL guards** extracted to `src/lib/storage.ts` + `src/lib/url.ts` (de-duplicating triplicated copies across App.tsx/auth.ts/richtext.ts) with `src/lib/storage.test.ts` (8 tests) + `src/lib/url.test.ts` (5 tests). Upgraded `verify-richtext.mjs` to esbuild bundling so richtext's new `./lib/url` import resolves. `npm test` green (128 tests / 9 files). `resolveHandle` cache was already extracted to `src/api.ts` with `src/api.test.ts`.
+    - Still open: keep porting the remaining regex assertions to real tests and delete each as it gains behavioral coverage. Next helper extractions to cover: the `read*` preference parsers (`readDensityPreferences`, `readColumnPreferences`, `readComposerDraft`, `readRecentItems`, …) still inline in App.tsx.
   - Severity: high. `scripts/verify-reader-behavior.mjs` and
     `scripts/verify-layout-behavior.mjs` are 100% `readFileSync` + regex (e.g.
     `verify-layout-behavior.mjs:29` asserts a specific scroll-compensation

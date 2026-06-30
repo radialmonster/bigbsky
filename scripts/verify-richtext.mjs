@@ -7,18 +7,25 @@
 //
 // Reference: https://docs.bsky.app/docs/advanced-guides/post-richtext
 //
-// The helper is TypeScript with a type-only import of ./api, so we transpile it
-// to a data: module via esbuild (a Vite dependency) and import the result. This
-// keeps the test exercising the real shipped logic rather than a re-implementation.
+// The helper is TypeScript with a type-only import of ./api and a runtime import
+// of ./lib/url, so we bundle it via esbuild (a Vite dependency) and import the
+// result. Bundling inlines the real ./lib/url helper and drops the type-only
+// ./api import, keeping the test exercising the real shipped module graph rather
+// than a re-implementation.
 
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { transform } from "esbuild";
+import { build } from "esbuild";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const source = readFileSync(resolve(here, "../src/richtext.ts"), "utf8");
-const { code } = await transform(source, { loader: "ts", format: "esm" });
+const result = await build({
+  entryPoints: [resolve(here, "../src/richtext.ts")],
+  bundle: true,
+  format: "esm",
+  write: false,
+  platform: "neutral",
+});
+const code = result.outputFiles[0].text;
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(code).toString("base64")}`;
 const { segmentRichText } = await import(moduleUrl);
 
