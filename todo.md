@@ -722,22 +722,36 @@ extracted/extended so the fixes are unit-tested in `src/lib/threads.test.ts`.)
     (The report's "thread detail shows the date" was the case where you click into the
     quoted post and view it as the *main* post, where the normal `PostCard` timestamp
     renders — as a nested quote its time was missing everywhere.)
-  - Done: added a `quote-timestamp` link to the `QuotedPostCard` header, mirroring the
-    main post card's timestamp. It derives the label from `postSortAt(quotedPost)` /
-    `formatPostTime` (the quoted post's own `record.createdAt` / `indexedAt`, present in
-    the `record#viewRecord` embed) and links to the **quoted post's own** permalink via
-    `postPath(quotedPost) ?? postBskyUrl(quotedPost)` (clicking opens that quoted thread,
-    not the outer quoting post). Guarded so it no-ops when the quote carries no parseable
-    time. Added `.quote-timestamp` styles in `src/styles.css` (muted, `:hover` matches
-    `.post-timestamp`).
+  - Done: added a timestamp link to the `QuotedPostCard` header. It derives the label from
+    `postSortAt(quotedPost)` / `formatPostTime` (the quoted post's own `record.createdAt` /
+    `indexedAt`, present in the `record#viewRecord` embed) and links to the **quoted post's
+    own** permalink via `postPath(quotedPost) ?? postBskyUrl(quotedPost)` (clicking opens
+    that quoted thread, not the outer quoting post). Guarded so it no-ops when the quote
+    carries no parseable time.
+  - Style consistency (per operator): the quote header now reuses the **exact same**
+    author-identity markup + CSS as a normal post card so name / @handle / timestamp render
+    identically (just inset in the quote box with a smaller avatar). `QuotedPostCard`'s
+    header was restructured to the shared contract — `.post-author-block` >
+    `a.author-button > strong` (name) + `.post-byline` > `span` (@handle) +
+    `span[aria-hidden]` ("·") + `a.post-timestamp` — instead of its old bespoke layout
+    (name+handle crammed into one `author-button`, 17px/15px fonts). Removed the
+    quote-specific `.quote-header strong`/`span` font overrides and the one-off
+    `.quote-timestamp` rule; extended `.post-header .post-timestamp` and the `.compact`
+    name/byline rules to also cover `.quote-header`. Added a **"COMMON STYLE GUIDE — post
+    author identity"** banner comment in `src/styles.css` above the shared block documenting
+    the markup contract and that the identity must be changed there (not per-surface) so the
+    two never drift again.
   - Verified: `npm run build` passes (tsc, vite, audit initial JS 121 kB gzip, reader +
     layout + rich-text verifiers all green). Drove the running dev server via
     `scripts/cdp.mjs` against `/profile/wario64.bsky.social`: both quote cards now render
     a timestamp ("Jun 27, 2026, 11:39 AM" / "Jun 25, 2026, 1:00 PM") whose href is the
     **quoted** post's permalink (`/post/3mpbs6ttnyc2b`), distinct from the outer post's
     permalink (`/post/3mphrhathsk2q`) — confirming the inner timestamp links directly to
-    the quoted post, not the quoting one. Screenshot confirmed the header layout; no
-    console errors.
+    the quoted post, not the quoting one. Also measured computed styles: post vs quote
+    name/handle/timestamp font-sizes + timestamp color now match exactly (e.g. 14px name /
+    12px handle / 12px timestamp in compact density; both inherit 16px name in normal), and
+    the quote byline DOM order matches the post (`@handle`, hidden `·`, visible
+    `post-timestamp`). Screenshot confirmed the header layout; no console errors.
   - Reported: quoted posts — at least quoted threads — don't render the author date/time in the quote header in some surfaces. The author + handle are shown (and an "Open quoted thread" link appears under the handle), but the date/time is missing. That also means the user can't get/open the quoted post's permalink from that surface (the timestamp is usually the permalink affordance).
   - Reproduced surfaces:
     - In a **feed** (e.g. the Home timeline): quoted post header shows author + handle, **no date/time**.

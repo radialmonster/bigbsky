@@ -9335,7 +9335,7 @@ function QuotedPostCard({
   const quoteTimestampLink =
     quotedPost && quoteTimeLabel ? (
       <a
-        className="quote-timestamp"
+        className="post-timestamp"
         href={postPath(quotedPost) ?? postBskyUrl(quotedPost)}
         onClick={(event) => onOpenPost && handleInternalLinkClick(event, () => onOpenPost(quotedPost))}
         title={`Open quoted post posted ${quoteTimeLabel}`}
@@ -9351,15 +9351,20 @@ function QuotedPostCard({
         <header className="quote-header">
           <Avatar profile={record.author} />
           <div className="quote-header-main">
-            <a
-              className="author-button"
-              href={profilePath(record.author as Profile)}
-              onClick={(event) => onOpenProfile && handleInternalLinkClick(event, () => onOpenProfile(record.author as Profile))}
-            >
-              <strong>{displayName(record.author)}</strong>
-              <span>@{record.author.handle}</span>
-            </a>
-            {quoteTimestampLink}
+            <div className="post-author-block">
+              <a
+                className="author-button"
+                href={profilePath(record.author as Profile)}
+                onClick={(event) => onOpenProfile && handleInternalLinkClick(event, () => onOpenProfile(record.author as Profile))}
+              >
+                <strong>{displayName(record.author)}</strong>
+              </a>
+              <div className="post-byline">
+                <span>@{record.author.handle}</span>
+                {quoteTimestampLink && <span aria-hidden="true">·</span>}
+                {quoteTimestampLink}
+              </div>
+            </div>
             {hiddenMediaControl}
             {openQuotedThreadButton}
           </div>

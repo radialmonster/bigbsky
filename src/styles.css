@@ -2930,13 +2930,15 @@ button.surface-action {
   height: 26px;
 }
 
-.compact .post-header strong {
+.compact .post-header strong,
+.compact .quote-header strong {
   font-size: 14px;
   line-height: 1.1;
 }
 
 .compact .post-byline,
 .compact .post-header span,
+.compact .quote-header span,
 .compact .reason {
   font-size: 12px;
   line-height: 1.1;
@@ -3017,6 +3019,24 @@ button.surface-action {
   color: #fff;
 }
 
+/* ============================================================================
+   COMMON STYLE GUIDE — post author identity (name / handle / timestamp)
+   ----------------------------------------------------------------------------
+   The author block below is the single source of truth for how a post's author
+   name, @handle, and timestamp look. It is reused verbatim by:
+     - the main post card header (.post-header)
+     - the quoted-post card header (.quote-header), inset in the quote box
+   Markup contract (keep both call sites in sync — see PostCard / QuotedPostCard
+   in src/App.tsx):
+     .post-author-block
+       > a.author-button > strong            (display name, 16px)
+       > .post-byline                         (muted, 13px)
+           > span                             (@handle)
+           > span[aria-hidden] ("·")          (hidden; for copy/AT only)
+           > a.post-timestamp                 (links to that post's permalink)
+   To restyle the identity, change it HERE so post and quote stay identical.
+   Do NOT add name/handle/timestamp size overrides scoped to one surface.
+   ============================================================================ */
 .post-header {
   display: grid;
   grid-template-columns: 46px minmax(0, 1fr);
@@ -3083,7 +3103,8 @@ button.surface-action {
   color: var(--app-text-muted);
 }
 
-.post-header .post-timestamp {
+.post-header .post-timestamp,
+.quote-header .post-timestamp {
   width: auto;
   height: auto;
   min-width: 0;
@@ -3604,6 +3625,12 @@ button.surface-action {
   background: rgba(255, 255, 255, 0.03);
 }
 
+/* The quoted-post card header reuses the shared post-identity styles
+   (.post-author-block / .author-button / .post-byline / .post-timestamp defined
+   above) so the author name, handle, and timestamp render with the exact same
+   spacing, sizes, and colors as a normal post — just inset in the quote box with
+   a smaller avatar. Keep quote-specific rules here limited to the box/avatar; do
+   not re-declare name/handle/timestamp sizes (that would re-introduce drift). */
 .quote-header {
   display: grid;
   grid-template-columns: 34px 1fr;
@@ -3630,27 +3657,6 @@ button.surface-action {
   padding: 5px 9px;
   border-radius: 8px;
   font-size: 14px;
-}
-
-.quote-header strong {
-  font-size: 17px;
-}
-
-.quote-header span {
-  color: var(--app-text-muted);
-  font-size: 15px;
-}
-
-.quote-timestamp {
-  justify-self: start;
-  color: var(--app-text-muted);
-  font-size: 14px;
-  text-decoration: none;
-}
-
-.quote-timestamp:hover {
-  color: var(--bsky-blue-soft);
-  text-decoration: underline;
 }
 
 .quote-text {
