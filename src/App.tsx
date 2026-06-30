@@ -149,6 +149,27 @@ import { displayName, feedSources, navigationItems, type FeedSource } from "./so
 const navIcons = [Home, Hash, List, Bookmark, Search, Compass, User, Settings];
 const InfoPage = lazy(() => import("./InfoPage"));
 
+// Schedule a one-shot timeout that auto-clears on unmount (and supersedes any
+// still-pending one). Used for transient "Copied"/"Shared" feedback timers so
+// they can't fire setState against a card that unmounted mid-countdown.
+function useResetTimeout(): (callback: () => void, delayMs: number) => void {
+  const timeoutRef = useRef<number | undefined>(undefined);
+  useEffect(
+    () => () => {
+      if (timeoutRef.current !== undefined) {
+        window.clearTimeout(timeoutRef.current);
+      }
+    },
+    [],
+  );
+  return useCallback((callback: () => void, delayMs: number) => {
+    if (timeoutRef.current !== undefined) {
+      window.clearTimeout(timeoutRef.current);
+    }
+    timeoutRef.current = window.setTimeout(callback, delayMs);
+  }, []);
+}
+
 // Lets deeply-nested post cards open an in-app hashtag search without threading
 // a callback through every PostCard/VirtualPostList call site.
 const TagSearchContext = createContext<((tag: string) => void) | null>(null);
@@ -6612,6 +6633,7 @@ function ProfileDetailHeader({
   canPost: boolean;
 }) {
   const [copied, setCopied] = useState(false);
+  const scheduleReset = useResetTimeout();
   // Follow state is seeded from the authenticated profile's viewer.following
   // record URI and re-synced when the viewed profile changes.
   const [followUri, setFollowUri] = useState<string | undefined>(profile?.viewer?.following);
@@ -6720,7 +6742,7 @@ function ProfileDetailHeader({
             onClick={() => {
               void navigator.clipboard?.writeText(bskyUrl);
               setCopied(true);
-              window.setTimeout(() => setCopied(false), 1600);
+              scheduleReset(() => setCopied(false), 1600);
             }}
           >
             {copied ? "Copied" : "Copy link"}
@@ -8153,6 +8175,7 @@ function ThreadedPostCard({
   const likeCtx = useContext(LikeContext);
   const bookmarkCtx = useContext(BookmarkContext);
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
+  const scheduleReset = useResetTimeout();
   const posts = [thread.root.post, ...thread.replies.map((item) => item.post)];
   const rootPost = thread.root.post;
   const likeView = likeCtx?.getState(rootPost);
@@ -8199,7 +8222,7 @@ function ThreadedPostCard({
       }
     }
 
-    window.setTimeout(() => setShareState("idle"), 1800);
+    scheduleReset(() => setShareState("idle"), 1800);
   };
 
   return (
@@ -8686,6 +8709,7 @@ function PostActionBar({
   const blockView = blockCtx?.getState(post.author);
   const deletePostCtx = useContext(DeletePostContext);
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
+  const scheduleReset = useResetTimeout();
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const moreMenuRef = useRef<HTMLDetailsElement | null>(null);
   const { showReplyLimited, handleReplyClick } = useReplyGate(post, onReply);
@@ -8743,7 +8767,7 @@ function PostActionBar({
       }
     }
 
-    window.setTimeout(() => setShareState("idle"), 1800);
+    scheduleReset(() => setShareState("idle"), 1800);
   };
 
   return (
@@ -8889,6 +8913,7 @@ function CombinedThreadViewCard({
   const likeCtx = useContext(LikeContext);
   const bookmarkCtx = useContext(BookmarkContext);
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
+  const scheduleReset = useResetTimeout();
   const rootPost = parts[0].node.post;
   const posts = parts.map((part) => part.node.post);
   const likeView = likeCtx?.getState(rootPost);
@@ -8936,7 +8961,7 @@ function CombinedThreadViewCard({
       }
     }
 
-    window.setTimeout(() => setShareState("idle"), 1800);
+    scheduleReset(() => setShareState("idle"), 1800);
   };
 
   return (
@@ -10812,6 +10837,7 @@ function FeedContextPanel({
   onTogglePinned: (source: FeedSource) => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const scheduleReset = useResetTimeout();
   const isList = isListUri(source.uri);
   const avatar = isList ? listMetadata?.avatar : metadata?.avatar;
   const title = (isList ? listMetadata?.name : metadata?.displayName) || source.label;
@@ -10864,7 +10890,7 @@ function FeedContextPanel({
           onClick={() => {
             void navigator.clipboard?.writeText(source.uri);
             setCopied(true);
-            window.setTimeout(() => setCopied(false), 1600);
+            scheduleReset(() => setCopied(false), 1600);
           }}
         >
           {copied ? "Copied URI" : "Copy URI"}

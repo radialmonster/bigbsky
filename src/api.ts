@@ -150,14 +150,18 @@ async function getJson<T>(path: string, params: Record<string, string>, signal?:
   const url = new URL(`${host}/${path}`);
   Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
 
-  window.dispatchEvent(
-    new CustomEvent("bigbsky:api-request", {
-      detail: {
-        host: url.host,
-        path,
-      },
-    }),
-  );
+  // The DevInspector (and its listener) only exist under import.meta.env.DEV,
+  // so this per-request CustomEvent is dead weight in production — gate it.
+  if (import.meta.env.DEV) {
+    window.dispatchEvent(
+      new CustomEvent("bigbsky:api-request", {
+        detail: {
+          host: url.host,
+          path,
+        },
+      }),
+    );
+  }
 
   const response = await fetch(url, { signal });
   if (!response.ok) {

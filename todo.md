@@ -221,13 +221,6 @@
     Pin the version and add a regression check.
   - Relevant files/functions found:
     - `src/auth.ts`: `signOut`, `clearOAuthLocalSession`.
-- [ ] Gate the per-request `CustomEvent` dispatch behind `import.meta.env.DEV`.
-  - Severity: low. `src/api.ts:153` dispatches a `bigbsky:api-request`
-    `CustomEvent` on every request for the DevInspector, including in production.
-    Cheap, but production-only noise — gate it behind `import.meta.env.DEV`.
-  - Relevant files/functions found:
-    - `src/api.ts`: `getJson` (`:149`), the `bigbsky:api-request` dispatch.
-    - `src/App.tsx`: `DevInspector` consumer.
 - [ ] Service worker: evict stale hashed `/assets/*` across deploys.
   - Severity: low. `public/sw.js:51` caches `/assets/*` cache-first with no
     per-entry eviction; only a whole `CACHE_NAME` bump (`bigbsky-shell-v5`)
@@ -251,14 +244,6 @@
     each component's styles. (Already flagged in `docs/plan.md`; tracked here.)
   - Relevant files/functions found:
     - `src/styles.css`.
-- [ ] Clear copy/share feedback `setTimeout`s on unmount.
-  - Severity: low. The 5-min notification poll correctly clears
-    (`src/App.tsx:1783-1787`), but the copy/share feedback timeouts (1.6–1.8 s at
-    `src/App.tsx:6675`, `8238`, `8772`, `8958`, `10647`) are not cleared on
-    unmount — trivial leaks if a card unmounts mid-countdown. Clear them in the
-    effect cleanup.
-  - Relevant files/functions found:
-    - `src/App.tsx`: the `setCopied`/`setShareState` `setTimeout` call sites.
 - [ ] Add a Follow button to the feed-page header for unsubscribed feeds. (IMPLEMENTED 2026-06-30 — remaining: signed-in confirmation only.)
   - Done (2026-06-30): added a Follow button beside the feed title in the `.workspace-header`.
     - `src/App.tsx`: new derived `canFollowActiveFeed` = `route.kind === "feed" && signedInDid && isFeedGeneratorUri(activeSource.uri) && !followedFeedUris.has(activeSource.uri)` (so it shows only for a signed-in viewer on a custom feed generator they have not subscribed to; hidden for the Following timeline, lists, and signed-out viewers). When true, a Follow button renders between the `<h1>` title and the `.nav-toggle` in the workspace header. It reuses the existing `toggleFollowFeed(activeSource.uri, label)` handler (the same one the `/feeds` + Discover surfaces use — no duplicated logic), shows a `Loader2` spinner while `followBusyUri === activeSource.uri`, and disables during the write. Per the spec, when already subscribed the button simply does not render (no Following/Unfollow state in the header — that lives on `/feeds`).
