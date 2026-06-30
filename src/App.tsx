@@ -69,6 +69,7 @@ import {
 import { segmentRichText } from "./richtext";
 import { postSortAt } from "./lib/time";
 import { orderBySavedOrder } from "./lib/feed-order";
+import { isPinnedFeedMeta } from "./lib/feed-meta";
 import {
   MOBILE_SCROLL_QUERY,
   armScrollRestore,
@@ -582,24 +583,6 @@ function readColumnPreferences(): ColumnVisibility {
   } catch {
     return { feeds: true, right: true };
   }
-}
-
-function isPinnedFeedMeta(value: unknown): value is FeedSource {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const source = value as Partial<FeedSource>;
-  return (
-    typeof source.id === "string" &&
-    source.id.startsWith("at://") &&
-    typeof source.uri === "string" &&
-    typeof source.label === "string" &&
-    typeof source.description === "string" &&
-    (source.group === "Core" ||
-      source.group === "Official" ||
-      source.group === "Discovered" ||
-      source.group === "Project") // legacy alias for Discovered; kept so older pins still load
-  );
 }
 
 function readPinnedFeedMeta(): FeedSource[] {

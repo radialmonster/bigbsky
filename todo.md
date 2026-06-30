@@ -191,6 +191,20 @@
     mix). `npm test` green (106 tests / 6 files); `npm run build` green (tsc, vite,
     audit initial JS 121 kB gzip, reader + layout + rich-text verifiers).
     Remaining helper slices: `read*`/`safe*` storage readers, `resolveHandle` cache.
+  - Progress (2026-06-30): **slice 4 — pinned-feed-meta validator extracted +
+    tested.** Pulled the pure `isPinnedFeedMeta(value): value is FeedSource`
+    type-guard out of `src/App.tsx` into `src/lib/feed-meta.ts` (App.tsx imports
+    it; `readPinnedFeedMeta` still filters with it at its call site, so the
+    `verify-reader-behavior.mjs` wiring regex still matches). Logic preserved
+    verbatim: non-null object; `id` string starting `at://`; `uri`/`label`/
+    `description` strings; `group` ∈ {Core, Official, Discovered, Project (legacy
+    alias)}. Added `src/lib/feed-meta.test.ts` — 9 tests (well-formed record, every
+    persisted group incl. legacy Project, rejects My Feeds / unknown / missing
+    group, non-object + array rejection, `at://`-prefixed id requirement, string
+    requirements for each field, empty-string fields still valid). `npm test` green
+    (115 tests / 7 files); `npm run build` green (tsc, vite, audit initial JS
+    121 kB gzip, reader + layout + rich-text verifiers).
+    Remaining helper slices: `read*`/`safe*` storage readers, `resolveHandle` cache.
   - Suggested lowest-risk first slices, each independently shippable:
     1. Extract pure helpers (the `read*`/`safe*`/`readScrollOffset`/
        `scrollOffsetTo`/`restoreScrollOffset`/`postSortAt` cluster) into
@@ -218,7 +232,8 @@
       - Retired the three now-redundant source-regex guardrails in `verify-reader-behavior.mjs` (the `readScrollOffset`/`scrollOffsetTo`/`scrollFeedToTop` *definition* asserts) since `scroll.test.ts` covers that behavior; the App.tsx *call-site* asserts (`shouldSuppressScrollSave(offset)`, `restoreScrollOffset(...)`, per-key caching) stay.
       - `npm test` green (98 tests / 5 files); `npm run build` green (tsc, vite, audit initial JS 121 kB gzip, reader + layout + rich-text verifiers).
     - Progress (2026-06-30): **slice 3 — feed-order sort** extracted to `src/lib/feed-order.ts` (`orderBySavedOrder`) with `src/lib/feed-order.test.ts` (8 tests). Covers the `orderedSubscribedFeeds` ordering behavior. `npm test` green (106 tests / 6 files).
-    - Still open: keep porting the remaining regex assertions to real tests and delete each as it gains behavioral coverage. Next helper extractions to cover: `resolveHandle` cache, `readPinnedFeedMeta` validators (`isPinnedFeedMeta`).
+    - Progress (2026-06-30): **slice 4 — `isPinnedFeedMeta` validator** extracted to `src/lib/feed-meta.ts` with `src/lib/feed-meta.test.ts` (9 tests). `npm test` green (115 tests / 7 files).
+    - Still open: keep porting the remaining regex assertions to real tests and delete each as it gains behavioral coverage. Next helper extractions to cover: `resolveHandle` cache, the `read*`/`safe*` storage readers.
   - Severity: high. `scripts/verify-reader-behavior.mjs` and
     `scripts/verify-layout-behavior.mjs` are 100% `readFileSync` + regex (e.g.
     `verify-layout-behavior.mjs:29` asserts a specific scroll-compensation
