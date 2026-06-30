@@ -17,9 +17,22 @@ import {
   safeLocalStorageRemove,
   safeLocalStorageSet,
 } from "./lib/storage";
+import {
+  createIdentityResolver,
+  type IdentityResolver,
+  type ResolveIdentityOptions,
+} from "@atproto-labs/identity-resolver";
+import { AtprotoDohHandleResolver } from "@atproto-labs/handle-resolver";
 
 const productionClientId = "https://bigbsky.com/oauth-client-metadata.json";
+// Primary handle->DID host. The OAuth client resolves a typed handle through
+// this first; if it is unreachable (e.g. regionally blocked) sign-in fails with
+// "Failed to resolve identity" before the account is ever contacted.
 const handleResolver = "https://bsky.social";
+// Independent fallback for handle->DID: DNS-over-HTTPS reads the _atproto TXT
+// record via Cloudflare, and the well-known path hits the handle's own domain,
+// so neither hop depends on bsky.social.
+const handleResolverFallback = "https://cloudflare-dns.com/dns-query";
 const appViewDid = "did:web:api.bsky.app";
 const appViewServiceType = "bsky_appview";
 const activeDidKey = "bigbsky:auth:active-did";
@@ -106,12 +119,40 @@ export function looksLikeOAuthCallback() {
   return params.has("state") && (params.has("code") || params.has("error"));
 }
 
+// Tries identity resolvers in order, falling through on failure so a blocked
+// primary host yields to an independent fallback instead of hard-failing. An
+// aborted signal short-circuits the remaining attempts.
+class FallbackIdentityResolver implements IdentityResolver {
+  constructor(private readonly resolvers: readonly IdentityResolver[]) {}
+
+  async resolve(identifier: string, options?: ResolveIdentityOptions) {
+    let lastError: unknown = new Error("Identity resolution failed.");
+    for (const resolver of this.resolvers) {
+      options?.signal?.throwIfAborted();
+      try {
+        return await resolver.resolve(identifier, options);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError;
+  }
+}
+
+function buildIdentityResolver(): IdentityResolver {
+  const primary = createIdentityResolver({ handleResolver });
+  const fallback = createIdentityResolver({
+    handleResolver: new AtprotoDohHandleResolver({ dohEndpoint: handleResolverFallback }),
+  });
+  return new FallbackIdentityResolver([primary, fallback]);
+}
+
 async function getClient() {
   clientPromise ??= (async () => {
     const [{ BrowserOAuthClient }, clientId] = await Promise.all([import("@atproto/oauth-client-browser"), getClientId()]);
     return BrowserOAuthClient.load({
       clientId,
-      handleResolver,
+      identityResolver: buildIdentityResolver(),
     });
   })();
   return clientPromise;
@@ -252,11 +293,59 @@ export async function initAuthSession(): Promise<AuthInitResult> {
   }
 }
 
+// Turns a sign-in failure into a message an end user can act on. The raw error
+// is usually the OAuth client's "Failed to resolve identity: ..." wrapper; we
+// walk the cause chain to tell a network/region block (bsky.social unreachable)
+// apart from a bad handle, since both surface as the same identity error. The
+// original error is preserved as `cause` for devtools/support.
+function describeSignInError(error: unknown, input: string): string {
+  const parts: string[] = [];
+  for (let cause: unknown = error; cause instanceof Error; cause = (cause as Error & { cause?: unknown }).cause) {
+    parts.push(cause.name, cause.message);
+  }
+  const detail = parts.join(" ").toLowerCase();
+  const whom = input ? `"${input}"` : "that account";
+
+  const invalidHandle =
+    detail.includes("invalid handle") ||
+    detail.includes("does not resolve") ||
+    detail.includes("does not include the handle");
+
+  const network =
+    detail.includes("failed to fetch") ||
+    detail.includes("networkerror") ||
+    detail.includes("network request failed") ||
+    detail.includes("load failed") ||
+    detail.includes("timed out") ||
+    detail.includes("timeout") ||
+    detail.includes("cors") ||
+    detail.includes("err_blocked") ||
+    detail.includes("blocked by response") ||
+    detail.includes("econnrefused") ||
+    detail.includes("enotfound") ||
+    /\b5\d{2}\b/.test(detail);
+
+  if (invalidHandle) {
+    return `BigBsky couldn't resolve ${whom}. Make sure it's your full Bluesky handle (e.g. name.bsky.social), a DID, or a PDS URL — not an email address.`;
+  }
+
+  if (network) {
+    return `BigBsky couldn't reach Bluesky's sign-in servers to resolve ${whom}. This is usually a network or regional block of bsky.social, not a problem with your account. Try another network or a VPN, then sign in again.`;
+  }
+
+  return `BigBsky couldn't resolve ${whom}. If the handle is correct, your network may be blocking Bluesky (bsky.social) — try another network or a VPN, then try again.`;
+}
+
 export async function startSignIn(input: string) {
   const client = await getClient();
-  await client.signIn(input, {
-    state: crypto.randomUUID(),
-  });
+  const normalized = input.trim().replace(/^@+/, "");
+  try {
+    await client.signIn(normalized, {
+      state: crypto.randomUUID(),
+    });
+  } catch (error) {
+    throw new Error(describeSignInError(error, normalized), { cause: error });
+  }
 }
 
 export async function signOut(did?: string) {

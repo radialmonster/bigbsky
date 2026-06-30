@@ -2543,7 +2543,7 @@ export function App() {
   }
 
   async function handleSignIn(handle: string) {
-    const trimmed = handle.trim();
+    const trimmed = handle.trim().replace(/^@+/, "");
     if (!trimmed) {
       setAuthState({ status: "error", session: null, message: "Enter a Bluesky handle, DID, or PDS URL." });
       return;
