@@ -174,6 +174,24 @@
 - [x] Bug 3 — `splitTextForThread` could infinite-loop when `graphemeLimit === 0`.
   Fixed 2026-06-30. Added a `limit < 1` guard in `src/lib/threads.ts` that bails to
   a single trimmed post (latent — no call site passes < 1). Added a regression test.
+- [x] Bug A — ancestor parts in `LongThreadCard` (Separated mode) rendered dead
+  reply buttons. Fixed 2026-06-30. When you open a mid-chain self-thread post and
+  switch to Separated mode, `buildAnchoredThreadParts` produces ancestor parts whose
+  `replies` is forced to `[]` (the AppView only hydrates the anchor subtree —
+  `src/lib/threads.ts:168`), but the per-part `commentCount` still read
+  `post.replyCount`, so the button showed a non-zero count whose click was swallowed
+  (`if (part.replies.length > 0)`). `LongThreadCard` (`src/App.tsx`) now, when a part
+  has no inline replies but `commentCount > 0`, falls through to
+  `handlers.onOpenPost(post)` (opens that post in its own thread view where its
+  replies hydrate) instead of doing nothing; the `commentTitle` reflects the
+  open-thread affordance. Descendant parts (replies hydrated) toggle inline as before.
+- [x] Bug B — `MediaOnlyPostCard` ignored thread markers. Fixed 2026-06-30. A
+  standalone self-thread root shown in media density (ungrouped — e.g. search
+  results, or where `hydrateProfileSelfThreads` didn't run) displayed the raw
+  "1/N 🧵" text with no way to open the thread. `MediaOnlyPostCard` (`src/App.tsx`)
+  now computes `threadMarkerMatch(text)` and renders the same `.thread-open-chip`
+  "Open Thread i/N" button as `PostCard` (`src/App.tsx:9035`) in its expanded
+  details, wired to `onOpenPost(post)`.
 - [ ] Bug 4 — combined reply-count math assumes a linear chain (`src/App.tsx:8674`,
   `:7936`: `Σ replyCount − (posts.length − 1)`). Cosmetic; forked self-replies
   slightly inflate the external-reply total. Matches the documented approximation —

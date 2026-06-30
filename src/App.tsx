@@ -8330,6 +8330,7 @@ function MediaOnlyPostCard({
   const images = safeEmbedImages(getEmbedImages(post.embed)).slice(0, maxPostImages);
   const video = getVideoEmbed(post.embed);
   const text = post.record.text?.trim() || "";
+  const threadMarker = threadMarkerMatch(text);
   const postTimeLabel = formatPostTime(postSortAt(post));
   const viewerImages = images
     .map((image) => ({
@@ -8405,6 +8406,14 @@ function MediaOnlyPostCard({
         </button>
         {expanded && (
           <div className="media-only-details">
+            {threadMarker && (
+              <button type="button" className="thread-open-chip" onClick={() => onOpenPost?.(post)} title="Open full thread">
+                <MessageCircle size={13} />
+                <span>
+                  Open Thread {threadMarker.index}/{threadMarker.total}
+                </span>
+              </button>
+            )}
             <div className="media-only-meta">
               <a
                 className="media-only-author"
@@ -9774,10 +9783,25 @@ function LongThreadCard({
               <PostActionBar
                 post={post}
                 commentCount={commentCount}
-                commentTitle={commentCount > 0 ? "Show replies to this thread post" : "No replies to this thread post"}
+                commentTitle={
+                  part.replies.length > 0
+                    ? "Show replies to this thread post"
+                    : commentCount > 0
+                      ? "Open this thread post to see its replies"
+                      : "No replies to this thread post"
+                }
                 onOpenPost={() => {
+                  // Descendant parts carry their hydrated replies, so toggle them
+                  // inline. Ancestor parts (from buildAnchoredThreadParts) have
+                  // their replies stripped to [] — the AppView only hydrates the
+                  // anchor subtree — so an inline toggle has nothing to show. When
+                  // such a part still reports replies (commentCount > 0), open it
+                  // in its own thread view where its replies hydrate, instead of
+                  // leaving a dead button.
                   if (part.replies.length > 0) {
                     onToggleReplies(post.uri);
+                  } else if (commentCount > 0) {
+                    handlers.onOpenPost(post);
                   }
                 }}
                 onReply={handlers.onOpenReply}
