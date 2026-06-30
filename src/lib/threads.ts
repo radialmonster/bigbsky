@@ -455,6 +455,13 @@ function lastMatchEnd(text: string, pattern: RegExp, minimumEnd: number) {
 export function splitTextForThread(text: string, limit = POST_GRAPHEME_LIMIT, byteLimit = POST_BYTE_LIMIT) {
   const posts: string[] = [];
   let remaining = text.replace(/\r\n/g, "\n").trim();
+  // A non-positive grapheme limit can't make forward progress: hardSplitIndex
+  // would return 0, the chunk would be empty, and `remaining` would never
+  // shrink — an infinite loop. No real call site passes < 1 (default is
+  // POST_GRAPHEME_LIMIT), but guard defensively and emit the text as one post.
+  if (limit < 1) {
+    return remaining ? [remaining] : [];
+  }
   while (remaining && (graphemeLength(remaining) > limit || utf8ByteLength(remaining) > byteLimit)) {
     const hardEnd = hardSplitIndex(remaining, limit, byteLimit);
     const windowText = remaining.slice(0, hardEnd);

@@ -212,6 +212,14 @@ describe("splitTextForThread", () => {
     expect(parts.join("")).toBe("x".repeat(120));
   });
 
+  it("does not loop forever when the grapheme limit is non-positive", () => {
+    // A limit of 0 (or negative) makes hardSplitIndex return 0, which would spin
+    // the chunk loop forever; the guard bails to a single trimmed post.
+    expect(splitTextForThread("hello world", 0)).toEqual(["hello world"]);
+    expect(splitTextForThread("  hello world  ", -5)).toEqual(["hello world"]);
+    expect(splitTextForThread("   ", 0)).toEqual([]);
+  });
+
   it("keeps a long URL intact in one chunk when it fits the limit", () => {
     // The URL has no internal whitespace, so the splitter must break on the
     // space before it rather than mid-URL, leaving every facet whole. (A token
@@ -376,6 +384,17 @@ describe("expectedThreadMarkerTotal", () => {
       node(makePost({ uri: "p1", text: "start 1/2", offsetMs: 0 }), [node(makePost({ uri: "p2", parentUri: "p1", offsetMs: 1000 }))]),
     );
     expect(expectedThreadMarkerTotal(parts)).toBeNull();
+  });
+
+  it("recovers the total from a mid-chain anchor via buildAnchoredThreadParts", () => {
+    // Anchor at part 3 of a 5-part thread (root above via .parent). buildThreadParts
+    // alone starts at the anchor (marker 3/5, index !== 1) and yields null — the bug
+    // that left long mid-chain threads unhydrated. Walking up to the root recovers 5.
+    const rNode = nodeWithParent(makePost({ uri: "p1", text: "start 1/5", offsetMs: 0 }));
+    const aNode = nodeWithParent(makePost({ uri: "p2", text: "more 2/5", parentUri: "p1", offsetMs: 1000 }), rNode);
+    const anchor = nodeWithParent(makePost({ uri: "p3", text: "mid 3/5", parentUri: "p2", offsetMs: 2000 }), aNode);
+    expect(expectedThreadMarkerTotal(buildThreadParts(anchor))).toBeNull();
+    expect(expectedThreadMarkerTotal(buildAnchoredThreadParts(anchor))).toBe(5);
   });
 });
 

@@ -729,7 +729,12 @@ async function hydrateThreadContinuations(root: ThreadNode, signal?: AbortSignal
   let previousLastUri: string | null = null;
 
   for (let attempt = 0; attempt < 12; attempt += 1) {
-    const parts = buildThreadParts(hydrated);
+    // Use the anchored parts (walking UP the parent chain to the true root) so
+    // the 1/N marker is read from the root even when the thread was opened
+    // mid-chain (e.g. part 3 of N via a direct URL/search). buildThreadParts
+    // alone would start at the anchor, whose marker is 3/N, and
+    // expectedThreadMarkerTotal would bail — leaving the tail unhydrated.
+    const parts = buildAnchoredThreadParts(hydrated);
     const expectedTotal = expectedThreadMarkerTotal(parts);
     if (!expectedTotal || parts.length >= expectedTotal || parts.length === 0) {
       return hydrated;
@@ -8008,16 +8013,33 @@ function ThreadedPostCard({
       <div className="combined-thread-text">
         {posts.map((post, index) => {
           const segment = combinedThreadSegment(post, hideThreadMarkers);
-          const preservesLineBreaks = segment.text.includes("\n");
+          // Mirror the thread-view CombinedThreadViewCard: render the full embed
+          // set (link cards, quotes, unsupported-embed notices), not just media,
+          // so a self-thread part carrying a link card or quote isn't silently
+          // dropped from the feed. Skip a part that has neither text nor embeds.
+          const hasEmbeds =
+            getEmbedImages(post.embed).length > 0 ||
+            !!getVideoEmbed(post.embed) ||
+            !!getExternalEmbed(post.embed) ||
+            !!getRecordEmbed(post.embed) ||
+            extractFacetLinks(post.record.facets).length > 0;
+          if (!segment.text && !hasEmbeds) {
+            return null;
+          }
           return (
             <section className="combined-thread-segment" key={post.uri}>
-              <p className={preservesLineBreaks ? "post-text has-line-breaks" : "post-text"}>
+              <p className={segment.text.includes("\n") ? "post-text has-line-breaks" : "post-text"}>
                 {index > 0 && <span className="combined-thread-break" aria-hidden="true" />}
                 {segment.text
                   ? renderRichText(segment.text, segment.facets, onOpenProfile, onOpenTag)
                   : `Post ${index + 1} has no plain text.`}
               </p>
-              <PostImageVideoMedia post={post} onOpenImage={onOpenImage} />
+              <PostEmbeds
+                post={post}
+                onOpenImage={onOpenImage}
+                onOpenPost={onOpenPost}
+                onOpenProfile={onOpenProfile}
+              />
             </section>
           );
         })}

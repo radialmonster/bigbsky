@@ -152,6 +152,33 @@
     - `src/auth.ts`: `syncSavedFeedsOrder`.
     - `src/App.tsx`: `persistFeedOrder`.
 
+## From the 2026-06-30 thread code review
+
+- [x] Bug 1 — feed combined card dropped non-media embeds (link cards, quotes). Fixed
+  2026-06-30. `ThreadedPostCard` (`src/App.tsx`) now renders each self-thread part
+  with `PostEmbeds` (passing `onOpenPost`/`onOpenProfile`) instead of
+  `PostImageVideoMedia`, mirroring the thread-view `CombinedThreadViewCard`. Also
+  added the `hasEmbeds` check so a part with neither text nor embeds is skipped
+  (no more spurious "Post N has no plain text." on a link-card-only part).
+  Remaining: confirm visually in a signed-in deployed session with a self-thread
+  that carries a link card or quote (not reproducible on the local origin without
+  OAuth; logic is a faithful mirror of the verified thread-view path).
+- [x] Bug 2 — long threads opened mid-chain never hydrated their tail. Fixed
+  2026-06-30. `hydrateThreadContinuations` (`src/App.tsx`) now derives the marker
+  total from `buildAnchoredThreadParts(hydrated)` (walks UP the `.parent` chain to
+  the true root so the 1/N marker is read from the root) instead of
+  `buildThreadParts` (which started at the anchor's 3/N marker and aborted
+  hydration). Root-anchored callers are unaffected (no ancestors → identical
+  result). Added a `expectedThreadMarkerTotal` test for the mid-chain anchor case
+  in `src/lib/threads.test.ts`.
+- [x] Bug 3 — `splitTextForThread` could infinite-loop when `graphemeLimit === 0`.
+  Fixed 2026-06-30. Added a `limit < 1` guard in `src/lib/threads.ts` that bails to
+  a single trimmed post (latent — no call site passes < 1). Added a regression test.
+- [ ] Bug 4 — combined reply-count math assumes a linear chain (`src/App.tsx:8674`,
+  `:7936`: `Σ replyCount − (posts.length − 1)`). Cosmetic; forked self-replies
+  slightly inflate the external-reply total. Matches the documented approximation —
+  left as-is unless it becomes a real annoyance.
+
 ## From the 2026-06-26 code review
 
 (This was an in-session review; `docs/code-review.md` was never committed — only
