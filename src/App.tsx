@@ -9326,6 +9326,24 @@ function QuotedPostCard({
       Open quoted thread
     </button>
   ) : null;
+  // Show the quoted post's timestamp in the header (and make it the permalink
+  // affordance), matching the main post card. Without this the feed/profile
+  // quote header only showed author + handle with no way to open the quote by
+  // its timestamp. Only rendered when the quote carries a parseable time.
+  const quoteTimestamp = quotedPost ? postSortAt(quotedPost) : undefined;
+  const quoteTimeLabel = quoteTimestamp ? formatPostTime(quoteTimestamp) : null;
+  const quoteTimestampLink =
+    quotedPost && quoteTimeLabel ? (
+      <a
+        className="quote-timestamp"
+        href={postPath(quotedPost) ?? postBskyUrl(quotedPost)}
+        onClick={(event) => onOpenPost && handleInternalLinkClick(event, () => onOpenPost(quotedPost))}
+        title={`Open quoted post posted ${quoteTimeLabel}`}
+        aria-label={`Open quoted post posted ${quoteTimeLabel}`}
+      >
+        {quoteTimeLabel}
+      </a>
+    ) : null;
 
   return (
     <div className={mediaRevealed ? "quote-card revealed" : "quote-card"}>
@@ -9341,6 +9359,7 @@ function QuotedPostCard({
               <strong>{displayName(record.author)}</strong>
               <span>@{record.author.handle}</span>
             </a>
+            {quoteTimestampLink}
             {hiddenMediaControl}
             {openQuotedThreadButton}
           </div>

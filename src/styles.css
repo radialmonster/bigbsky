@@ -3641,6 +3641,18 @@ button.surface-action {
   font-size: 15px;
 }
 
+.quote-timestamp {
+  justify-self: start;
+  color: var(--app-text-muted);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.quote-timestamp:hover {
+  color: var(--bsky-blue-soft);
+  text-decoration: underline;
+}
+
 .quote-text {
   margin: 10px 0;
   color: var(--app-text);

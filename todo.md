@@ -695,3 +695,56 @@ extracted/extended so the fixes are unit-tested in `src/lib/threads.test.ts`.)
   - Relevant files/functions found:
     - `src/App.tsx`: feed-page header rendering (feed name at top of the feed column), `subscribedFeeds` state, feed route handling in `getRouteState` / `SurfaceView`.
     - `src/auth.ts`: `followFeed`, `unfollowFeed`, `getSubscribedFeeds` (saved-feeds preference read/write).
+- [ ] Investigate feeds loading pre-scrolled when clicked from the feed column.
+  - Reported: clicking a feed in the feed-selector column sometimes opens the feed already scrolled down partway (not at top). The trigger pattern is not yet identified — happens intermittently, not on every click.
+  - Likely suspects (from the existing scroll-restoration work — this looks like a symptom of restore-on-navigate landing on the wrong surface or restoring a stale offset):
+    - `restoreScrollOffset` / `rememberScroll` / the `feedCacheRef` scroll cache restoring the *previous* feed's saved offset onto the *new* feed when the route changes faster than the cache key rotates, or when the `.timeline` ref hasn't remounted yet.
+    - The scroll-restore-suppression guard (`armScrollRestore` / `shouldSuppressScrollSave`) and the multi-frame apply loop (`SCROLL_RESTORE_MAX_FRAMES`) — a misfire could re-assert a stale target onto a feed that was never scrolled.
+    - `VirtualPostList`'s height-compensation (`container.scrollTop += height - previousHeight`) firing during initial measurement and pushing `scrollTop` past 0 on a freshly-loaded feed.
+    - The restore-suppression guard arming off a persisted offset for the clicked feed from a prior visit (intended), but applying it to the same feed you're navigating away from / back to in a way that looks "pre-scrolled".
+  - Reproduce first: drive the dev server via `scripts/cdp.mjs`, click several feeds in the column (incl. revisiting one you previously scrolled), and log `readScrollOffset(timeline)` + the active scroll key at click time vs. after load settles. Find the pattern (which feeds, first-visit vs. revisit, signed-in vs. out, virtualized-row-count differences) before changing anything.
+  - Relevant files/functions found:
+    - `src/App.tsx`: `restoreScrollOffset`, `rememberScroll`, `armScrollRestore`/`shouldSuppressScrollSave`, `readScrollOffset`/`scrollOffsetTo`, the scroll-remember `useEffect` and the `surface:` restore `useEffect`, `feedCacheRef`, `VirtualPostList` (`container.scrollTop += height - previousHeight`).
+    - `scripts/cdp.mjs`: for reproducing against the running dev server.
+- [ ] Fix multi-image gallery layout inside quoted posts.
+  - Reported: in a quoted post whose embed is a multi-image gallery (more than 1 image), the images are not laid out well. For regular (non-quote) posts the image-grid sizing is tuned so images fill the width but stay no taller than the viewport — that logic works. The quote path does **not** apply the same sizing, so multi-image quotes look bad.
+  - Desired behavior: the quote's image gallery should use the same width-fill / viewport-height-cap sizing the regular post gallery uses (constrained down to the quote card's narrower width, of course), instead of whatever ad-hoc sizing it currently uses.
+  - Approach: find the function that sizes the regular post's multi-image gallery (the width-fill-but-cap-at-viewport logic the user described), confirm how it computes per-image dimensions, and reuse/share it in the quote rendering path rather than duplicating or diverging. Likely divergence is in `QuotedPostCard`'s embed rendering vs `PostEmbeds`/`PostImageVideoMedia`'s image-grid path, or in the CSS rules scoped to `.quote-card` overriding the shared `.image-grid` / `.post-media` sizing.
+  - Verify: reproduce on the running dev server via `scripts/cdp.mjs` against a quote post with a 2–4 image gallery; before/after screenshots; `npm run build` (incl. layout verifier). Look for a real public quote-with-multi-image fixture for the CDP check.
+  - Relevant files/functions found:
+    - `src/App.tsx`: `QuotedPostCard`, `QuoteCard`, `PostEmbeds`, `PostImageVideoMedia`, the regular multi-image gallery sizing logic (TBD — find the width-fill / viewport-height-cap function).
+    - `src/styles.css`: `.image-grid` / `.post-media` sizing rules, and any `.quote-card`-scoped overrides that diverge.
+- [x] Fix missing date/time (and permalink access) on quoted posts in feeds and profile views. **Done (2026-06-30).**
+  - Root cause: `QuotedPostCard` (`src/App.tsx`, the only component that renders the
+    nested quote card — shared by feeds, profiles, and thread detail via `PostEmbeds`)
+    rendered the quoted post's author + handle but **no timestamp at all**, so the
+    quoted post's date/time and its permalink affordance were missing on every surface.
+    (The report's "thread detail shows the date" was the case where you click into the
+    quoted post and view it as the *main* post, where the normal `PostCard` timestamp
+    renders — as a nested quote its time was missing everywhere.)
+  - Done: added a `quote-timestamp` link to the `QuotedPostCard` header, mirroring the
+    main post card's timestamp. It derives the label from `postSortAt(quotedPost)` /
+    `formatPostTime` (the quoted post's own `record.createdAt` / `indexedAt`, present in
+    the `record#viewRecord` embed) and links to the **quoted post's own** permalink via
+    `postPath(quotedPost) ?? postBskyUrl(quotedPost)` (clicking opens that quoted thread,
+    not the outer quoting post). Guarded so it no-ops when the quote carries no parseable
+    time. Added `.quote-timestamp` styles in `src/styles.css` (muted, `:hover` matches
+    `.post-timestamp`).
+  - Verified: `npm run build` passes (tsc, vite, audit initial JS 121 kB gzip, reader +
+    layout + rich-text verifiers all green). Drove the running dev server via
+    `scripts/cdp.mjs` against `/profile/wario64.bsky.social`: both quote cards now render
+    a timestamp ("Jun 27, 2026, 11:39 AM" / "Jun 25, 2026, 1:00 PM") whose href is the
+    **quoted** post's permalink (`/post/3mpbs6ttnyc2b`), distinct from the outer post's
+    permalink (`/post/3mphrhathsk2q`) — confirming the inner timestamp links directly to
+    the quoted post, not the quoting one. Screenshot confirmed the header layout; no
+    console errors.
+  - Reported: quoted posts — at least quoted threads — don't render the author date/time in the quote header in some surfaces. The author + handle are shown (and an "Open quoted thread" link appears under the handle), but the date/time is missing. That also means the user can't get/open the quoted post's permalink from that surface (the timestamp is usually the permalink affordance).
+  - Reproduced surfaces:
+    - In a **feed** (e.g. the Home timeline): quoted post header shows author + handle, **no date/time**.
+    - On a **profile page** (e.g. `https://bigbsky.com/profile/wario64.bsky.social`): same — quoted post header has author + handle, **no date/time**.
+    - On the **thread detail** (e.g. `https://bigbsky.com/profile/wario64.bsky.social/post/3mphe26zqhs2h`): the date/time **does** show correctly.
+  - So the quote header in the feed/profile rendering path is dropping the timestamp that the thread-detail quote header renders. Find the divergence (likely the feed/profile `QuotedPostCard`/`QuoteCard` header JSX omits the `formatPostTime(postSortAt(...))` element that the thread-detail variant includes) and align them so every surface shows the timestamp and the timestamp anchors the quoted post's permalink.
+  - Verify: drive the dev server via `scripts/cdp.mjs` against `wario64.bsky.social` profile + `/post/3mphe26zqhs2h`; confirm the timestamp appears in feed, profile, and thread-detail; confirm the timestamp links to the quoted post's permalink. `npm run build`.
+  - Relevant files/functions found:
+    - `src/App.tsx`: `QuotedPostCard` / `QuoteCard` header rendering (feed vs thread-detail variants), `formatPostTime`, `postSortAt`, `postBskyUrl` (permalink target).
+    - `src/styles.css`: quote header / meta styling.
