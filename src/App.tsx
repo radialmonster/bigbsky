@@ -71,10 +71,11 @@ import {
   CONTINUATION_REPLY_WINDOW_MS,
   POST_BYTE_LIMIT,
   POST_GRAPHEME_LIMIT,
+  buildAnchoredThreadParts,
   buildThreadParts,
   buildThreadedFeedRows,
   canHideCombinedThreadMarkers,
-  combinedThreadText,
+  combinedThreadSegment,
   countThreadPostNodes,
   countThreadRows,
   expectedThreadMarkerTotal,
@@ -8216,14 +8217,14 @@ function ThreadedPostCard({
       </button>
       <div className="combined-thread-text">
         {posts.map((post, index) => {
-          const text = combinedThreadText(post, hideThreadMarkers);
-          const preservesLineBreaks = text.includes("\n");
+          const segment = combinedThreadSegment(post, hideThreadMarkers);
+          const preservesLineBreaks = segment.text.includes("\n");
           return (
             <section className="combined-thread-segment" key={post.uri}>
               <p className={preservesLineBreaks ? "post-text has-line-breaks" : "post-text"}>
                 {index > 0 && <span className="combined-thread-break" aria-hidden="true" />}
-                {text
-                  ? renderRichText(post.record.facets?.length ? post.record.text || "" : text, post.record.facets, onOpenProfile, onOpenTag)
+                {segment.text
+                  ? renderRichText(segment.text, segment.facets, onOpenProfile, onOpenTag)
                   : `Post ${index + 1} has no plain text.`}
               </p>
               <PostImageVideoMedia post={post} onOpenImage={onOpenImage} />
@@ -8950,22 +8951,22 @@ function CombinedThreadViewCard({
       <div className="combined-thread-text">
         {parts.map((part, index) => {
           const post = part.node.post;
-          const text = combinedThreadText(post, hideThreadMarkers);
+          const segment = combinedThreadSegment(post, hideThreadMarkers);
           const hasEmbeds =
             getEmbedImages(post.embed).length > 0 ||
             !!getVideoEmbed(post.embed) ||
             !!getExternalEmbed(post.embed) ||
             !!getRecordEmbed(post.embed) ||
             extractFacetLinks(post.record.facets).length > 0;
-          if (!text && !hasEmbeds) {
+          if (!segment.text && !hasEmbeds) {
             return null;
           }
           return (
             <section className="combined-thread-segment" key={post.uri}>
-              <p className={text.includes("\n") ? "post-text has-line-breaks" : "post-text"}>
+              <p className={segment.text.includes("\n") ? "post-text has-line-breaks" : "post-text"}>
                 {index > 0 && <span className="combined-thread-break" aria-hidden="true" />}
-                {text
-                  ? renderRichText(post.record.facets?.length ? post.record.text || "" : text, post.record.facets, onOpenProfile, onOpenTag)
+                {segment.text
+                  ? renderRichText(segment.text, segment.facets, onOpenProfile, onOpenTag)
                   : `Post ${index + 1} has no plain text.`}
               </p>
               <PostEmbeds
@@ -9574,10 +9575,16 @@ function ThreadView({
   const [engagement, setEngagement] = useState<null | "reposts" | "quotes" | "likes">(null);
   const [activeReplyParentUri, setActiveReplyParentUri] = useState<string | null>(null);
   const [threadDisplayMode, setThreadDisplayMode] = useState<"combined" | "separated">("combined");
-  const rootPost = findFirstThreadPost(thread.node);
-  const parentNodes = collectThreadParents(thread.node);
+  // Re-root self-threads: when the opened post is mid-chain (e.g. part 3 of 5
+  // via search/URL), buildAnchoredThreadParts walks UP the parent chain so the
+  // whole self-thread combines from its true root instead of splitting parts
+  // 1–2 into "Reply context". selfRootNode is that true root; the header stats
+  // and parent-context list key off it (not the anchored post).
+  const threadParts = thread.node ? buildAnchoredThreadParts(thread.node) : [];
+  const selfRootNode = threadParts[0]?.node ?? thread.node;
+  const rootPost = findFirstThreadPost(selfRootNode);
+  const parentNodes = collectThreadParents(selfRootNode);
   const threadRootRef = rootPost ? replyRootRefForPost(rootPost) : null;
-  const threadParts = thread.node ? buildThreadParts(thread.node) : [];
   const canCombineThread = threadParts.length > 1;
 
   if (thread.status === "loading") {
@@ -9878,7 +9885,11 @@ function LongThreadCard({
           const replyCount = part.replies.length;
           const expanded = !!expandedReplies[`part-replies:${post.uri}`];
           const hasThreadContinuation = parts[index + 1]?.node.post.record.reply?.parent?.uri === post.uri;
-          const commentCount = Math.max(0, (post.replyCount ?? replyCount) - (hasThreadContinuation ? 1 : 0));
+          // post.replyCount (AppView) counts ALL replies incl. the continuation,
+          // so subtract it. The fallback (part.replies) already excludes the
+          // continuation in buildThreadParts, so it must NOT be decremented again.
+          const commentCount =
+            post.replyCount != null ? Math.max(0, post.replyCount - (hasThreadContinuation ? 1 : 0)) : replyCount;
           return (
             <section className="long-thread-part" key={post.uri}>
               <div className="long-thread-part-label">Thread post {part.partNumber} of {parts.length}</div>

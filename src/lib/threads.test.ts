@@ -5,12 +5,14 @@
 // splitting, and the read-only marker recognition for other clients' threads.
 
 import { describe, expect, it } from "vitest";
-import type { FeedItem, FeedPost, ThreadNode, ThreadPostNode } from "../api";
+import type { FeedItem, FeedPost, RichTextFacet, ThreadNode, ThreadPostNode } from "../api";
 import {
   CONTINUATION_REPLY_WINDOW_MS,
+  buildAnchoredThreadParts,
   buildThreadParts,
   buildThreadedFeedRows,
   canHideCombinedThreadMarkers,
+  combinedThreadSegment,
   combinedThreadText,
   countThreadPostNodes,
   countThreadRows,
@@ -19,6 +21,8 @@ import {
   getContinuationReply,
   isSelfThreadReply,
   replaceThreadBranch,
+  selfThreadAncestors,
+  selfThreadRootNode,
   splitTextForThread,
   threadMarkerMatch,
 } from "./threads";
@@ -63,6 +67,14 @@ function makeItem(post: FeedPost, rootPost?: FeedPost): FeedItem {
 
 function node(post: FeedPost, replies: ThreadNode[] = []): ThreadPostNode {
   return { post, replies };
+}
+
+function nodeWithParent(post: FeedPost, parent?: ThreadPostNode, replies: ThreadNode[] = []): ThreadPostNode {
+  return { post, parent, replies };
+}
+
+function withFacets(post: FeedPost, facets: RichTextFacet[]): FeedPost {
+  return { ...post, record: { ...post.record, facets } } as FeedPost;
 }
 
 describe("threadMarkerMatch", () => {
@@ -118,6 +130,47 @@ describe("combinedThreadText", () => {
 
   it("keeps the marker when not hiding", () => {
     expect(combinedThreadText(makePost({ uri: "a", text: "body text 2/5" }), false)).toBe("body text 2/5");
+  });
+});
+
+describe("combinedThreadSegment", () => {
+  it("strips the trailing marker and fully trims text with no facets", () => {
+    const segment = combinedThreadSegment(makePost({ uri: "a", text: "  body text 2/5" }), true);
+    expect(segment).toEqual({ text: "body text", facets: undefined });
+  });
+
+  it("keeps the marker (and facets) when not hiding", () => {
+    const facets: RichTextFacet[] = [{ index: { byteStart: 3, byteEnd: 15 }, features: [{ $type: "app.bsky.richtext.facet#link", uri: "https://a.bc" }] }];
+    const post = withFacets(makePost({ uri: "a", text: "go https://a.bc 1/3" }), facets);
+    expect(combinedThreadSegment(post, false)).toEqual({ text: "go https://a.bc 1/3", facets });
+  });
+
+  it("strips the marker while keeping a non-overlapping facet aligned to the kept prefix", () => {
+    // "go https://a.bc" is 15 bytes; the link facet ends at byte 15, the marker
+    // " 1/3" follows — so the link survives unchanged against the kept text.
+    const facets: RichTextFacet[] = [{ index: { byteStart: 3, byteEnd: 15 }, features: [{ $type: "app.bsky.richtext.facet#link", uri: "https://a.bc" }] }];
+    const post = withFacets(makePost({ uri: "a", text: "go https://a.bc 1/3" }), facets);
+    const segment = combinedThreadSegment(post, true);
+    expect(segment.text).toBe("go https://a.bc");
+    expect(segment.facets).toEqual(facets);
+  });
+
+  it("drops a facet whose byte range overlaps the removed trailing marker", () => {
+    // A facet spanning past the marker boundary can't survive the cut, so it is
+    // discarded rather than left pointing into bytes that no longer exist.
+    const facets: RichTextFacet[] = [{ index: { byteStart: 0, byteEnd: 8 }, features: [{ $type: "app.bsky.richtext.facet#tag", tag: "x" }] }];
+    const post = withFacets(makePost({ uri: "a", text: "link 2/5" }), facets);
+    const segment = combinedThreadSegment(post, true);
+    expect(segment.text).toBe("link");
+    expect(segment.facets).toEqual([]);
+  });
+
+  it("leaves a facet-bearing post untouched when there is no marker", () => {
+    const facets: RichTextFacet[] = [{ index: { byteStart: 0, byteEnd: 5 }, features: [{ $type: "app.bsky.richtext.facet#tag", tag: "hello" }] }];
+    const post = withFacets(makePost({ uri: "a", text: "hello world" }), facets);
+    const segment = combinedThreadSegment(post, true);
+    expect(segment.text).toBe("hello world");
+    expect(segment.facets).toEqual(facets);
   });
 });
 
@@ -260,6 +313,55 @@ describe("buildThreadParts", () => {
     const parts = buildThreadParts(node(makePost({ uri: "p1", offsetMs: 0 }), [otherReply, continuation]));
     expect(parts.map((part) => part.node.post.uri)).toEqual(["p1", "p2"]);
     expect(parts[0].replies.map((reply) => (reply as ThreadPostNode).post.uri)).toEqual(["x"]);
+  });
+});
+
+describe("selfThreadAncestors / buildAnchoredThreadParts", () => {
+  // A 3-part self-thread (p1→p2→p3) where the AppView node is anchored at the
+  // DEEPEST post (p3), with its ancestors hanging off `.parent` and no replies
+  // populated on the parent-chain nodes — exactly what getPostThread returns
+  // when you open part 3 of 5 directly.
+  function midThreadAnchor() {
+    const rNode = nodeWithParent(makePost({ uri: "p1", offsetMs: 0 }));
+    const aNode = nodeWithParent(makePost({ uri: "p2", parentUri: "p1", offsetMs: 1000 }), rNode);
+    return nodeWithParent(makePost({ uri: "p3", parentUri: "p2", offsetMs: 2000 }), aNode);
+  }
+
+  it("walks the parent chain back to the true self-thread root", () => {
+    expect(selfThreadAncestors(midThreadAnchor()).map((n) => n.post.uri)).toEqual(["p1", "p2"]);
+  });
+
+  it("re-roots a mid-thread anchor into one ordered, renumbered chain", () => {
+    const parts = buildAnchoredThreadParts(midThreadAnchor());
+    expect(parts.map((part) => part.node.post.uri)).toEqual(["p1", "p2", "p3"]);
+    expect(parts.map((part) => part.partNumber)).toEqual([1, 2, 3]);
+  });
+
+  it("selfThreadRootNode reports the true root, not the anchor", () => {
+    expect((selfThreadRootNode(midThreadAnchor()) as ThreadPostNode).post.uri).toBe("p1");
+  });
+
+  it("does not walk past a different-author parent", () => {
+    const stranger = nodeWithParent(makePost({ uri: "x", did: OTHER, offsetMs: 0 }));
+    const anchor = nodeWithParent(makePost({ uri: "c", parentUri: "x", offsetMs: 1000 }), stranger);
+    expect(selfThreadAncestors(anchor)).toEqual([]);
+    expect(buildAnchoredThreadParts(anchor).map((part) => part.node.post.uri)).toEqual(["c"]);
+  });
+
+  it("does not walk past a parent outside the continuation window", () => {
+    const rNode = nodeWithParent(makePost({ uri: "p1", offsetMs: 0 }));
+    const anchor = nodeWithParent(makePost({ uri: "p2", parentUri: "p1", offsetMs: CONTINUATION_REPLY_WINDOW_MS + 1 }), rNode);
+    expect(selfThreadAncestors(anchor)).toEqual([]);
+  });
+
+  it("appends descendant continuation parts after the re-rooted ancestors", () => {
+    // Anchored at p2 with a downward continuation p3 in its replies; the parent
+    // p1 is above. The whole chain should resolve in order.
+    const rNode = nodeWithParent(makePost({ uri: "p1", offsetMs: 0 }));
+    const anchor = nodeWithParent(makePost({ uri: "p2", parentUri: "p1", offsetMs: 1000 }), rNode, [
+      node(makePost({ uri: "p3", parentUri: "p2", offsetMs: 2000 })),
+    ]);
+    expect(buildAnchoredThreadParts(anchor).map((part) => part.node.post.uri)).toEqual(["p1", "p2", "p3"]);
   });
 });
 

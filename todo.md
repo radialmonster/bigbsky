@@ -438,6 +438,85 @@
     - `src/auth.ts`: `syncSavedFeedsOrder`.
     - `src/App.tsx`: `persistFeedOrder`.
 
+## From the 2026-06-29 thread-handling code review
+
+(Three bugs reported in how `src/App.tsx` consumes the pure `src/lib/threads.ts`
+logic. All three validated against the code and fixed; the pure helpers got
+extracted/extended so the fixes are unit-tested in `src/lib/threads.test.ts`.)
+
+- [x] Bug 1 — thread markers stayed visible when a post had facets. **Done.**
+  - Confirmed: both combined-thread render sites (`CombinedThreadViewCard` ~`src/App.tsx:8219`
+    and `ThreadedPostCard` ~`src/App.tsx:8953`) did
+    `renderRichText(post.record.facets?.length ? post.record.text : strippedText, …)` —
+    so for any post carrying a link/mention/tag facet (very common in threads) the
+    renderer fell back to the RAW text and the trailing `1/n 🧵` marker survived,
+    silently defeating `canHideCombinedThreadMarkers` for exactly the posts most
+    likely to have markers. The stripped text was computed but only used when there
+    were no facets.
+  - Fix: added `combinedThreadSegment(post, hideThreadMarker)` to `src/lib/threads.ts`
+    returning a consistent `{ text, facets }` pair. The marker is always TRAILING,
+    so the kept text is a byte-identical prefix of the raw text (only the end is
+    cut; the start is never trimmed when facets are present, which would shift
+    offsets). Facets whose byte range overlaps the removed trailing region are
+    dropped; the rest are returned unchanged and stay aligned. Both render sites now
+    use `segment.text` / `segment.facets` for the empty-check, line-break class, and
+    `renderRichText`. (`combinedThreadText` is retained for the no-facets callers and
+    still exported/tested.)
+  - `LongThreadCard` (~`src/App.tsx:9887`) deliberately left as-is: it renders raw
+    trimmed text without marker-hiding, so the facet ternary there is only a
+    cosmetic trim difference, not a marker leak.
+- [x] Bug 2 — opening a mid-thread post split a self-thread in two. **Done.**
+  - Confirmed: `buildThreadParts` only walks DOWN `replies`; `findFirstThreadPost`
+    just returned the anchor node. So opening part 3 of a 5-part self-thread (via
+    search/notification/URL) put parts 1–2 in the "Reply context" section as
+    separate cards and parts 3–5 in the combined view, with the header showing the
+    anchor's counts (not the root's). `expectedThreadMarkerTotal` also required
+    `marker.index === 1` on `parts[0]`, so a `3/5` anchor never triggered upward
+    hydration.
+  - Fix: added `selfThreadAncestors(anchor)` (walks UP the `.parent` chain while
+    each hop is a self-continuation: same author, replies directly to its parent,
+    within `CONTINUATION_REPLY_WINDOW_MS`), `selfThreadRootNode(node)`, and
+    `buildAnchoredThreadParts(node)` (ancestors from the parent chain + descendants
+    from `buildThreadParts`, renumbered root-first) to `src/lib/threads.ts`. The
+    thread view (`src/App.tsx:~9579`) now derives `threadParts` from
+    `buildAnchoredThreadParts`, and `rootPost` / `parentNodes` key off
+    `selfRootNode` (the true root) — so the whole self-thread combines from its
+    root, the header shows the root's stats, and "Reply context" only shows the
+    genuinely non-self-thread ancestors above the root. Non-self-thread threads
+    (reply to another author / single post) are unchanged because the upward walk
+    stops at the author/parent/window gate.
+- [x] Bug 3 — `LongThreadCard` reply-count undercount on missing `replyCount`. **Done.**
+  - Confirmed: `Math.max(0, (post.replyCount ?? replyCount) - (hasThreadContinuation ? 1 : 0))`
+    double-subtracted the continuation when `post.replyCount` was undefined —
+    `replyCount` is `part.replies.length`, which `buildThreadParts` already excludes
+    the continuation from.
+  - Fix (`src/App.tsx:~9881`): only subtract the continuation when using the
+    AppView `post.replyCount` (which counts all replies incl. the continuation);
+    when falling back to `part.replies.length` (already continuation-free) use it
+    as-is.
+  - Design note (not a bug, no change): `CONTINUATION_REPLY_WINDOW_MS` (10 min) is
+    stricter than bsky's pure author-DID comparison with no time gate. Self-threads
+    authored over >10 min won't combine in BigBsky but do in bsky. The window's
+    rationale (don't chain unrelated same-author self-replies to old posts) is
+    reasonable; left intact intentionally.
+  - Verified: `npm test` green (85 tests; +11 new in `threads.test.ts` covering
+    `combinedThreadSegment` marker/facet alignment and the anchored re-rooting),
+    `npm run build` green (tsc, vite, audit initial JS 120 kB gzip, reader + layout
+    + rich-text verifiers). Drove the running dev server via `scripts/cdp.mjs` on
+    `/profile/monriatitans.bsky.social/post/3mo7bk477bs2m`: thread view renders, root
+    author resolves, no parent-context mis-split, no console errors.
+  - Follow-up (captured): exercise Bug 1 (marker hidden on a facet-bearing
+    self-thread post) and Bug 2 (open part 3 of a real ≥3-part self-thread) in the
+    browser once a suitable public self-thread fixture is on hand — both paths work
+    unauthenticated, so CDP can verify them without sign-in.
+  - Relevant files/functions found:
+    - `src/lib/threads.ts`: `combinedThreadSegment`, `selfThreadAncestors`,
+      `selfThreadRootNode`, `buildAnchoredThreadParts`.
+    - `src/App.tsx`: `CombinedThreadViewCard`, `ThreadedPostCard`, `LongThreadCard`,
+      the thread view's `rootPost`/`parentNodes`/`threadParts` derivation.
+    - `src/lib/threads.test.ts`: new `combinedThreadSegment` and
+      `selfThreadAncestors / buildAnchoredThreadParts` suites.
+
 ## From the 2026-06-26 code review
 
 (This was an in-session review; `docs/code-review.md` was never committed — only

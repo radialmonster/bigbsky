@@ -8,7 +8,7 @@
 //      buildThreadedFeedRows regroups a flat feed, and the marker helpers
 //      recognize 1/n counters that *other* clients' users type by hand.
 
-import type { FeedItem, FeedPost, ThreadNode, ThreadPostNode } from "../api";
+import type { FeedItem, FeedPost, RichTextFacet, ThreadNode, ThreadPostNode } from "../api";
 import { parseTimestamp, postSortAt, postSortTime } from "./time";
 
 // A hand-typed "n/total" thread marker, optionally followed by 🧵 and wrapped in
@@ -134,6 +134,71 @@ export function buildThreadParts(root: ThreadNode): ThreadPart[] {
   }
 
   return parts;
+}
+
+// Walk the anchored node's PARENT chain upward, collecting ancestors that are
+// still part of the same self-thread: each step must be authored by the same
+// account, reply directly to its parent, and land within the continuation
+// window of that parent (the same gate getContinuationReply applies walking
+// down). Returns ancestors in ROOT→anchor order (nearest-last), excluding the
+// anchor itself; empty when the anchor's parent is not a self-continuation.
+//
+// This is what lets opening a mid-thread post (e.g. part 3 of 5, reached via
+// search/notification/URL) resolve to the true self-thread root instead of
+// splitting the chain into a "Reply context" section above the anchor.
+export function selfThreadAncestors(anchor: ThreadPostNode): ThreadPostNode[] {
+  const ancestors: ThreadPostNode[] = [];
+  let child: ThreadPostNode = anchor;
+  while (child.parent && isThreadPostNode(child.parent)) {
+    const parent = child.parent;
+    if (parent.post.author.did !== child.post.author.did) {
+      break;
+    }
+    if (postReplyParentUri(child.post) !== parent.post.uri) {
+      break;
+    }
+    const parentTime = windowTime(parent.post);
+    const childTime = windowTime(child.post);
+    if (!Number.isFinite(parentTime) || !Number.isFinite(childTime)) {
+      break;
+    }
+    const delta = childTime - parentTime;
+    if (delta < 0 || delta > CONTINUATION_REPLY_WINDOW_MS) {
+      break;
+    }
+    ancestors.unshift(parent);
+    child = parent;
+  }
+  return ancestors;
+}
+
+// The node that begins the anchored post's self-thread: the topmost
+// self-continuation ancestor, or the anchor itself when it has none.
+export function selfThreadRootNode(node: ThreadNode): ThreadNode {
+  if (!isThreadPostNode(node)) {
+    return node;
+  }
+  const ancestors = selfThreadAncestors(node);
+  return ancestors[0] ?? node;
+}
+
+// Build the full ordered self-thread parts spanning ANCESTORS (from the parent
+// chain, via selfThreadAncestors) and DESCENDANTS (continuation replies, via
+// buildThreadParts), given the AppView node anchored at the opened post.
+// Ancestor parent-chain nodes don't carry their sibling replies (the AppView
+// only hydrates replies for the anchor subtree), so their `replies` is empty.
+// Part numbers are assigned root-first across the whole chain.
+export function buildAnchoredThreadParts(node: ThreadNode): ThreadPart[] {
+  if (!isThreadPostNode(node)) {
+    return [];
+  }
+  const ancestorParts: ThreadPart[] = selfThreadAncestors(node).map((ancestorNode) => ({
+    node: ancestorNode,
+    partNumber: 0,
+    replies: [],
+  }));
+  const parts = [...ancestorParts, ...buildThreadParts(node)];
+  return parts.map((part, index) => ({ ...part, partNumber: index + 1 }));
 }
 
 export function expectedThreadMarkerTotal(parts: ThreadPart[]) {
@@ -296,6 +361,48 @@ export function combinedThreadText(post: FeedPost, hideThreadMarker: boolean) {
   return hideThreadMarker
     ? text.replace(THREAD_MARKER_RE, "").trim()
     : text.trim();
+}
+
+export type CombinedThreadSegment = {
+  text: string;
+  facets?: RichTextFacet[];
+};
+
+// The display text + facets for one post in a combined/threaded view, with the
+// trailing "1/n 🧵" marker stripped when hideThreadMarker is set.
+//
+// combinedThreadText() alone can't be used when a post has facets: facet
+// byteStart/byteEnd offsets index into the RAW record text, so handing the
+// trimmed/marker-stripped string to a byte-offset renderer would misalign every
+// link/mention/tag. This returns a text+facets pair that stays consistent.
+//
+// The marker is always TRAILING, so the kept text is a byte-identical prefix of
+// the raw text (we only ever trim/cut from the end — never the start when facets
+// are present, which would shift offsets). Facets whose byte range overlaps the
+// removed trailing region are dropped; the rest are returned unchanged.
+export function combinedThreadSegment(post: FeedPost, hideThreadMarker: boolean): CombinedThreadSegment {
+  const raw = post.record.text || "";
+  const facets = post.record.facets;
+
+  let body = raw;
+  if (hideThreadMarker) {
+    const match = raw.match(THREAD_MARKER_RE);
+    if (match) {
+      body = raw.slice(0, match.index ?? raw.length);
+    }
+  }
+
+  if (!facets?.length) {
+    // No facets to keep aligned, so the display text can be fully trimmed.
+    return { text: body.trim(), facets: undefined };
+  }
+
+  // Facets present: only trim the END so the kept text stays a byte-identical
+  // prefix of `raw` and surviving facet offsets remain valid against it.
+  const kept = body.replace(/\s+$/u, "");
+  const keptByteLength = utf8ByteLength(kept);
+  const adjusted = facets.filter((facet) => (facet.index?.byteEnd ?? 0) <= keptByteLength);
+  return { text: kept, facets: adjusted };
 }
 
 type GraphemeSegmenter = {
