@@ -474,17 +474,16 @@ extracted/extended so the fixes are unit-tested in `src/lib/threads.test.ts`.)
     `marker.index === 1` on `parts[0]`, so a `3/5` anchor never triggered upward
     hydration.
   - Fix: added `selfThreadAncestors(anchor)` (walks UP the `.parent` chain while
-    each hop is a self-continuation: same author, replies directly to its parent,
-    within `CONTINUATION_REPLY_WINDOW_MS`), `selfThreadRootNode(node)`, and
-    `buildAnchoredThreadParts(node)` (ancestors from the parent chain + descendants
-    from `buildThreadParts`, renumbered root-first) to `src/lib/threads.ts`. The
-    thread view (`src/App.tsx:~9579`) now derives `threadParts` from
-    `buildAnchoredThreadParts`, and `rootPost` / `parentNodes` key off
-    `selfRootNode` (the true root) — so the whole self-thread combines from its
-    root, the header shows the root's stats, and "Reply context" only shows the
-    genuinely non-self-thread ancestors above the root. Non-self-thread threads
-    (reply to another author / single post) are unchanged because the upward walk
-    stops at the author/parent/window gate.
+    each hop is a self-continuation: same author, replies directly to its parent),
+    `selfThreadRootNode(node)`, and `buildAnchoredThreadParts(node)` (ancestors
+    from the parent chain + descendants from `buildThreadParts`, renumbered
+    root-first) to `src/lib/threads.ts`. The thread view (`src/App.tsx:~9579`) now
+    derives `threadParts` from `buildAnchoredThreadParts`, and `rootPost` /
+    `parentNodes` key off `selfRootNode` (the true root) — so the whole self-thread
+    combines from its root, the header shows the root's stats, and "Reply context"
+    only shows the genuinely non-self-thread ancestors above the root.
+    Non-self-thread threads (reply to another author / single post) are unchanged
+    because the upward walk stops at the author/parent gate.
 - [x] Bug 3 — `LongThreadCard` reply-count undercount on missing `replyCount`. **Done.**
   - Confirmed: `Math.max(0, (post.replyCount ?? replyCount) - (hasThreadContinuation ? 1 : 0))`
     double-subtracted the continuation when `post.replyCount` was undefined —
@@ -494,11 +493,26 @@ extracted/extended so the fixes are unit-tested in `src/lib/threads.test.ts`.)
     AppView `post.replyCount` (which counts all replies incl. the continuation);
     when falling back to `part.replies.length` (already continuation-free) use it
     as-is.
-  - Design note (not a bug, no change): `CONTINUATION_REPLY_WINDOW_MS` (10 min) is
-    stricter than bsky's pure author-DID comparison with no time gate. Self-threads
-    authored over >10 min won't combine in BigBsky but do in bsky. The window's
-    rationale (don't chain unrelated same-author self-replies to old posts) is
-    reasonable; left intact intentionally.
+- [x] Remove the 10-minute self-thread continuation window (match bsky). **Done (2026-06-29).**
+  - The reported design note flagged that BigBsky's `CONTINUATION_REPLY_WINDOW_MS`
+    (10 min) was stricter than bsky, whose client groups self-threads purely
+    structurally with no time gate. Confirmed against `docs/social-app/src/lib/api/feed-manip.ts`
+    (`FeedViewPostsSlice` construction + `areSameAuthor`): grouping keys only off
+    `reply.parent.uri` / `reply.root.uri` and author identity — there is no
+    timestamp comparison anywhere. So a self-thread continued hours/days later
+    (live-blogs, slow narratives) combined in bsky but not in BigBsky.
+  - Done: removed `CONTINUATION_REPLY_WINDOW_MS` and the `windowTime` helper from
+    `src/lib/threads.ts`. Continuation is now purely structural (same author +
+    direct reply) in all three call paths — `getContinuationReply` (combined thread
+    view), `buildThreadedFeedRows.continuationOf` (feed reassembly), and
+    `selfThreadAncestors` (mid-thread re-root). `postSortTime` is retained only to
+    ORDER candidate replies (earliest wins on a fork); undated posts are no longer
+    excluded. Also dropped the matching root-window gate in the profile self-thread
+    filter (`src/App.tsx:~2002`) and removed the now-unused `postSortTime` import.
+  - Updated `src/lib/threads.test.ts`: the former "outside the window" / "undated
+    posts don't chain" cases now assert the opposite (far-apart and undated
+    self-replies DO chain structurally). `npm test` green (85), `npm run build`
+    green.
   - Verified: `npm test` green (85 tests; +11 new in `threads.test.ts` covering
     `combinedThreadSegment` marker/facet alignment and the anchored re-rooting),
     `npm run build` green (tsc, vite, audit initial JS 120 kB gzip, reader + layout

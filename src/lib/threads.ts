@@ -9,7 +9,7 @@
 //      recognize 1/n counters that *other* clients' users type by hand.
 
 import type { FeedItem, FeedPost, RichTextFacet, ThreadNode, ThreadPostNode } from "../api";
-import { parseTimestamp, postSortAt, postSortTime } from "./time";
+import { postSortTime } from "./time";
 
 // A hand-typed "n/total" thread marker, optionally followed by 🧵 and wrapped in
 // bidi/format-control characters, anchored to the end of the text. Other clients'
@@ -19,20 +19,14 @@ import { parseTimestamp, postSortAt, postSortTime } from "./time";
 // safe (lastIndex is only tracked with the /g flag).
 const THREAD_MARKER_RE = /(?:^|\s)[\t\u200e\u200f\u202a-\u202e\u2066-\u2069]*(\d{1,3})\s*\/\s*(\d{1,3})(?:\s*🧵)?[\t\u200e\u200f\u202a-\u202e\u2066-\u2069]*$/u;
 
-// The raw parsed sort timestamp, used only for the continuation-window math.
-// postSortTime() normalizes an undated post to epoch (0) so feed sorting stays
-// stable, but the window must NOT treat two undated posts as 0ms apart (that
-// would chain unrelated posts); here an undated post yields NaN and fails the
-// Number.isFinite guards at the call sites.
-function windowTime(post: FeedPost): number {
-  return parseTimestamp(postSortAt(post));
-}
-
-// A self-reply only counts as a thread continuation if it lands within this
-// window of its own parent. Each hop is measured against its parent (not the
-// root), so a thread that runs longer than the window still chains as long as
-// each individual step is close together.
-export const CONTINUATION_REPLY_WINDOW_MS = 10 * 60 * 1000;
+// A self-reply counts as a thread continuation purely on structure — same
+// author, and it replies directly to the post it continues — with NO time gate.
+// This matches bsky's own client, which groups self-threads structurally
+// (reply.parent.uri / reply.root.uri + same-author) and never time-bounds them
+// (see social-app feed-manip.ts: FeedViewPostsSlice + areSameAuthor). Slow
+// self-threads (live-blogs, posts continued days later) combine just like fast
+// ones. postSortTime() is still used only to ORDER candidate replies; an
+// undated post sorts to epoch but is never excluded on that basis.
 
 export const POST_GRAPHEME_LIMIT = 300;
 
@@ -98,16 +92,11 @@ export function isThreadPostNode(node: ThreadNode): node is ThreadPostNode {
 }
 
 export function getContinuationReply(parent: FeedPost, replies: ThreadNode[]) {
-  const parentTime = windowTime(parent);
   const candidates = replies
     .filter(isThreadPostNode)
-    .filter((reply) => {
-      if (reply.post.author.did !== parent.author.did || postReplyParentUri(reply.post) !== parent.uri) {
-        return false;
-      }
-      const replyTime = windowTime(reply.post);
-      return Number.isFinite(parentTime) && Number.isFinite(replyTime) && replyTime - parentTime >= 0 && replyTime - parentTime <= CONTINUATION_REPLY_WINDOW_MS;
-    })
+    .filter((reply) => reply.post.author.did === parent.author.did && postReplyParentUri(reply.post) === parent.uri)
+    // Earliest self-reply wins when the author replied to the same post more
+    // than once (a thread fork) — that picks the linear continuation.
     .sort((first, second) => postSortTime(first.post) - postSortTime(second.post));
   return candidates[0] ?? null;
 }
@@ -138,10 +127,10 @@ export function buildThreadParts(root: ThreadNode): ThreadPart[] {
 
 // Walk the anchored node's PARENT chain upward, collecting ancestors that are
 // still part of the same self-thread: each step must be authored by the same
-// account, reply directly to its parent, and land within the continuation
-// window of that parent (the same gate getContinuationReply applies walking
-// down). Returns ancestors in ROOT→anchor order (nearest-last), excluding the
-// anchor itself; empty when the anchor's parent is not a self-continuation.
+// account and reply directly to its parent (the same structural gate
+// getContinuationReply applies walking down — no time bound). Returns ancestors
+// in ROOT→anchor order (nearest-last), excluding the anchor itself; empty when
+// the anchor's parent is not a self-continuation.
 //
 // This is what lets opening a mid-thread post (e.g. part 3 of 5, reached via
 // search/notification/URL) resolve to the true self-thread root instead of
@@ -155,15 +144,6 @@ export function selfThreadAncestors(anchor: ThreadPostNode): ThreadPostNode[] {
       break;
     }
     if (postReplyParentUri(child.post) !== parent.post.uri) {
-      break;
-    }
-    const parentTime = windowTime(parent.post);
-    const childTime = windowTime(child.post);
-    if (!Number.isFinite(parentTime) || !Number.isFinite(childTime)) {
-      break;
-    }
-    const delta = childTime - parentTime;
-    if (delta < 0 || delta > CONTINUATION_REPLY_WINDOW_MS) {
       break;
     }
     ancestors.unshift(parent);
@@ -209,11 +189,10 @@ export function expectedThreadMarkerTotal(parts: ThreadPart[]) {
 export function buildThreadedFeedRows(items: FeedItem[]): FeedRow[] {
   const byUri = new Map(items.map((item) => [item.post.uri, item]));
   // Index each author's self-thread replies by the URI of the post they reply
-  // to, so a thread is reassembled by walking parent-to-parent — each hop within
-  // CONTINUATION_REPLY_WINDOW_MS of its own parent (mirroring
-  // getContinuationReply / the combined thread view). Measuring every part from
-  // the root instead would drop later parts of a thread that runs longer than
-  // the window even though each individual hop is close together.
+  // to, so a thread is reassembled by walking parent-to-parent (mirroring
+  // getContinuationReply / the combined thread view). Grouping is structural —
+  // same author replying directly to the prior post — with no time bound, so a
+  // self-thread continued hours or days later still reassembles.
   //
   // Reassembly requires the chain ROOT to be present in `items` (it gates the
   // isSelfThreadReply check below). When a feed page contains mid-thread replies
@@ -245,20 +224,14 @@ export function buildThreadedFeedRows(items: FeedItem[]): FeedRow[] {
     if (cached !== undefined) {
       return cached;
     }
-    const parentTime = windowTime(parent);
-    const result = !Number.isFinite(parentTime)
-      ? null
-      : (selfRepliesByParent.get(parent.uri) ?? [])
-          // Same-author-as-the-immediate-parent guard, mirroring
-          // getContinuationReply. selfRepliesByParent already filters to the root
-          // author, but a hop must also be authored by the post it continues so a
-          // mid-chain author change doesn't get stitched into the same row.
-          .filter((reply) => reply.post.author.did === parent.author.did)
-          .filter((reply) => {
-            const replyTime = windowTime(reply.post);
-            return Number.isFinite(replyTime) && replyTime - parentTime >= 0 && replyTime - parentTime <= CONTINUATION_REPLY_WINDOW_MS;
-          })
-          .sort((first, second) => postSortTime(first.post) - postSortTime(second.post))[0] ?? null;
+    const result =
+      (selfRepliesByParent.get(parent.uri) ?? [])
+        // Same-author-as-the-immediate-parent guard, mirroring
+        // getContinuationReply. selfRepliesByParent already filters to the root
+        // author, but a hop must also be authored by the post it continues so a
+        // mid-chain author change doesn't get stitched into the same row.
+        .filter((reply) => reply.post.author.did === parent.author.did)
+        .sort((first, second) => postSortTime(first.post) - postSortTime(second.post))[0] ?? null;
     continuationCache.set(parent.uri, result);
     return result;
   };

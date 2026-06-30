@@ -66,9 +66,8 @@ import {
   searchActors,
 } from "./api";
 import { segmentRichText } from "./richtext";
-import { postSortAt, postSortTime } from "./lib/time";
+import { postSortAt } from "./lib/time";
 import {
-  CONTINUATION_REPLY_WINDOW_MS,
   POST_BYTE_LIMIT,
   POST_GRAPHEME_LIMIT,
   buildAnchoredThreadParts,
@@ -2001,12 +2000,9 @@ export function App() {
 
       const rootUri = postReplyRootUri(item.post);
       const rootItem = rootUri ? byUri.get(rootUri) : undefined;
-      if (!rootItem || !isSelfThreadReply(item, rootItem.post)) {
-        return false;
-      }
-      const replyTime = postSortTime(item.post);
-      const rootTime = postSortTime(rootItem.post);
-      return Number.isFinite(replyTime) && Number.isFinite(rootTime) && replyTime - rootTime >= 0 && replyTime - rootTime <= CONTINUATION_REPLY_WINDOW_MS;
+      // Keep the author's own self-thread replies (structural, no time gate —
+      // matching bsky); drop replies into someone else's thread.
+      return !!rootItem && isSelfThreadReply(item, rootItem.post);
     });
   }, [feedState.items, profileTab, route.kind]);
 

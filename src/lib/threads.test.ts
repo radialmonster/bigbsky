@@ -7,7 +7,6 @@
 import { describe, expect, it } from "vitest";
 import type { FeedItem, FeedPost, RichTextFacet, ThreadNode, ThreadPostNode } from "../api";
 import {
-  CONTINUATION_REPLY_WINDOW_MS,
   buildAnchoredThreadParts,
   buildThreadParts,
   buildThreadedFeedRows,
@@ -263,7 +262,7 @@ describe("isSelfThreadReply", () => {
 describe("getContinuationReply", () => {
   const parent = makePost({ uri: "p", offsetMs: 0 });
 
-  it("picks the earliest same-author reply within the window", () => {
+  it("picks the earliest same-author reply", () => {
     const early = node(makePost({ uri: "early", parentUri: "p", offsetMs: 1000 }));
     const late = node(makePost({ uri: "late", parentUri: "p", offsetMs: 2000 }));
     expect(getContinuationReply(parent, [late, early])?.post.uri).toBe("early");
@@ -279,17 +278,18 @@ describe("getContinuationReply", () => {
     expect(getContinuationReply(parent, [elsewhere])).toBeNull();
   });
 
-  it("ignores replies outside the continuation window", () => {
-    const tooLate = node(makePost({ uri: "tl", parentUri: "p", offsetMs: CONTINUATION_REPLY_WINDOW_MS + 1 }));
-    expect(getContinuationReply(parent, [tooLate])).toBeNull();
+  it("chains a far-apart self-reply (no time gate, matching bsky)", () => {
+    // A self-reply continued days later is still structurally a continuation.
+    const muchLater = node(makePost({ uri: "later", parentUri: "p", offsetMs: 5 * 24 * 60 * 60 * 1000 }));
+    expect(getContinuationReply(parent, [muchLater])?.post.uri).toBe("later");
   });
 
-  it("does not chain two undated posts as 0ms apart", () => {
-    // Both sort to epoch via postSortTime, but the window must use the raw
-    // (NaN) parse so unrelated undated posts aren't stitched together.
+  it("chains two undated posts when the reply structure matches", () => {
+    // Both sort to epoch, but the grouping is structural — same author replying
+    // directly to the parent — so undated self-replies still chain.
     const undatedParent = makePost({ uri: "up", undated: true });
     const undatedReply = node(makePost({ uri: "ur", parentUri: "up", undated: true }));
-    expect(getContinuationReply(undatedParent, [undatedReply])).toBeNull();
+    expect(getContinuationReply(undatedParent, [undatedReply])?.post.uri).toBe("ur");
   });
 });
 
@@ -348,10 +348,10 @@ describe("selfThreadAncestors / buildAnchoredThreadParts", () => {
     expect(buildAnchoredThreadParts(anchor).map((part) => part.node.post.uri)).toEqual(["c"]);
   });
 
-  it("does not walk past a parent outside the continuation window", () => {
+  it("walks past a far-apart same-author parent (no time gate)", () => {
     const rNode = nodeWithParent(makePost({ uri: "p1", offsetMs: 0 }));
-    const anchor = nodeWithParent(makePost({ uri: "p2", parentUri: "p1", offsetMs: CONTINUATION_REPLY_WINDOW_MS + 1 }), rNode);
-    expect(selfThreadAncestors(anchor)).toEqual([]);
+    const anchor = nodeWithParent(makePost({ uri: "p2", parentUri: "p1", offsetMs: 5 * 24 * 60 * 60 * 1000 }), rNode);
+    expect(selfThreadAncestors(anchor).map((n) => n.post.uri)).toEqual(["p1"]);
   });
 
   it("appends descendant continuation parts after the re-rooted ancestors", () => {
@@ -400,12 +400,13 @@ describe("buildThreadedFeedRows", () => {
     expect(uris).toEqual(["root", "solo"]);
   });
 
-  it("does not group a reply that falls outside the continuation window", () => {
+  it("groups a far-apart self-reply (no time gate, matching bsky)", () => {
     const root = makePost({ uri: "root", offsetMs: 0 });
-    const lateReply = makePost({ uri: "late", rootUri: "root", parentUri: "root", offsetMs: CONTINUATION_REPLY_WINDOW_MS + 1 });
+    const lateReply = makePost({ uri: "late", rootUri: "root", parentUri: "root", offsetMs: 5 * 24 * 60 * 60 * 1000 });
     const rows = buildThreadedFeedRows([makeItem(root), makeItem(lateReply, root)]);
-    expect(rows).toHaveLength(2);
-    expect(rows.every((row) => !("replies" in row))).toBe(true);
+    expect(rows).toHaveLength(1);
+    const row = rows[0];
+    expect("replies" in row && row.replies.map((item) => item.post.uri)).toEqual(["late"]);
   });
 
   it("does not group another account's reply chain", () => {
