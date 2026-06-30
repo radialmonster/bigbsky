@@ -192,10 +192,19 @@
   now computes `threadMarkerMatch(text)` and renders the same `.thread-open-chip`
   "Open Thread i/N" button as `PostCard` (`src/App.tsx:9035`) in its expanded
   details, wired to `onOpenPost(post)`.
-- [ ] Bug 4 — combined reply-count math assumes a linear chain (`src/App.tsx:8674`,
-  `:7936`: `Σ replyCount − (posts.length − 1)`). Cosmetic; forked self-replies
-  slightly inflate the external-reply total. Matches the documented approximation —
-  left as-is unless it becomes a real annoyance.
+- [ ] Bug 4 — combined reply-count math assumes a linear chain (`src/App.tsx`:
+  `CombinedThreadCard` + `CombinedThreadCardCompact`: `Σ replyCount − (posts.length
+  − 1)`). Re-examined 2026-06-30: the over-count is **real** — a forked self-thread
+  (author replies to one part more than once) leaves the extra fork(s) counted, so
+  the chip reads slightly high. **Not fixable precisely at this call site**: the
+  feed combined cards take a `ThreadedFeedItem` (`{ root, replies }`) whose items
+  carry only each post's aggregate `replyCount` *integer*, not the reply trees
+  needed to tell a fork from an external reply. The `−(posts.length−1)` term
+  removes exactly the linear continuation hops we *do* know about; it can never
+  over-subtract and hide real replies, so the error is bounded by the fork count
+  (rare) and always in the safe (over-count) direction. Left as-is by design;
+  the caveat is now documented inline at both sites. Only worth a real fix if we
+  start plumbing per-part reply trees into the feed combined card.
 
 ## From the 2026-06-26 code review
 

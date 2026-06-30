@@ -7936,8 +7936,16 @@ function ThreadedPostCard({
   const bookmarkView = bookmarkCtx?.getState(rootPost);
   const postTimeLabel = formatPostTime(postSortAt(rootPost));
   // Each continuation part is itself a reply to the previous part, so it is
-  // counted in that part's replyCount. Subtract the in-thread hops so the chip
-  // reflects external replies to the thread, not the thread's own continuations.
+  // counted in that part's replyCount. Subtract the n-1 linear continuation hops
+  // so the chip approximates external replies to the thread, not its own
+  // continuations. Caveat (todo Bug 4): this only removes the *linear* chain hops.
+  // If the author forked their self-thread (replied to one part more than once),
+  // the extra fork(s) stay counted, so the number can read slightly high. A
+  // precise count isn't computable here: a ThreadedFeedItem carries only each
+  // post's aggregate replyCount integer, not the reply trees needed to tell a
+  // fork from an external reply. The error is bounded by the fork count (rare)
+  // and always in the safe direction — we never over-subtract and hide real
+  // replies, since every hop we subtract is a continuation that genuinely exists.
   const replyCount = Math.max(0, posts.reduce((total, post) => total + (post.replyCount ?? 0), 0) - (posts.length - 1));
   const repostCount = posts.reduce((total, post) => total + (post.repostCount ?? 0), 0);
   const quoteCount = posts.reduce((total, post) => total + (post.quoteCount ?? 0), 0);
@@ -8699,9 +8707,10 @@ function CombinedThreadViewCard({
   const likeView = likeCtx?.getState(rootPost);
   const bookmarkView = bookmarkCtx?.getState(rootPost);
   const postTimeLabel = formatPostTime(postSortAt(rootPost));
-  // Each continuation part is itself a reply to the previous part, so it is
-  // counted in that part's replyCount. Subtract the in-thread hops so the chip
-  // reflects external replies to the thread, not the thread's own continuations.
+  // Subtract the n-1 linear continuation hops so the chip approximates external
+  // replies. Same approximation + fork caveat as CombinedThreadCard above (todo
+  // Bug 4): forked self-replies stay counted (no reply trees here to tell a fork
+  // from an external reply), bounded + safe-direction.
   const replyCount = Math.max(0, posts.reduce((total, post) => total + (post.replyCount ?? 0), 0) - (posts.length - 1));
   const repostCount = posts.reduce((total, post) => total + (post.repostCount ?? 0), 0);
   const quoteCount = posts.reduce((total, post) => total + (post.quoteCount ?? 0), 0);
