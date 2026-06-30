@@ -236,6 +236,39 @@
     - `npm test` green (128 tests / 9 files); `npm run build` green (tsc, vite,
       audit initial JS 121 kB gzip, reader + layout + rich-text verifiers).
     Remaining helper slices: the `read*` preference parsers in App.tsx.
+  - Progress (2026-06-30): **slice 6 — `read*` preference JSON parsers extracted +
+    tested.** Pulled the pure parse/validate cores of the storage-blob readers out
+    of `src/App.tsx` into `src/lib/preferences.ts` as four storage-agnostic helpers
+    that take the raw stored string (or `null`) and never throw: `parseStringArray`
+    (string[], optional cap, no trimming), `parseNonEmptyStringArray` (drops
+    blank/whitespace-only, keeps the original untrimmed value, optional cap),
+    `parseBooleanRecord` (string→boolean map, drops non-boolean values), and
+    `parseFiniteNumberRecord` (string→finite-number map, drops non-finite/non-number
+    values). Refactored five App.tsx readers to thin wrappers over them, each now
+    `parse…(safeLocalStorageGet(key))`: `readFeedOrder` → parseStringArray,
+    `readPinnedSearches`(cap 12) / `readPinnedNotifications`(cap 20) →
+    parseNonEmptyStringArray, `readShowMediaPreferences` → parseBooleanRecord, and
+    `readTimelineScrollCache` → parseFiniteNumberRecord. Behavior preserved verbatim
+    (missing key, malformed JSON, wrong top-level type, and per-entry type filtering
+    all degrade to the same empty defaults; getItem-throw safety now comes from
+    `safeLocalStorageGet`/the new `safeSessionStorageGet`).
+    - Added `safeSessionStorageGet` to `src/lib/storage.ts` (mirrors
+      `safeLocalStorageGet`) so `readTimelineScrollCache` reads sessionStorage
+      through the shared throw-safe guard instead of an inline try/catch.
+    - Added `src/lib/preferences.test.ts` (15 tests across the four parsers:
+      null/malformed/non-array-or-object inputs, string filtering, blank-string
+      handling for both array variants, limit application, boolean/number value
+      filtering, negative/fractional offsets) and extended `src/lib/storage.test.ts`
+      (+2 for `safeSessionStorageGet` round-trip + throw-safety).
+    - `npm test` green (145 tests / 10 files); `npm run build` green (tsc, vite,
+      audit initial JS 121 kB gzip, reader + layout + rich-text verifiers).
+    Remaining inline `read*` parsers (still in App.tsx, coupled to App-local types
+    — a future slice): `readDensityPreferences` (DensityMode), `readRecentItems`
+    (RecentItem), `readLocalLists` (LocalList), `readComposerDraft`,
+    `readColumnPreferences` (ColumnVisibility + legacy migration),
+    `readCollapsedFeedGroups` (returns the object verbatim, incl. arrays — preserve
+    that quirk), `readPinnedProfiles` (Profile), and the `readPinnedFeed*` /
+    `readHomeSourceId` readers (FeedSource, depend on `feedSources`/`isListUri`).
   - Suggested lowest-risk first slices, each independently shippable:
     1. Extract pure helpers (the `read*`/`safe*`/`readScrollOffset`/
        `scrollOffsetTo`/`restoreScrollOffset`/`postSortAt` cluster) into
@@ -265,7 +298,8 @@
     - Progress (2026-06-30): **slice 3 — feed-order sort** extracted to `src/lib/feed-order.ts` (`orderBySavedOrder`) with `src/lib/feed-order.test.ts` (8 tests). Covers the `orderedSubscribedFeeds` ordering behavior. `npm test` green (106 tests / 6 files).
     - Progress (2026-06-30): **slice 4 — `isPinnedFeedMeta` validator** extracted to `src/lib/feed-meta.ts` with `src/lib/feed-meta.test.ts` (9 tests). `npm test` green (115 tests / 7 files).
     - Progress (2026-06-30): **slice 5 — safe storage/URL guards** extracted to `src/lib/storage.ts` + `src/lib/url.ts` (de-duplicating triplicated copies across App.tsx/auth.ts/richtext.ts) with `src/lib/storage.test.ts` (8 tests) + `src/lib/url.test.ts` (5 tests). Upgraded `verify-richtext.mjs` to esbuild bundling so richtext's new `./lib/url` import resolves. `npm test` green (128 tests / 9 files). `resolveHandle` cache was already extracted to `src/api.ts` with `src/api.test.ts`.
-    - Still open: keep porting the remaining regex assertions to real tests and delete each as it gains behavioral coverage. Next helper extractions to cover: the `read*` preference parsers (`readDensityPreferences`, `readColumnPreferences`, `readComposerDraft`, `readRecentItems`, …) still inline in App.tsx.
+    - Progress (2026-06-30): **slice 6 — `read*` preference JSON parsers** extracted to `src/lib/preferences.ts` (`parseStringArray`, `parseNonEmptyStringArray`, `parseBooleanRecord`, `parseFiniteNumberRecord`) with `src/lib/preferences.test.ts` (15 tests); added `safeSessionStorageGet` to `src/lib/storage.ts` (+2 tests). Five App.tsx readers now delegate (`readFeedOrder`, `readPinnedSearches`, `readPinnedNotifications`, `readShowMediaPreferences`, `readTimelineScrollCache`). `npm test` green (145 tests / 10 files).
+    - Still open: keep porting the remaining regex assertions to real tests and delete each as it gains behavioral coverage. Next helper extractions to cover: the remaining App-type-coupled `read*` preference parsers (`readDensityPreferences`, `readColumnPreferences`, `readComposerDraft`, `readRecentItems`, `readLocalLists`, `readPinnedProfiles`, `readCollapsedFeedGroups`, the `readPinnedFeed*`/`readHomeSourceId` readers) still inline in App.tsx.
   - Severity: high. `scripts/verify-reader-behavior.mjs` and
     `scripts/verify-layout-behavior.mjs` are 100% `readFileSync` + regex (e.g.
     `verify-layout-behavior.mjs:29` asserts a specific scroll-compensation

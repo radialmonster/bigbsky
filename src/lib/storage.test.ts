@@ -3,6 +3,7 @@ import {
   safeLocalStorageGet,
   safeLocalStorageRemove,
   safeLocalStorageSet,
+  safeSessionStorageGet,
   safeSessionStorageRemove,
 } from "./storage";
 
@@ -47,6 +48,21 @@ describe("safeLocalStorage*", () => {
       throw new Error("denied");
     });
     expect(safeLocalStorageRemove("k")).toBe(false);
+  });
+});
+
+describe("safeSessionStorageGet", () => {
+  it("reads a session value and returns null for a missing key", () => {
+    sessionStorage.setItem("s", "v");
+    expect(safeSessionStorageGet("s")).toBe("v");
+    expect(safeSessionStorageGet("absent")).toBeNull();
+  });
+
+  it("returns null (not throw) when sessionStorage.getItem throws", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
+    expect(safeSessionStorageGet("s")).toBeNull();
   });
 });
 

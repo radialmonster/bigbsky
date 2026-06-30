@@ -34,6 +34,14 @@ export function safeLocalStorageRemove(key: string): boolean {
   }
 }
 
+export function safeSessionStorageGet(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
 export function safeSessionStorageRemove(key: string): boolean {
   try {
     sessionStorage.removeItem(key);

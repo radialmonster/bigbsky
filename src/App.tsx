@@ -74,8 +74,15 @@ import {
   safeLocalStorageGet,
   safeLocalStorageRemove,
   safeLocalStorageSet,
+  safeSessionStorageGet,
   safeSessionStorageRemove,
 } from "./lib/storage";
+import {
+  parseBooleanRecord,
+  parseFiniteNumberRecord,
+  parseNonEmptyStringArray,
+  parseStringArray,
+} from "./lib/preferences";
 import { safeHttpUrl } from "./lib/url";
 import {
   MOBILE_SCROLL_QUERY,
@@ -463,18 +470,7 @@ function readDensityPreferences() {
 }
 
 function readShowMediaPreferences() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(showMediaByFeedStorageKey) || "{}") as Record<string, unknown>;
-    const result: Record<string, boolean> = {};
-    for (const [key, value] of Object.entries(parsed)) {
-      if (typeof value === "boolean") {
-        result[key] = value;
-      }
-    }
-    return result;
-  } catch {
-    return {};
-  }
+  return parseBooleanRecord(safeLocalStorageGet(showMediaByFeedStorageKey));
 }
 
 function readRecentItems() {
@@ -569,21 +565,11 @@ function readPinnedFeedIds(metaSources: FeedSource[] = readPinnedFeedMeta()) {
 // "Your feeds" grid and the desktop feed-selector "My Feeds" group; feeds not
 // present here fall back to their account (Bluesky preference) order.
 function readFeedOrder() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(feedOrderStorageKey) || "[]") as unknown;
-    return Array.isArray(stored) ? stored.filter((uri): uri is string => typeof uri === "string") : [];
-  } catch {
-    return [];
-  }
+  return parseStringArray(safeLocalStorageGet(feedOrderStorageKey));
 }
 
 function readPinnedSearches() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(pinnedSearchesStorageKey) || "[]") as string[];
-    return Array.isArray(stored) ? stored.filter((query) => typeof query === "string" && query.trim()).slice(0, 12) : [];
-  } catch {
-    return [];
-  }
+  return parseNonEmptyStringArray(safeLocalStorageGet(pinnedSearchesStorageKey), 12);
 }
 
 function readPinnedProfiles() {
@@ -600,12 +586,7 @@ function readPinnedProfiles() {
 }
 
 function readPinnedNotifications() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(pinnedNotificationsStorageKey) || "[]") as string[];
-    return Array.isArray(stored) ? stored.filter((id) => typeof id === "string" && id.trim()).slice(0, 20) : [];
-  } catch {
-    return [];
-  }
+  return parseNonEmptyStringArray(safeLocalStorageGet(pinnedNotificationsStorageKey), 20);
 }
 
 function readCollapsedFeedGroups() {
@@ -618,18 +599,7 @@ function readCollapsedFeedGroups() {
 }
 
 function readTimelineScrollCache() {
-  try {
-    const stored = JSON.parse(sessionStorage.getItem(timelineScrollStorageKey) || "{}") as Record<string, number>;
-    if (!stored || typeof stored !== "object") {
-      return {};
-    }
-
-    return Object.fromEntries(
-      Object.entries(stored).filter((entry): entry is [string, number] => typeof entry[0] === "string" && Number.isFinite(entry[1])),
-    );
-  } catch {
-    return {};
-  }
+  return parseFiniteNumberRecord(safeSessionStorageGet(timelineScrollStorageKey));
 }
 
 function profileFeedFilterForTab(tab: ProfileTab): ProfileFeedFilter {
