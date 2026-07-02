@@ -1173,6 +1173,10 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false;
+    // Captured before initAuthSession runs: the OAuth client's init() strips the
+    // code/state params from the URL as it processes them, so we can't rely on
+    // looksLikeOAuthCallback() being true afterwards to know we came from a callback.
+    const hadCallback = looksLikeOAuthCallback();
 
     initAuthSession().then((result) => {
       if (cancelled) {
@@ -1186,8 +1190,17 @@ export function App() {
       });
 
       if (result.status === "callback") {
+        // Successful sign-in via the callback → land on Settings.
         window.history.replaceState(null, "", "/settings");
         setRoute({ kind: "surface", name: "settings" });
+      } else if (hadCallback && !result.session) {
+        // The callback came back but produced no session — a transient token
+        // exchange failure, or the pre-redirect OAuth state was missing (sign-in
+        // started in a different browser/profile, or site data was cleared). Strip
+        // the spent code/state so a reload doesn't re-run init() on a consumed
+        // code, and stay on the oauth-callback route, which renders an actionable
+        // error + retry (see SurfaceView) instead of a dead "Pending" placeholder.
+        window.history.replaceState(null, "", "/oauth/callback");
       }
 
       // Restore path only: merge background-hydrated display fields (display
@@ -4378,14 +4391,6 @@ function SurfaceView({
         { title: "Settings", detail: "Notification controls remain reserved for signed-in account preferences.", status: "Pending" },
       ],
     },
-    "oauth-callback": {
-      copy: "The OAuth callback has a static SPA route now. Browser-side state validation and token exchange will attach here in Phase 2.",
-      cards: [
-        { title: "State Validation", detail: "Callback parsing must compare browser-local OAuth state.", status: "Pending" },
-        { title: "Token Exchange", detail: "The exchange must remain browser-side or use an approved SDK path.", status: "Pending" },
-        { title: "Session Restore", detail: "Local refresh and multi-tab behavior need explicit verification.", status: "Pending" },
-      ],
-    },
     profile: {
       copy: auth.session
         ? "Your profile is attached to your signed-in identity. Your posts open in the profile reader, and account-level edits open on Bluesky in a new tab."
@@ -4676,6 +4681,42 @@ function SurfaceView({
         onSignOut={onSignOut}
         onTogglePinnedNotification={onTogglePinnedNotification}
       />
+    );
+  }
+
+  if (name === "oauth-callback") {
+    // Reached by returning from Bluesky's consent screen. Normally initAuthSession
+    // resolves the callback and App redirects to Settings within a moment, so this
+    // view is only visible while that's in flight — or when the callback failed, in
+    // which case we must give the user a way forward instead of a dead placeholder.
+    const inFlight = auth.status === "checking" || auth.status === "callback";
+    if (inFlight) {
+      return (
+        <div className="timeline comfortable">
+          <section className="surface-placeholder" aria-busy="true">
+            <h2>Signing you in…</h2>
+            <p>Finishing your Bluesky sign-in. This usually takes a second.</p>
+          </section>
+        </div>
+      );
+    }
+    // Failed: either an explicit error (auth.message set), or init() returned no
+    // session because the OAuth state from before the redirect was missing — e.g.
+    // sign-in was started in a different browser/tab or site data was cleared.
+    const failureMessage =
+      auth.message ??
+      "Your sign-in didn't finish. This can happen if it was started in a different browser or tab, or if the connection to Bluesky was interrupted. Try signing in again below.";
+    return (
+      <div className="timeline comfortable">
+        <section className="surface-placeholder">
+          <h2>Sign-in didn&apos;t finish</h2>
+          <p className="settings-warning">{failureMessage}</p>
+        </section>
+        <section className="signed-out-signin" aria-label="Sign in">
+          <h3>Sign in to Bluesky</h3>
+          <SignInForm status={auth.status} onSignIn={onSignIn} />
+        </section>
+      </div>
     );
   }
 
