@@ -1941,6 +1941,14 @@ export function App() {
             : signedInDid
               ? await getFeedAuthed(source.uri, cursor, signal)
               : await getFeed(source.uri, cursor, signal);
+      // Media (grid) density hides text-only posts, so a single page can yield
+      // only a couple of visual items. Top up by fetching more pages until the
+      // batch has ~a screenful of visual content (or we hit the page cap). This
+      // runs on load-more too (by design): filtering out lots of posts is fine,
+      // but we still want each load to hand the user a full grid of content
+      // rather than a near-empty one. The extra fetches are bounded by
+      // MEDIA_DENSITY_MAX_PREFETCH_PAGES, so this is intentional, not runaway
+      // cursor exhaustion.
       if (density === "media" && response.cursor && countVisualFeedItems(response.feed) < MEDIA_DENSITY_VISIBLE_TARGET) {
         let nextCursor: string | undefined = response.cursor;
         let combinedFeed = response.feed;

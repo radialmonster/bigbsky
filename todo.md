@@ -12,7 +12,6 @@ From the full code review of `src/App.tsx`, `src/auth.ts`, `src/api.ts`, `src/ri
 
 ### LOW
 
-- [ ] **L3. `App.tsx:1919-1937` — Media-density load-more counts only the new page toward the prefetch target**, so each load-more can fetch up to `MEDIA_DENSITY_MAX_PREFETCH_PAGES` extra pages — rapid cursor exhaustion.
 - [ ] **L5. `auth.ts:117-120` — `looksLikeOAuthCallback` also scans `location.hash`**; a stray `#state=…&error=…` fragment falsely triggers the callback view. Restrict to `location.search`. **Deferred 2026-07-02:** atproto's own `readCallbackParams` chooses hash vs. search by `responseMode` (`docs/atproto/.../browser-oauth-client.ts:390`), so restricting to `location.search` would break a fragment-mode client. Confirm BigBsky's `responseMode` before touching this; not worth the risk without an OAuth test path.
 - [ ] **L8. `auth.ts:365-382` — `signOut` deletes the OAuth IndexedDB twice** (async-dispose + `clearOAuthSessionStorage`); redundant, can collide.
 
