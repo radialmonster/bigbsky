@@ -56,10 +56,26 @@ tasks — it points here.
   pointer click and shows "1 / 10" — all 10 images navigable. (A programmatic
   `.click()` was a no-op because the viewer opens on pointerdown/mousedown, not
   the React onClick — a CDP synthetic-event quirk, not a defect.)
-  (d) Bookmarks and Lists restore scroll on revisit —
-  Bookmarks is empty ("No bookmarks yet") so scroll-restore there can't be
-  exercised until there are bookmarks; Lists scroll-restore still to check with a
-  populated list.
+  (d) Scroll restoration on revisit — **updated 2026-07-03 with a real signed-in
+  CDP test.** Feed back-navigation restores correctly: on `/feed/following`
+  (populated, virtualized) scrolling to 1587, opening a thread, and going back
+  restored to exactly 1587. **Bookmarks scroll-restore is CONFIRMED BROKEN**,
+  though — see the "Integrate scroll restoration with the `VirtualPostList`
+  measurement pass" item below for the full root-cause writeup. In short: with
+  ~10 test bookmarks (added then fully removed, account back to zero), a real
+  wheel-scroll to 2698 was saved correctly (`surface:bookmarks` = 2698) but on
+  return the page landed at **96** (near top). Cause: on the bookmarks surface the
+  restore's own `scrollOffsetTo(target)` jump fires while VirtualPostList still
+  has most rows at their (too-tall) height estimate; the jump forces those rows to
+  mount + measure shorter, `totalHeight` shrinks, and `scrollTop` clamps back to
+  ~96 — the restore fights the measurement compensation and can't win. Following
+  works only because its rows were already measured on back-nav. A time-budget
+  widening (aligning the 500ms re-apply loop to the 2000ms suppression guard) was
+  tried and **reverted** — it does not help, since the problem is the estimate→
+  measure shrink, not the loop giving up early. Real fix is the measurement-pass
+  integration item. Lists scroll-restore still unverifiable: operator has **zero
+  Bluesky lists** ("No lists yet"), and creating account-level lists just to test
+  isn't warranted — revisit if the operator ever has a long list.
 
 ## Code review findings (2026-07-02)
 
@@ -156,7 +172,28 @@ From the full code review of `src/App.tsx`, `src/auth.ts`, `src/api.ts`, `src/ri
     - `src/App.tsx`: `VirtualPostList`, scroll helpers/restoration, `BackToTopButton`.
     - `scripts/verify-layout-behavior.mjs`: current static layout guardrails to preserve or replace with visual/behavioral checks.
 - [ ] Integrate scroll restoration with the `VirtualPostList` measurement pass (follow-up).
-  - From the real-browser confirmation above. `restoreScrollOffset` currently re-asserts the target on a fixed ~500ms (30-frame) rAF budget. In the virtualized feed this races `VirtualPostList`'s row measurement: rows start at the estimated `defaultRowHeight`, then `ResizeObserver` measures real heights and compensates `scrollTop`, and on a fresh/reload load the content can keep growing past the 30-frame window — so the restore can land short or at 0.
+  - **Now backed by a concrete reproduction (2026-07-03, signed-in CDP).** On
+    `/bookmarks` with ~10 bookmarks, a real wheel-scroll to 2698 saved correctly
+    (`surface:bookmarks` = 2698) but the return navigation restored to **96** (near
+    top). The restore's `scrollOffsetTo(target)` jump is itself a programmatic
+    scroll that forces VirtualPostList to mount rows near the target using the
+    (too-tall) `defaultRowHeight` estimate; those rows then measure shorter, the
+    `ResizeObserver` compensation shrinks `totalHeight`, and `scrollTop` clamps
+    back to ~96. The rAF loop re-asserts the target every frame but each assertion
+    re-triggers the same shrink, so it never converges — the restore *fights* the
+    measurement compensation. This reproduces cleanly with real wheel events (not a
+    CDP synthetic-event artifact); a plain programmatic `scrollTop = N` shows the
+    same shrink (2200 → 529). Feed back-navigation (`/feed/following`) restores
+    fine (1587 → 1587) only because its rows were already measured. A time-budget
+    widening (500ms re-apply → 2000ms, matching the suppression guard) was tried
+    and reverted: it doesn't help because the failure is the shrink, not an
+    early-give-up. **The real fix must anchor to content, not a raw pixel offset**
+    — e.g. save the top-visible post URI (+ intra-post offset) and scroll that
+    element into view once it renders, and/or drive the restore from a
+    VirtualPostList "measurement settled / totalHeight stable" signal and clamp
+    against the live `totalHeight`. Lowering `defaultRowHeight` closer to real row
+    heights would only reduce the shrink magnitude, not eliminate the race.
+  - `restoreScrollOffset` currently re-asserts the target on a fixed ~500ms (30-frame) rAF budget. In the virtualized feed this races `VirtualPostList`'s row measurement: rows start at the estimated `defaultRowHeight`, then `ResizeObserver` measures real heights and compensates `scrollTop`, and on a fresh/reload load the content can keep growing past the 30-frame window — so the restore can land short or at 0.
   - Better approach: drive the restore from the measurement cycle. E.g. have `VirtualPostList` expose a "first full measurement pass complete" signal (or a settled `totalHeight`), and (re)apply the saved offset when row heights stabilize rather than purely on a frame budget; clamp-aware against the live `totalHeight`. Keep the rAF path as the visible-tab fallback.
   - Also worth confirming once on a real touch device: mobile document-scroll restore + the smooth Back-to-top scroll (both also rAF-driven, so both need a visible page).
   - Relevant files/functions found:
@@ -442,6 +479,31 @@ From the full code review of `src/App.tsx`, `src/auth.ts`, `src/api.ts`, `src/ri
     empty/malformed/missing → `[""]`, multi-post join, non-string drop, single-post
     passthrough). `npm test` green (153 tests / 10 files); `npm run build` green
     (tsc, vite, audit initial JS 121 kB gzip, reader + layout + rich-text verifiers).
+  - Progress (2026-07-03): **slice 8 — the last App-type-coupled `read*` object-blob
+    parsers extracted + tested.** Added `parseObjectMap<T>(raw)` (JSON.parse with a
+    `typeof === "object"` guard, no per-value validation — preserves the originals'
+    guard, including the array-passthrough quirk `readCollapsedFeedGroups` relied on)
+    and `parseColumnVisibility(raw)` (primary `{feeds,right}` blob → resolved
+    visibility, or `null` so the caller can fall back to its legacy width migration)
+    to `src/lib/preferences.ts`. Rewired three App.tsx readers to delegate and read
+    through `safeLocalStorageGet` (throw-safe): `readDensityPreferences` →
+    `parseObjectMap<DensityMode>`, `readCollapsedFeedGroups` → `parseObjectMap<boolean>`,
+    and `readColumnPreferences` → `parseColumnVisibility` for the primary blob with
+    the legacy per-context/single-value width migration kept inline. Behavior
+    preserved for every realistic path (absent / valid object / valid non-object /
+    array). Two documented, effectively-unreachable edge changes: (a)
+    `readDensityPreferences` gains a defensive non-object→`{}` guard it lacked (it
+    previously returned the raw parse of any JSON — only matters for corrupted data,
+    which the app never writes); (b) a *corrupted* (unparseable) columns blob now
+    falls through to the legacy width migration instead of short-circuiting to the
+    default — only observable if the columns JSON is corrupt AND a legacy `focus`
+    width pref exists simultaneously. Added 6 tests to `src/lib/preferences.test.ts`.
+    `npm test` green (198 tests / 12 files); `npm run build` green (tsc, vite, audit
+    initial JS 151 kB gzip, reader + layout + rich-text verifiers). Live-smoke via
+    CDP on the signed-in dev server: `/feed/following` renders, density class applied,
+    columns default — no console errors. **All inline `read*` blob parsers are now
+    extracted** — remaining decomposition work is component/CSS co-location and the
+    cache-layer slice, not helper parsers.
   - Suggested lowest-risk first slices, each independently shippable:
     1. Extract pure helpers (the `read*`/`safe*`/`readScrollOffset`/
        `scrollOffsetTo`/`restoreScrollOffset`/`postSortAt` cluster) into
@@ -473,7 +535,8 @@ From the full code review of `src/App.tsx`, `src/auth.ts`, `src/api.ts`, `src/ri
     - Progress (2026-06-30): **slice 5 — safe storage/URL guards** extracted to `src/lib/storage.ts` + `src/lib/url.ts` (de-duplicating triplicated copies across App.tsx/auth.ts/richtext.ts) with `src/lib/storage.test.ts` (8 tests) + `src/lib/url.test.ts` (5 tests). Upgraded `verify-richtext.mjs` to esbuild bundling so richtext's new `./lib/url` import resolves. `npm test` green (128 tests / 9 files). `resolveHandle` cache was already extracted to `src/api.ts` with `src/api.test.ts`.
     - Progress (2026-06-30): **slice 6 — `read*` preference JSON parsers** extracted to `src/lib/preferences.ts` (`parseStringArray`, `parseNonEmptyStringArray`, `parseBooleanRecord`, `parseFiniteNumberRecord`) with `src/lib/preferences.test.ts` (15 tests); added `safeSessionStorageGet` to `src/lib/storage.ts` (+2 tests). Five App.tsx readers now delegate (`readFeedOrder`, `readPinnedSearches`, `readPinnedNotifications`, `readShowMediaPreferences`, `readTimelineScrollCache`). `npm test` green (145 tests / 10 files).
     - Progress (2026-06-30): **slice 7 — object-array `read*` parsers** extracted to `src/lib/preferences.ts` (`parseObjectArray`, `parseComposerDraft`) with +8 tests in `src/lib/preferences.test.ts`. Four App.tsx readers now delegate (`readRecentItems`, `readLocalLists`, `readPinnedProfiles`, `readComposerDraft`) and read through `safeLocalStorageGet`. `npm test` green (153 tests / 10 files).
-    - Still open: keep porting the remaining regex assertions to real tests and delete each as it gains behavioral coverage. Next helper extractions to cover: the remaining App-type-coupled `read*` preference parsers (`readDensityPreferences`, `readColumnPreferences`, `readCollapsedFeedGroups`, the `readPinnedFeed*`/`readHomeSourceId` readers) still inline in App.tsx.
+    - Progress (2026-07-03): **slice 8 — `parseObjectMap` + `parseColumnVisibility`** extracted to `src/lib/preferences.ts` (+6 tests). `readDensityPreferences`, `readCollapsedFeedGroups`, and `readColumnPreferences` now delegate. `npm test` green (198 tests / 12 files). All inline object-blob `read*` parsers are now extracted.
+    - Still open: keep porting the remaining regex assertions to real tests and delete each as it gains behavioral coverage. The `readPinnedFeed*` / `readHomeSourceId` readers stay inline (they depend on `feedSources`/`isListUri` and return App-local `FeedSource`, so they belong with a components/feed-source slice rather than the pure-parser lib).
   - Severity: high. `scripts/verify-reader-behavior.mjs` and
     `scripts/verify-layout-behavior.mjs` are 100% `readFileSync` + regex (e.g.
     `verify-layout-behavior.mjs:29` asserts a specific scroll-compensation
@@ -500,3 +563,244 @@ From the full code review of `src/App.tsx`, `src/auth.ts`, `src/api.ts`, `src/ri
     each component's styles. (Already flagged in `docs/plan.md`; tracked here.)
   - Relevant files/functions found:
     - `src/styles.css`.
+
+## Code review findings (2026-07-03)
+
+Full-codebase review (baseline green: tsc -b clean, 191/191 vitest tests pass).
+Scope: src/App.tsx, src/auth.ts, src/api.ts, src/lib/\*, src/main.tsx,
+public/sw.js, index.html, vite.config.ts, tsconfig.json, scripts/\*.mjs.
+Items below are real bugs / silent failures / hardening gaps, ordered by
+severity; line numbers current as of this commit. Candidate findings checked
+and dropped as non-bugs are noted at the end so a future pass doesn't re-flag
+them.
+
+### HIGH
+
+- [ ] **H1. No top-level React error boundary — one render error whitescreens
+  the app.** src/main.tsx:7 renders <App /> with no ErrorBoundary
+  (componentDidCatch / getDerivedStateFromError) anywhere in src/. A thrown
+  exception during render (malformed post record, unexpected undefined deep in
+  a post card, bad facet offset, future code change) unmounts the whole tree
+  and leaves #root blank. For a reader that ingests untrusted remote Bluesky
+  records this is a likely failure mode, not theoretical. Fix: wrap <App /> in
+  a top-level class ErrorBoundary (fallback UI + reload), and ideally a second
+  narrower one around the timeline/post-rendering subtree. Single
+  highest-impact item in this review.
+
+### MEDIUM
+
+- [ ] **M3. src/api.ts:191 — success-path response.json() is unguarded, unlike
+  the error path.** getJson carefully wraps the error-body decode in try/catch
+  (182-187) but returns response.json() as Promise<T> on 2xx with no guard. A
+  2xx response with an empty/truncated body (proxy returning 200 + empty, a
+  response truncated mid-stream, or the 15s timeout aborting after headers)
+  throws a raw SyntaxError instead of the consistent ApiError callers expect.
+  Fix: decode + try/catch on the success path too, throwing ApiError (or
+  returning a typed fallback) so callers see one error shape.
+- [ ] **M4. src/auth.ts:1496-1502 — clearOAuthSessionStorage resolves success
+  after onblocked, contradicting its own warning comment.** The 3s fallback
+  setTimeout(done) fires when deleteDatabase is blocked, even though the
+  preceding comment explicitly says resolving here "would report success while a
+  signed-out OAuth session lingers on disk, letting a later init() resurrect
+  it." signOut then nulls clientPromise, so the next getClient() can re-open and
+  re-read the same DB before the pending delete completes — a real (if rare)
+  resurrection race. The fallback exists to avoid a hang, but it should not look
+  like clean success. Fix: resolve with a distinct "blocked/timed-out" outcome
+  (or reject with a typed error) so callers can warn the user / retry instead of
+  reporting a clean sign-out.
+- [ ] **M5. src/auth.ts:257 — initAuthSession uses raw localStorage.getItem
+  while the rest of the module uses safeLocalStorageGet.** In a private-mode /
+  storage-disabled / quota-error context the raw getItem throws SecurityError,
+  control jumps to the outer catch (309), isDeletedSessionError is false, and
+  the user lands on status "error" with a SecurityError message instead of the
+  signed-out view. Fix: use safeLocalStorageGet(activeDidKey) here for
+  consistency.
+- [ ] **M6. src/auth.ts:400-403 — disposeCachedClient returns silently when
+  Symbol.asyncDispose is missing.** If the symbol isn't polyfilled at runtime
+  (core-js import tree-shaken or a future build change), the client's IndexedDB
+  handle stays open, so the subsequent deleteDatabase hits the onblocked path
+  from M4. Currently believed-polyfilled by the library's core-js import, but
+  nothing observes the early-return. Fix: at minimum log when the early return
+  is taken so this is observable; ideally fall back to an explicit close.
+- [ ] **M7. src/App.tsx:5871-5891 — AuthedNotifications.load has no abort /
+  generation guard (retry race).** load fires on mount and again on each Retry
+  click with no AbortController or request-id. If the user clicks Retry while a
+  prior getNotifications() is in flight, both resolve and the older response can
+  overwrite the newer (setItems(page.notifications)). Contrast BookmarksView
+  (7722) and ThreadEngagementPanel (9695), which correctly abort the previous
+  request. Fix: thread an AbortController through load and abort the prior one
+  on retry.
+- [ ] **M8. src/App.tsx:6264-6268 — BlueskyListCard local block/mute state never
+  re-syncs from props.** blockUri / muted are seeded via useState only; there is
+  no re-sync effect (unlike ProfileDetailHeader at 6722, which has one). When
+  ListsSurface re-fetches myLists (after creating a list, onReloadMyLists, or a
+  cross-tab change), the card keeps stale local state. Fix: add a useEffect
+  keyed on list.uri / list.viewer?.blocked / list.viewer?.muted that re-seeds
+  state, mirroring ProfileDetailHeader.
+- [ ] **M9. src/App.tsx:6819-6823 and 11039-11041 — copy-link buttons report
+  "Copied" even when the clipboard write fails.** The code does
+  void navigator.clipboard?.writeText(bskyUrl); setCopied(true); fire-and-forget:
+  if writeText rejects (permission denied, insecure context, no user gesture),
+  the UI still flips to "Copied" and the rejection propagates unhandled. Fix:
+  await the write and only setCopied(true) on success, with a fallback path on
+  failure.
+- [ ] **M10. src/App.tsx:7370-7384 — PostComposer.insertAtCaret uses a stale
+  draftText closure.** insertAtCaret reads draftText (recomputed each render)
+  and slices against it. If an EmojiPicker/button onSelect consumer holds an
+  older insertAtCaret, two rapid inserts from the picker can drop the first one
+  (second call slices against pre-first-insert text). Fix: use the functional
+  updater form (setText(prev => ...)) or operate on the textarea's current
+  selection/value directly.
+- [ ] **M11. src/App.tsx:3302-3333 — loadMore (profile/search) passes undefined
+  signal; late pages can't be aborted.** The manual loadMore calls
+  loadSearch / loadActorSearch / loadProfileFeed / loadFeed with no signal on the
+  cursor path. Initial-load effects use controllers; pagination does not, so an
+  in-flight "load more" on profile A can resolve after navigating to profile B
+  and append rows to the wrong feed. Fix: thread an AbortController (a ref
+  replaced on route change) through loadMore. (Same class of race as M12.)
+- [ ] **M12. src/App.tsx:3334-3340 — reloadCurrentProfile fetches with no
+  AbortController.** Called from handleOwnPostPublished after posting a reply; if
+  the user navigates away right after, the profile refetch can resolve after the
+  route changed and overwrite the new route's feed state. Fix: track a
+  controller, or guard the setFeedState with a route-kind/actor check.
+- [ ] **M13. src/lib/content-language.ts x src/App.tsx:1919 — failed language
+  detection is cached forever, defeating getLande's retry.** When
+  detectPostLanguage rejects (transient lande chunk-load failure), the effect
+  caches "" for that URI in detectedByUri; postsNeedingDetection then excludes
+  that URI forever, so the post is never re-queued even though getLande
+  (content-language.ts:200-216) deliberately resets landePromise = null to allow
+  a retry. One transient error permanently disables language-filter correctness
+  for every post on the page at that moment (until reload). Fix: distinguish
+  "detection returned a code" from "detection errored" — don't cache the error
+  sentinel (leave the URI absent so it re-queues), or cache a distinct sentinel
+  treated as still-pending.
+- [ ] **M14. src/App.tsx:1608-1631 — toggleFollowFeed swallows follow/unfollow
+  failures (console.error only, no user feedback).** The catch only logs; the
+  button gives no error state, so a failed follow/unfollow silently does nothing
+  visible. Fix: surface the error (banner or button error state) like the list
+  subscribe path already does (subError in BlueskyListCard).
+
+### LOW
+
+- [ ] **L6. src/lib/preferences.ts:99-129 — parseObjectMap and
+  parseColumnVisibility are dead code with inaccurate docstrings.** Added in the
+  uncommitted preferences.ts change but with no callers:
+  readDensityPreferences (App.tsx:477), readCollapsedFeedGroups (App.tsx:587),
+  and readColumnPreferences (App.tsx:522) still do their own inline
+  JSON.parse(...) as ... casts. The comments claim they back those readers /
+  enable a legacy-width migration, which isn't true today. Fix: wire the three
+  read\* callers to the validators (which also fixes L7/L8 below), or delete the
+  unused helpers and correct the comments.
+- [ ] **L7. src/App.tsx:525 — readColumnPreferences accepts a JSON array as the
+  visibility object.** The check "stored && typeof stored === 'object'" is true
+  for arrays (typeof [] === "object"); a stored "[]" returns defaults and
+  silently skips the legacy-width migration. The newer parseColumnVisibility has
+  the missing !Array.isArray(stored) guard but isn't wired up (see L6).
+- [ ] **L8. src/App.tsx:587-594 — readCollapsedFeedGroups returns non-boolean
+  values verbatim.** Only a top-level object check; a historically-stored
+  {"g":"yes","h":1} comes back as-is. The sibling parseBooleanRecord
+  (preferences.ts:41) drops these. Consumers expecting booleans get arbitrary
+  JSON values; === false / === true comparisons silently misbehave.
+- [ ] **L9. src/lib/content-language.ts:61-63 — code3ToCode2 only translates
+  lowercase 3-letter codes.** The CODE3_TO_CODE2 table is all-lowercase; an
+  uppercase/mixed-case 3-letter tag passes through untranslated, then
+  detectPostLanguage rejects it and returns undefined (post treated as
+  "detection unavailable -> keep", silently bypassing the filter). Brittle
+  coupling to lande's case output. Fix: code.toLowerCase() before the lookup.
+- [ ] **L10. src/lib/scroll.ts:88,134-153 — armScrollRestore's 2000 ms
+  suppression window can lapse mid-restore on a backgrounded tab.** The apply
+  rAF loop (up to 30 frames) only re-asserts the scroll offset; it doesn't
+  re-arm the suppression guard. rAF throttles to ~1 Hz when backgrounded, so 30
+  frames can exceed 2 s; after expiry a save-on-scroll handler can persist a
+  transient near-zero offset, clobbering the value being restored. Fix: re-arm /
+  extend the guard each frame while the restore is ongoing, or tie suppression
+  to the token being active rather than a wall-clock deadline.
+- [ ] **L11. src/App.tsx:10299-10322 — ImageViewer preloaded new Image() onload
+  can setState after unmount.** preloadOriginal's img.onload fires
+  setLoadedOriginals(...) with no cancel/null check; if the viewer closes while
+  an original is still loading, the handler leaks and holds the component in
+  memory until the image loads. Fix: track a cancelled flag per preload,
+  invalidated on unmount/index change.
+- [ ] **L12. src/App.tsx:6192-6203 — ListMemberManager.handleRemove has no busy
+  guard (unlike handleAdd).** Remove buttons are disabled={busy}, but a rapid
+  double-click before re-render can fire two concurrent removeListItem calls;
+  both then setMembers(filter...). Fix: add "if (busy) return;" for symmetry
+  with handleAdd.
+- [ ] **L13. src/App.tsx:11211-11223 — BackToTopButton container listener never
+  attaches if the ref is null on mount.** The effect reads containerRef.current
+  once at mount; if the scroll container isn't mounted yet, only the window
+  listener attaches and the desktop container's scroll is never observed.
+  containerRef identity is stable so the dep array won't re-run when it later
+  populates. Fix: use a callback ref or re-run on a watchKey that coincides with
+  mount.
+- [ ] **L14. src/App.tsx:11068-11078 — TrendingPanel swallows network errors;
+  user always sees the static fallback with no indication.** Every non-"ready"
+  status (loading/error/empty) renders the hardcoded fallback list; users can't
+  tell "trending API is down" from "these are real trends." Fix: surface a
+  subtle "showing defaults" note or an error state.
+- [ ] **L15. src/App.tsx:2666-2684 — toggleContentLanguage doesn't dedupe like
+  setContentLanguageSelection does.** Two paths do the same job; only
+  setContentLanguageSelection runs Array.from(new Set(...)). A corrupted
+  contentLanguages from storage could accumulate duplicates via the toggle path.
+  Fix: route both through setContentLanguageSelection.
+- [ ] **L16. src/App.tsx:2838 — removePostFromState sets a false bookmark
+  override that never gets cleaned up.** setBookmarkOverrides({...current,
+  [uri]: false}) shadows the real post.viewer.bookmarked for that URI
+  indefinitely (until identity change) instead of deleting the key. Mostly
+  harmless (post is removed from the feed) but a latent wrong-state / minor
+  leak. Fix: delete the key from bookmarkOverrides.
+- [ ] **L17. src/main.tsx:11 + public/sw.js — service worker uses hardcoded
+  root paths; dev install can cache the dev shell under the prod cache key.**
+  register("/sw.js") and sw.js's SHELL_URLS = ["/","/index.html"] /
+  url.pathname.startsWith("/assets/") are root-anchored, so any future
+  base/subdirectory deploy breaks offline caching invisibly. Separately, in
+  local dev the SW can cache the dev HTML (with /src/main.tsx) under
+  bigbsky-shell-v5 and a dev->prod switch then serves the stale dev shell until
+  CACHE_NAME is bumped. Fix: derive paths from import.meta.env.BASE_URL and gate
+  SW registration behind import.meta.env.PROD (or bump CACHE_NAME per
+  environment).
+- [ ] **L18. No CSP anywhere (index.html / public/_headers).** _headers sets
+  X-Content-Type-Options / Referrer-Policy / Permissions-Policy but no
+  Content-Security-Policy. For a static SPA that renders third-party rich-text,
+  mentions, links, and media, a CSP would meaningfully reduce XSS blast radius.
+  Hardening gap, not a strict bug. Fix: add a CSP via _headers (allow atproto/CDN
+  image hosts, connect-src to the PDS/AppView/PLC/handle resolvers).
+- [ ] **L19. index.html:18 — no noscript / no JS-load failure placeholder in
+  #root.** If the bundle fails to load (network, bad deploy, CSP block), the
+  user sees a blank page forever. Combined with H1, the failure UX is uniformly
+  "blank page." Fix: add a noscript message and a minimal loading/error
+  placeholder inside #root.
+- [ ] **L20. scripts/verify-layout-behavior.mjs:3-4 and
+  verify-reader-behavior.mjs:3-5 use pathless readFileSync("src/App.tsx", ...)
+  — break under non-root CWD.** verify-richtext.mjs correctly resolves from
+  import.meta.url; these two don't. Any CI / pre-commit hook that doesn't cd to
+  repo root throws ENOENT with a misleading "verification failed" framing. Fix:
+  resolve paths from import.meta.url like verify-richtext.mjs.
+- [ ] **L21. tsconfig.json:6,21 — scripts/audit-build.mjs is in include but
+  allowJs: false, so it's silently not type-checked.** Misleading: implies
+  coverage that doesn't happen; the other .mjs scripts aren't included at all.
+  Fix: drop the entry (no-op) or add a separate tsconfig.scripts.json.
+
+### Verified correct / dropped (checked, not bugs)
+
+- **Profile tab to server filter mapping is correct** (profileFeedFilterForTab,
+  App.tsx:600). "posts" -> posts_no_replies and visibleProfileItems returns
+  feedState.items unfiltered (server already excluded replies); the
+  "replies"/fallback branch maps to posts_with_replies and client-filters to
+  self-thread replies. Initially flagged as a HIGH mismatch; re-verified against
+  the atproto getAuthorFeed filter semantics — not a bug.
+- src/richtext.ts UTF-8 byte-offset facet slicing and multi-feature fallback
+  (still correct; re-confirmed this pass).
+- lib/threads.ts cycle protection, hardSplitIndex always advances >=1 on both
+  grapheme and byte axes, splitTextForThread limit < 1 guard.
+- BookmarksView initial load + loadMore both use AbortController with
+  signal.aborted guards; ThreadEngagementPanel aborts on uri/kind change;
+  PostLanguagePicker / EmojiPicker outside-click/Escape listeners are cleaned
+  up.
+- lib/storage.ts, lib/time.ts (postSortAt / postSortTime NaN + skew handling),
+  lib/url.ts (safeHttpUrl scheme rejection), lib/feed-meta.ts, lib/feed-order.ts
+  (stable sort + unknown-rank fallback) — clean.
+- tsconfig.json strict settings (strict, noUnusedLocals, noUnusedParameters,
+  forceConsistentCasingInFileNames) are appropriately tight; .gitignore
+  correctly ignores logs / .env\* / dist/ / node_modules/ / .vite/ /
+  tsconfig.tsbuildinfo — no sensitive files tracked.
