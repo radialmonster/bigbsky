@@ -8,7 +8,7 @@
 // persists across tests within this file.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveHandle } from "./api";
+import { getRecordEmbed, resolveHandle } from "./api";
 
 const NOW = new Date("2026-06-27T12:00:00.000Z").getTime();
 const TTL_MS = 5 * 60 * 1000;
@@ -102,5 +102,67 @@ describe("resolveHandle", () => {
     // The just-written live entry is served from cache (no new fetch).
     await resolveHandle(fresh);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("getRecordEmbed", () => {
+  const wrap = (record: unknown) => ({ record });
+
+  it("returns a renderable viewRecord (has author + value)", () => {
+    const record = {
+      $type: "app.bsky.embed.record#viewRecord",
+      uri: "at://did:plc:x/app.bsky.feed.post/1",
+      cid: "cid1",
+      author: { did: "did:plc:x", handle: "a.test" },
+      value: { text: "hi" },
+    };
+    expect(getRecordEmbed(wrap(record))).toBe(record);
+  });
+
+  it("drops the viewNotFound variant (carries uri but no content)", () => {
+    expect(
+      getRecordEmbed(
+        wrap({ $type: "app.bsky.embed.record#viewNotFound", uri: "at://x/y/1", notFound: true }),
+      ),
+    ).toBeNull();
+  });
+
+  it("drops the viewBlocked variant", () => {
+    expect(
+      getRecordEmbed(
+        wrap({ $type: "app.bsky.embed.record#viewBlocked", uri: "at://x/y/1", blocked: true }),
+      ),
+    ).toBeNull();
+  });
+
+  it("drops the viewDetached variant", () => {
+    expect(
+      getRecordEmbed(
+        wrap({ $type: "app.bsky.embed.record#viewDetached", uri: "at://x/y/1", detached: true }),
+      ),
+    ).toBeNull();
+  });
+
+  it("keeps a feed-generator record view (uri, no author, not a not-found/blocked type)", () => {
+    const record = {
+      $type: "app.bsky.feed.defs#generatorView",
+      uri: "at://did:plc:x/app.bsky.feed.generator/g",
+    };
+    expect(getRecordEmbed(wrap(record))).toBe(record);
+  });
+
+  it("unwraps a recordWithMedia container (record.record)", () => {
+    const inner = {
+      $type: "app.bsky.embed.record#viewRecord",
+      uri: "at://x/y/1",
+      author: { did: "did:plc:x", handle: "a.test" },
+    };
+    expect(getRecordEmbed({ record: { record: inner } })).toBe(inner);
+  });
+
+  it("returns null for non-object / missing record", () => {
+    expect(getRecordEmbed(null)).toBeNull();
+    expect(getRecordEmbed({})).toBeNull();
+    expect(getRecordEmbed(wrap({ notAUri: true }))).toBeNull();
   });
 });

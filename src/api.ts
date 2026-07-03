@@ -163,7 +163,18 @@ async function getJson<T>(path: string, params: Record<string, string>, signal?:
     );
   }
 
-  const response = await fetch(url, { signal });
+  // Bound every request so a stalled TCP connection can't hold loading state (or
+  // a hydration batch) open forever. Combine the caller's abort signal with a
+  // 15s timeout when AbortSignal.any is available; fall back to the caller's
+  // signal alone on older engines.
+  const timeoutSignal =
+    typeof AbortSignal !== "undefined" && "any" in AbortSignal && "timeout" in AbortSignal
+      ? signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(15000)])
+        : AbortSignal.timeout(15000)
+      : signal;
+
+  const response = await fetch(url, timeoutSignal ? { signal: timeoutSignal } : {});
   if (!response.ok) {
     // Surface the AppView's error body (e.g. {"error":"UpstreamFailure",
     // "message":"feed unavailable"}) instead of a bare status text.
@@ -539,6 +550,15 @@ export function getRecordEmbed(embed: unknown) {
       ? recordContainer.record
       : recordContainer;
   if (!record || typeof record !== "object" || !("uri" in record)) {
+    return null;
+  }
+  // The not-found / blocked / detached record variants also carry `uri` but no
+  // author or content, so they'd pass the guard above and render as an empty
+  // quote card ("Quoted post has no plain text."). Drop them by $type so only a
+  // renderable record embed (viewRecord, or a generator/list/starter-pack view)
+  // survives.
+  const recordType = (record as { $type?: string }).$type;
+  if (typeof recordType === "string" && /viewNotFound|viewBlocked|viewDetached/i.test(recordType)) {
     return null;
   }
 

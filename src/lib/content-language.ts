@@ -199,10 +199,18 @@ let landePromise: Promise<LandeFn> | null = null;
 
 async function getLande(): Promise<LandeFn> {
   if (!landePromise) {
-    landePromise = import("lande").then((mod) => {
-      const fn = (mod as { default?: LandeFn }).default ?? (mod as unknown as LandeFn);
-      return fn;
-    });
+    landePromise = import("lande")
+      .then((mod) => {
+        const fn = (mod as { default?: LandeFn }).default ?? (mod as unknown as LandeFn);
+        return fn;
+      })
+      .catch((error) => {
+        // Don't cache a rejected import: a transient chunk-load failure would
+        // otherwise disable language detection for the whole session. Reset so
+        // the next detection attempt retries the load.
+        landePromise = null;
+        throw error;
+      });
   }
   return landePromise;
 }

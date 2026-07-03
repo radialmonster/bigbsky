@@ -43,6 +43,9 @@ let clientPromise: Promise<BrowserOAuthClient> | null = null;
 // Retained so authenticated reads (e.g. the signed-in user's saved feeds) can
 // reuse the active OAuth session instead of re-restoring it.
 let activeSession: OAuthSession | null = null;
+// In-flight session restore, shared so concurrent ensureSession() callers on a
+// cold start don't each fire a client.restore() racing on the IndexedDB lock.
+let restorePromise: Promise<OAuthSession> | null = null;
 
 function asAppViewAgent(agent: InstanceType<typeof import("@atproto/api").Agent>) {
   return agent.withProxy(appViewServiceType, appViewDid);
@@ -158,33 +161,6 @@ async function getClient() {
   return clientPromise;
 }
 
-// Full snapshot including the profile round-trip. Used on the OAuth callback
-// path: the persisted handle hint may belong to a different/previously-signed-in
-// account, so we can't trust it and must read the profile before resolving.
-// Callbacks redirect to /settings (not a feed), so this round-trip is not on the
-// Home critical path users see on returning visits.
-async function snapshotSessionFull(session: OAuthSession, restoredFromCallback = false): Promise<AuthSnapshot> {
-  activeSession = session;
-  const { Agent } = await import("@atproto/api");
-  const agent = new Agent(session);
-  const profile = await agent.getProfile({ actor: agent.accountDid });
-  const data = profile.data as Profile;
-  const snapshot: AuthSnapshot = {
-    did: agent.accountDid,
-    handle: data.handle,
-    displayName: data.displayName,
-    avatar: data.avatar,
-    followersCount: data.followersCount,
-    followsCount: data.followsCount,
-    postsCount: data.postsCount,
-    restoredFromCallback,
-  };
-
-  safeLocalStorageSet(activeDidKey, snapshot.did);
-  safeLocalStorageSet(activeHandleKey, snapshot.handle);
-  return snapshot;
-}
-
 // Fast snapshot produced WITHOUT a network round-trip: the DID comes from the
 // session itself (Agent construction is synchronous, no network) and the handle
 // from the hint persisted alongside the DID on the last successful load. This is
@@ -244,13 +220,17 @@ export async function initAuthSession(): Promise<AuthInitResult> {
       // restore()). Only the callback carries "state"; a plain restore does not.
       const isCallback = "state" in result;
       if (isCallback) {
-        // Callback path: don't trust the persisted handle hint (could belong to
-        // a different account), so take the full snapshot with the profile read.
-        // The callback redirects to /settings, not a feed, so this round-trip is
-        // not on the Home critical path.
+        // Callback path: the token exchange already succeeded here, so never let
+        // a transient profile read turn it into a "sign-in didn't finish" error.
+        // Return the fast snapshot (DID comes from the session itself, no network)
+        // and hydrate the profile in the background. The persisted handle hint may
+        // belong to a different account, but buildFastSnapshot never overwrites the
+        // handle and hydrateSessionProfile corrects it once it lands — matching the
+        // returning-user restore path below.
         return {
-          session: await snapshotSessionFull(result.session, true),
+          session: await buildFastSnapshot(result.session, true),
           status: "callback",
+          profilePromise: hydrateSessionProfile(result.session),
         };
       }
       // Returning-user restore (the common path): return the fast snapshot
@@ -300,8 +280,11 @@ export async function initAuthSession(): Promise<AuthInitResult> {
 // original error is preserved as `cause` for devtools/support.
 function describeSignInError(error: unknown, input: string): string {
   const parts: string[] = [];
-  for (let cause: unknown = error; cause instanceof Error; cause = (cause as Error & { cause?: unknown }).cause) {
+  // Depth-capped so a self-referential `cause` chain can't spin forever.
+  let depth = 0;
+  for (let cause: unknown = error; cause instanceof Error && depth < 10; cause = (cause as Error & { cause?: unknown }).cause) {
     parts.push(cause.name, cause.message);
+    depth += 1;
   }
   const detail = parts.join(" ").toLowerCase();
   const whom = input ? `"${input}"` : "that account";
@@ -370,12 +353,15 @@ export async function signOut(did?: string) {
           /* ignore disposal failures */
         }
       }
-      clientPromise = null;
     }
   } catch (error) {
     revokeWarning = error instanceof Error ? error.message : String(error);
   }
 
+  // Drop the cached OAuth client unconditionally: even a DID-less signOut() must
+  // not leak the client into the next session's init().
+  clientPromise = null;
+  restorePromise = null;
   activeSession = null;
   safeLocalStorageRemove(activeDidKey);
   safeLocalStorageRemove(activeHandleKey);
@@ -436,12 +422,22 @@ async function ensureSession(): Promise<OAuthSession | null> {
   if (activeSession) {
     return activeSession;
   }
-  const activeDid = localStorage.getItem(activeDidKey);
+  const activeDid = safeLocalStorageGet(activeDidKey);
   if (!activeDid) {
     return null;
   }
-  const client = await getClient();
-  activeSession = await client.restore(activeDid);
+  // De-dup concurrent restores: on cold start several authed read paths call
+  // ensureSession() at once, and each unmemoized client.restore(activeDid)
+  // races on the OAuth client's IndexedDB lock. Share one in-flight restore.
+  restorePromise ??= (async () => {
+    const client = await getClient();
+    return client.restore(activeDid);
+  })();
+  try {
+    activeSession = await restorePromise;
+  } finally {
+    restorePromise = null;
+  }
   return activeSession;
 }
 

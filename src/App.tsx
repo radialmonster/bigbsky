@@ -2190,6 +2190,9 @@ export function App() {
     if (route.kind !== "search") {
       setSearchState(emptySearchState);
       setActorSearchState(emptyActorSearchState);
+      // Clear the right-rail SearchBox query too; otherwise it keeps showing the
+      // old search text while the user is reading a feed.
+      setGlobalSearchText("");
       return undefined;
     }
 
@@ -5763,6 +5766,7 @@ function AuthedNotifications({
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | undefined>(undefined);
   const [tab, setTab] = useState<"all" | "mentions">("all");
   // When the read fails, check whether it's because the session is missing the
   // notification scope (added after this user's last consent) so we can offer a
@@ -5800,12 +5804,17 @@ function AuthedNotifications({
       return;
     }
     setLoadingMore(true);
+    setLoadMoreError(undefined);
     getNotifications(cursor)
       .then((page) => {
         setItems((current) => [...current, ...page.notifications]);
         setCursor(page.cursor);
       })
-      .catch(() => {})
+      .catch((error) => {
+        // Surface the failure instead of swallowing it, so the user sees why the
+        // list stopped growing and can retry with the same button.
+        setLoadMoreError(rateLimitMessage(error));
+      })
       .finally(() => setLoadingMore(false));
   }
 
@@ -5886,10 +5895,19 @@ function AuthedNotifications({
               </div>
             </button>
           ))}
-          {cursor && (
-            <button type="button" className="notif-load-more" onClick={loadMore} disabled={loadingMore}>
-              {loadingMore ? "Loading…" : "Load more"}
-            </button>
+          {loadMoreError ? (
+            <div className="load-more-error" role="status">
+              <span>{loadMoreError}</span>
+              <button type="button" className="load-more" onClick={loadMore} disabled={loadingMore}>
+                {loadingMore ? "Loading…" : "Retry"}
+              </button>
+            </div>
+          ) : (
+            cursor && (
+              <button type="button" className="notif-load-more" onClick={loadMore} disabled={loadingMore}>
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            )
           )}
         </section>
       )}
@@ -7595,6 +7613,7 @@ function BookmarksView({
   const [items, setItems] = useState<FeedItem[]>([]);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (!signedIn) {
@@ -7631,14 +7650,18 @@ function BookmarksView({
       return;
     }
     setLoadingMore(true);
+    setLoadMoreError(undefined);
     void (async () => {
       try {
         const response = await getBookmarks(cursor);
         const hydratedItems = await hydrateProfileSelfThreads(response.feed);
         setItems((current) => [...current, ...hydratedItems]);
         setCursor(response.cursor);
-      } catch {
-        // Keep what we have; the load-more control stays for an explicit retry.
+      } catch (error) {
+        // Keep what we have and surface the error so AutoLoadMoreButton stops
+        // auto-firing (which would hammer a rate-limited endpoint) and shows an
+        // explicit Retry instead.
+        setLoadMoreError(rateLimitMessage(error));
       } finally {
         setLoadingMore(false);
       }
@@ -7675,8 +7698,8 @@ function BookmarksView({
           onToggleListPost={onToggleListPost}
           onRenderedRowsChange={() => undefined}
         >
-          {cursor && <AutoLoadMoreButton label="Load more bookmarks" onLoadMore={loadMore} />}
-          {!cursor && <EndOfFeedCard />}
+          {cursor && <AutoLoadMoreButton label="Load more bookmarks" onLoadMore={loadMore} error={loadMoreError} />}
+          {!cursor && !loadMoreError && <EndOfFeedCard />}
         </VirtualPostList>
       )}
     </div>
