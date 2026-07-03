@@ -5,6 +5,8 @@ import {
   __resetScrollRestoreStateForTests,
   armScrollRestore,
   readScrollOffset,
+  resetScrollToTop,
+  restoreOrResetScroll,
   restoreScrollOffset,
   scrollFeedToTop,
   shouldSuppressScrollSave,
@@ -176,6 +178,80 @@ describe("restoreScrollOffset", () => {
     flushFrames();
     // The newer restore wins; the superseded loop stops touching its target.
     expect(second.scrollTop).toBe(250);
+  });
+});
+
+describe("restoreOrResetScroll / resetScrollToTop", () => {
+  let rafQueue: FrameRequestCallback[];
+  let rafSpy: { mockRestore: () => void };
+  let windowScrollSpy: { mockRestore: () => void };
+  const pinnedScrollers: Element[] = [];
+
+  function pinScrollerToZero(el: Element) {
+    Object.defineProperty(el, "scrollTop", { get: () => 0, set: () => {}, configurable: true });
+    pinnedScrollers.push(el);
+  }
+
+  beforeEach(() => {
+    __resetScrollRestoreStateForTests();
+    rafQueue = [];
+    rafSpy = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb: FrameRequestCallback) => {
+      rafQueue.push(cb);
+      return rafQueue.length;
+    });
+    windowScrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    pinScrollerToZero(document.documentElement);
+    if (document.body) {
+      pinScrollerToZero(document.body);
+    }
+  });
+
+  afterEach(() => {
+    rafSpy.mockRestore();
+    windowScrollSpy.mockRestore();
+    for (const el of pinnedScrollers.splice(0)) {
+      delete (el as unknown as { scrollTop?: number }).scrollTop;
+    }
+  });
+
+  it("resets a reused (previously-scrolled) container to the top when target is 0", () => {
+    // The bug: navigating to a fresh feed reuses the .timeline node still holding
+    // the previous feed's scrollTop. A zero target must actively reset it, not no-op.
+    const reused = makeFakeTimeline(1200);
+    restoreOrResetScroll({ current: reused }, 0);
+    expect(reused.scrollTop).toBe(0);
+    // Instant reset — no rAF restore loop is scheduled for a zero target.
+    expect(rafQueue).toHaveLength(0);
+  });
+
+  it("restores a positive saved offset instead of resetting", () => {
+    const timeline = makeFakeTimeline(0);
+    restoreOrResetScroll({ current: timeline }, 500);
+    // A positive target drives the restore loop (rAF scheduled), not an instant reset.
+    expect(rafQueue.length).toBeGreaterThan(0);
+    let runs = 0;
+    while (rafQueue.length && runs < 40) {
+      (rafQueue.shift() as FrameRequestCallback)(0);
+      runs += 1;
+    }
+    expect(timeline.scrollTop).toBe(500);
+  });
+
+  it("supersedes an in-flight restore so the previous surface can't re-drive the shared container", () => {
+    // Start restoring the previous feed to 400…
+    const shared = makeFakeTimeline(0);
+    restoreScrollOffset({ current: shared }, 400);
+    // …then navigate to a fresh feed (target 0) that reuses the same container.
+    resetScrollToTop({ current: shared });
+    expect(shared.scrollTop).toBe(0);
+    // Drain any frames the superseded restore loop had queued: it must observe the
+    // bumped token and stop, leaving the container at the top rather than 400.
+    let runs = 0;
+    while (rafQueue.length && runs < 40) {
+      (rafQueue.shift() as FrameRequestCallback)(0);
+      runs += 1;
+    }
+    expect(shared.scrollTop).toBe(0);
   });
 });
 

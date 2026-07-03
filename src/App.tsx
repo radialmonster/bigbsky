@@ -91,6 +91,7 @@ import {
   MOBILE_SCROLL_QUERY,
   armScrollRestore,
   readScrollOffset,
+  restoreOrResetScroll,
   restoreScrollOffset,
   scrollFeedToTop,
   shouldSuppressScrollSave,
@@ -1937,7 +1938,7 @@ export function App() {
       if (cached?.status === "ready") {
         setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
         setFeedState(cached);
-        restoreScrollOffset(timelineRef, scrollCacheRef.current[cacheKey] || 0);
+        restoreOrResetScroll(timelineRef, scrollCacheRef.current[cacheKey] || 0);
         return;
       }
     }
@@ -2006,7 +2007,7 @@ export function App() {
         return next;
       });
       if (!cursor) {
-        restoreScrollOffset(timelineRef, scrollCacheRef.current[cacheKey] || 0);
+        restoreOrResetScroll(timelineRef, scrollCacheRef.current[cacheKey] || 0);
       }
     } catch (error) {
       if (!signal?.aborted) {
@@ -2027,7 +2028,7 @@ export function App() {
         setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
         setProfile(cached.profile);
         setFeedState(cached.feed);
-        restoreScrollOffset(timelineRef, scrollCacheRef.current[cacheKey] || 0);
+        restoreOrResetScroll(timelineRef, scrollCacheRef.current[cacheKey] || 0);
         return;
       }
     }
@@ -2085,7 +2086,7 @@ export function App() {
         return next;
       });
       if (!cursor) {
-        restoreScrollOffset(timelineRef, scrollCacheRef.current[cacheKey] || 0);
+        restoreOrResetScroll(timelineRef, scrollCacheRef.current[cacheKey] || 0);
       }
     } else {
       const error = feedResult.reason;
@@ -3260,7 +3261,7 @@ export function App() {
     }
 
     const target = scrollCacheRef.current[activeScrollKey] || 0;
-    restoreScrollOffset(timelineRef, target);
+    restoreOrResetScroll(timelineRef, target);
     // Surfaces (Bookmarks, Lists) load their content asynchronously, so the
     // restore above (and its ~30-frame rAF budget) can run entirely against a
     // still-empty container and clamp to 0. Watch for content growth and

@@ -154,6 +154,35 @@ export function restoreScrollOffset(timelineRef: { readonly current: HTMLElement
   requestAnimationFrame(apply);
 }
 
+// Reset the (possibly reused) scroll container to the top. The `.timeline`
+// element has no per-route key, so React reuses the same DOM node when
+// navigating feed→feed / profile→profile / surface→surface; without an explicit
+// reset the new surface inherits the previous one's scrollTop. That's doubly bad
+// with virtualization: VirtualPostList compensates row-measurement growth with
+// `scrollTop += height - previousHeight` (a guard that can only fire above 0), so
+// an inherited non-zero offset then runs *away* from the top as rows measure.
+// Bumping the shared restore token supersedes any in-flight restore loop from the
+// previous surface so it can't keep re-driving the shared container after we've
+// navigated away; a single reset to 0 then holds (the compensation guard can
+// never hold at scrollTop 0 — see scrollFeedToTop).
+export function resetScrollToTop(timelineRef: { readonly current: HTMLElement | null }) {
+  scrollRestoreToken += 1;
+  scrollRestoreGuard = null;
+  scrollFeedToTop(timelineRef.current);
+}
+
+// Restore a saved offset, or actively reset to the top when there is none. Use
+// this (not restoreScrollOffset directly) at navigation restore sites: a saved
+// offset of 0 must still reset the reused container instead of silently no-oping
+// and leaving the previous surface's scroll position in place.
+export function restoreOrResetScroll(timelineRef: { readonly current: HTMLElement | null }, target: number) {
+  if (target > 0) {
+    restoreScrollOffset(timelineRef, target);
+  } else {
+    resetScrollToTop(timelineRef);
+  }
+}
+
 // Test-only: reset the module-level restore state so each test starts clean.
 export function __resetScrollRestoreStateForTests() {
   scrollRestoreGuard = null;

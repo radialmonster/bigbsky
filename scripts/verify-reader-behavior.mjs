@@ -36,13 +36,13 @@ requirePattern(/shouldSuppressScrollSave\(offset\)/, "save-on-scroll should be s
 // loop's suppression/supersede behavior), so their source-regex guardrails were
 // retired here per the test-migration plan in todo.md.
 requirePattern(/`profile:\$\{route\.actor\}:\$\{profileFeedFilterForTab\(profileTab\)\}`/, "profile timeline scroll keys should match the per-tab author-feed cache key");
-requirePattern(/restoreScrollOffset\(timelineRef, scrollCacheRef\.current\[cacheKey\] \|\| 0\)/, "cached feed/profile loads should restore cached scroll offset");
+requirePattern(/restoreOrResetScroll\(timelineRef, scrollCacheRef\.current\[cacheKey\] \|\| 0\)/, "cached feed/profile loads should restore cached scroll offset (or reset the reused container to top when none)");
 requirePattern(/const timelineScrollStorageKey = "bigbsky:timeline-scroll"/, "timeline scroll offsets should use a browser-local session cache key");
 requirePattern(/sessionStorage\.setItem\(timelineScrollStorageKey, JSON\.stringify\(cache\)\)/, "timeline scroll offsets should persist across browser reloads");
 requirePattern(/window\.addEventListener\("pagehide", persistScroll\)/, "timeline scroll offsets should flush before browser reloads");
 requirePattern(/Object\.keys\(sessionStorage\)[\s\S]*key\.startsWith\("bigbsky:"\)[\s\S]*safeSessionStorageRemove\(key\)/s, "local reader data reset should clear browser-local session scroll state");
 requirePattern(/route\.name === "bookmarks" \|\| route\.name === "lists"[\s\S]*`surface:\$\{route\.name\}`/s, "bookmarks and lists surfaces should receive route-specific scroll cache keys");
-requirePattern(/activeScrollKey\.startsWith\("surface:"\)[\s\S]*const target = scrollCacheRef\.current\[activeScrollKey\] \|\| 0;[\s\S]*restoreScrollOffset\(timelineRef, target\)/s, "saved and lists surfaces should restore cached scroll offset when revisited");
+requirePattern(/activeScrollKey\.startsWith\("surface:"\)[\s\S]*const target = scrollCacheRef\.current\[activeScrollKey\] \|\| 0;[\s\S]*restoreOrResetScroll\(timelineRef, target\)/s, "saved and lists surfaces should restore cached scroll offset when revisited");
 requirePattern(/function threadUnavailableState\([\s\S]*Blocked reply[\s\S]*Reply not found[\s\S]*Deleted reply[\s\S]*Reply temporarily unavailable/s, "thread unavailable states should distinguish blocked, deleted, not-found, and rate-limited branches");
 requirePattern(/<div className=\{`thread-alert \$\{state\.tone\}`\}/, "thread unavailable branches should render typed alert tones");
 forbidPattern(/timelineRef\.current\?\.scrollTo\(\{ top: 0 \}\)/, "feed switching should not force the timeline back to the top");
