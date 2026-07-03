@@ -1274,7 +1274,8 @@ export function App() {
     let cancelled = false;
     getMissingScopes()
       .then((missing) => {
-        if (cancelled) {
+        if (cancelled || !missing) {
+          // null = indeterminate (token read failed); don't prompt on a guess.
           return;
         }
         const signature = missing.slice().sort().join(" ");
@@ -5859,7 +5860,7 @@ function AuthedNotifications({
         // A missing notification scope means re-auth fixes it; a generic gap
         // (network) does not. getMissingScopes tells them apart.
         void getMissingScopes()
-          .then((missing) => setNeedsReauth(missing.some((scope) => scope.includes("notification"))))
+          .then((missing) => setNeedsReauth(missing?.some((scope) => scope.includes("notification")) ?? false))
           .catch(() => setNeedsReauth(false));
       });
   }, []);
@@ -6310,7 +6311,7 @@ function BlueskyListCard({
       // Muting needs the muteActorList scope (added recently); a missing scope
       // means re-auth fixes it. Tell the two cases apart.
       const missing = await getMissingScopes().catch(() => []);
-      const needsReauth = missing.some((scope) => scope.includes("muteActorList"));
+      const needsReauth = missing?.some((scope) => scope.includes("muteActorList")) ?? false;
       setSubError({
         message: needsReauth
           ? "Muting a list needs updated permissions — re-authorize to enable it."

@@ -6,14 +6,11 @@ From the full code review of `src/App.tsx`, `src/auth.ts`, `src/api.ts`, `src/ri
 
 ### MEDIUM
 
-- [ ] **M1. `auth.ts:821-838` — `getMissingScopes` swallows `getTokenInfo` errors and returns `[]`** (indistinguishable from "fully granted"). The users who most need a re-auth prompt are silently skipped; App.tsx:6225 compounds with `.catch(() => [])`. Return `null` for "indeterminate."
 - [ ] **M2. `auth.ts` read paths — No centralized handling of revoked/deleted sessions.** `isDeletedSessionError` is checked only in `initAuthSession`; authed calls let it propagate raw and `activeSession` stays cached. The `SessionManager.subscribe` event is never wired. Centralize an authed-call wrapper or subscribe to the deleted/revoked event.
-- [ ] **M4. `auth.ts:1389-1400` — `clearOAuthSessionStorage` resolves on `onblocked`** — reports success while the OAuth DB is still present, so a later `init()` can resurrect a signed-out session. `clearOAuthLocalSession` is called from App.tsx:2633 without `signOut`'s dispose-first ordering. Reject (or retry) on `onblocked`.
 
 ### LOW
 
 - [ ] **L5. `auth.ts:117-120` — `looksLikeOAuthCallback` also scans `location.hash`**; a stray `#state=…&error=…` fragment falsely triggers the callback view. Restrict to `location.search`. **Deferred 2026-07-02:** atproto's own `readCallbackParams` chooses hash vs. search by `responseMode` (`docs/atproto/.../browser-oauth-client.ts:390`), so restricting to `location.search` would break a fragment-mode client. Confirm BigBsky's `responseMode` before touching this; not worth the risk without an OAuth test path.
-- [ ] **L8. `auth.ts:365-382` — `signOut` deletes the OAuth IndexedDB twice** (async-dispose + `clearOAuthSessionStorage`); redundant, can collide.
 
 ### Verified correct (cleared during review)
 

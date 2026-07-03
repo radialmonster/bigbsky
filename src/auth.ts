@@ -331,6 +331,33 @@ export async function startSignIn(input: string) {
   }
 }
 
+// Best-effort close of the cached OAuth client's IndexedDB connection (and its
+// cleanup interval/listeners). The library's async disposer only *closes* the
+// DB handle — it does NOT deleteDatabase — so this is complementary to
+// clearOAuthSessionStorage below, and closing the handle first is exactly what
+// keeps the subsequent deleteDatabase from being blocked by a live connection.
+// The library's sync dispose() is broken in this version — it calls the
+// undefined this[Symbol.dispose]() and throws "Symbol.dispose is not a
+// function" — so use the async disposer (polyfilled at runtime by the library's
+// core-js import). Best-effort: never throws (disposal must not turn a
+// successful revoke into a sign-out warning). Reached via a cast because
+// Symbol.asyncDispose isn't in our TS lib target.
+async function disposeCachedClient(): Promise<void> {
+  if (!clientPromise) {
+    return;
+  }
+  const asyncDispose = (Symbol as { asyncDispose?: symbol }).asyncDispose;
+  if (!asyncDispose) {
+    return;
+  }
+  try {
+    const client = await clientPromise;
+    await (client as unknown as Record<symbol, () => Promise<void>>)[asyncDispose]?.();
+  } catch {
+    /* ignore disposal failures */
+  }
+}
+
 export async function signOut(did?: string) {
   let revokeWarning: string | undefined;
 
@@ -338,25 +365,14 @@ export async function signOut(did?: string) {
     if (did) {
       const client = await getClient();
       await client.revoke(did);
-      // Best-effort cleanup of the client's IndexedDB/listeners. The library's
-      // sync dispose() is broken in this version — it calls the undefined
-      // this[Symbol.dispose]() and throws "Symbol.dispose is not a function" —
-      // so use the async disposer (polyfilled at runtime by the library's
-      // core-js import) and swallow any failure: disposal must never turn a
-      // successful revoke into a sign-out warning. Reached via a cast because
-      // Symbol.asyncDispose isn't in our TS lib target.
-      const asyncDispose = (Symbol as { asyncDispose?: symbol }).asyncDispose;
-      if (asyncDispose) {
-        try {
-          await (client as unknown as Record<symbol, () => Promise<void>>)[asyncDispose]?.();
-        } catch {
-          /* ignore disposal failures */
-        }
-      }
     }
   } catch (error) {
     revokeWarning = error instanceof Error ? error.message : String(error);
   }
+
+  // Close the client's IndexedDB connection BEFORE deleting the OAuth DB, so
+  // deleteDatabase isn't blocked by the open handle.
+  await disposeCachedClient();
 
   // Drop the cached OAuth client unconditionally: even a DID-less signOut() must
   // not leak the client into the next session's init().
@@ -371,6 +387,11 @@ export async function signOut(did?: string) {
 
 export async function clearOAuthLocalSession() {
   activeSession = null;
+  // Close the client's connection before deleting the DB (same reason as
+  // signOut): unlike signOut this path never disposed the client, so its open
+  // handle could block deleteDatabase and leave a signed-out session on disk for
+  // a later init() to resurrect.
+  await disposeCachedClient();
   clientPromise = null;
   safeLocalStorageRemove(activeDidKey);
   safeLocalStorageRemove(activeHandleKey);
@@ -814,7 +835,13 @@ export async function searchPostsAuthed(
 // how the app detects that and offers a one-click re-auth. Compared as token
 // sets; the stored grant is byte-identical in format to OAUTH_SCOPE (verified),
 // so this does not false-positive on ordering/encoding.
-export async function getMissingScopes(): Promise<string[]> {
+//
+// Returns `[]` when signed out or fully up to date, and `null` when the grant is
+// *indeterminate* — i.e. a session exists but reading its token info failed
+// (network/PDS hiccup). `null` must NOT be conflated with `[]`: the users who
+// most need a re-auth prompt are exactly the ones whose token read can fail, so
+// callers treat `null` conservatively (no false "up to date", no false re-auth).
+export async function getMissingScopes(): Promise<string[] | null> {
   const session = await ensureSession();
   if (!session) {
     return [];
@@ -824,7 +851,7 @@ export async function getMissingScopes(): Promise<string[]> {
     const info = await session.getTokenInfo(false);
     granted = info.scope ?? "";
   } catch {
-    return [];
+    return null;
   }
   const { OAUTH_SCOPE } = await import("./scopes");
   const grantedSet = new Set(granted.split(/\s+/).filter(Boolean));
@@ -1388,9 +1415,26 @@ export async function clearOAuthSessionStorage() {
   }
 
   await new Promise<void>((resolve) => {
+    let settled = false;
+    const done = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve();
+    };
     const request = indexedDB.deleteDatabase(oauthDatabaseName);
-    request.onsuccess = () => resolve();
-    request.onerror = () => resolve();
-    request.onblocked = () => resolve();
+    request.onsuccess = () => done();
+    request.onerror = () => done();
+    // Do NOT resolve on `blocked`: the delete is still pending and the database
+    // is still present (another connection is holding it open). Resolving here
+    // would report success while a signed-out OAuth session lingers on disk,
+    // letting a later init() resurrect it. Keep waiting — once the blocking
+    // connection closes, `onsuccess` fires — but guard against a wedged handle
+    // with a timeout fallback so sign-out can't hang forever. In practice
+    // callers dispose (close) the client first, so `blocked` should not fire.
+    request.onblocked = () => {
+      window.setTimeout(done, 3000);
+    };
   });
 }
