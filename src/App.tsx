@@ -1433,6 +1433,18 @@ export function App() {
   // next render refetches with the correct viewer state. Skipped on first mount
   // (nothing is cached yet); the feed loader's AbortController tears down any
   // public fetch still in flight when auth resolves, so it can't repopulate.
+  //
+  // ORDERING CONTRACT (load-bearing): the cache keys deliberately do NOT include
+  // the viewer DID (they're plain `feed:<id>`, `profile:<actor>`, `search:<q>`,
+  // …), so correctness on an identity change relies on this wipe running BEFORE
+  // any loader effect reads or repopulates a cache. React runs effects in
+  // declaration order, so this effect MUST stay declared above the feed/profile/
+  // search loader effects below (which re-run on identity change because their
+  // loadFeed/loadProfileFeed/loadSearch callbacks close over signedInDid). If
+  // you move this effect below a loader — or key a loader off signedInDid on its
+  // own — a stale-identity cache entry can be read before the wipe. Prefer
+  // adding a `<did>:` prefix to the cache keys over reordering if that ever
+  // becomes hard to guarantee.
   const authCacheMountRef = useRef(false);
   useEffect(() => {
     if (!authCacheMountRef.current) {
