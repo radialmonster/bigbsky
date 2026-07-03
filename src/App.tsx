@@ -4621,9 +4621,22 @@ function SurfaceView({
             <p className="settings-note">Stored locally in this browser. On narrow screens these columns hide automatically to fit.</p>
           </article>
           <article className="settings-panel">
-            <span>{showNsfw ? "On" : "Off"}</span>
-            <h3>Show NSFW media</h3>
-            <p>Off by default. Enabling asks for a local confirmation, not your birthday. BigBSky does not store this on a server; it only changes how this browser displays Bluesky-hosted labeled media. Use Bluesky's moderation settings for account-wide content filtering.</p>
+            <span>{showMedia ? "On" : "Off"}</span>
+            <h3>Media</h3>
+            <p>On by default. Turn off for text-only reading: media becomes a per-post reveal control.</p>
+            <button
+              type="button"
+              className={showMedia ? "settings-toggle on" : "settings-toggle"}
+              role="switch"
+              aria-checked={showMedia}
+              onClick={onToggleShowMedia}
+            >
+              <span className="settings-toggle-track" aria-hidden="true">
+                <span className="settings-toggle-thumb" />
+              </span>
+              <span>{showMedia ? "Showing media" : "Hiding media"}</span>
+            </button>
+            <p>Adult / graphic media is off by default. Enabling asks for a local confirmation, not your birthday. BigBSky does not store this on a server; it only changes how this browser displays Bluesky-hosted labeled media. Use Bluesky&apos;s moderation settings for account-wide content filtering.</p>
             <button
               type="button"
               className={showNsfw ? "settings-toggle on" : "settings-toggle"}
@@ -4639,25 +4652,7 @@ function SurfaceView({
             <a className="settings-link" href="https://bsky.app/moderation" target="_blank" rel="noreferrer">
               Open Bluesky moderation settings
             </a>
-            <p>This preference is stored locally in this browser only.</p>
-          </article>
-          <article className="settings-panel">
-            <span>{showMedia ? "On" : "Off"}</span>
-            <h3>Show Media</h3>
-            <p>On by default. Turn off for text-only reading: media becomes a per-post reveal control.</p>
-            <button
-              type="button"
-              className={showMedia ? "settings-toggle on" : "settings-toggle"}
-              role="switch"
-              aria-checked={showMedia}
-              onClick={onToggleShowMedia}
-            >
-              <span className="settings-toggle-track" aria-hidden="true">
-                <span className="settings-toggle-thumb" />
-              </span>
-              <span>{showMedia ? "Showing media" : "Hiding media"}</span>
-            </button>
-            <p>This preference is stored locally in this browser only.</p>
+            <p className="settings-note">Both preferences are stored locally in this browser only.</p>
           </article>
           <article className="settings-panel">
             <span>{contentLanguages.length === 0 ? "Any" : `${contentLanguages.length} selected`}</span>
