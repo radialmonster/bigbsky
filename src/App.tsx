@@ -4662,7 +4662,7 @@ function SurfaceView({
           <article className="settings-panel">
             <span>{contentLanguages.length === 0 ? "Any" : `${contentLanguages.length} selected`}</span>
             <h3>Show posts from language</h3>
-            <p>Filter the posts you see down to the languages you read. Posts that declare no language are detected automatically; posts with no text are always shown. Applies to custom feeds (including Discover) — Following and Lists are never filtered.</p>
+            <p>Filter the posts you see down to the languages you read. Only custom feeds (including Discover) are filtered — your Following timeline and Lists are left alone.</p>
             <div className="settings-control-group" aria-label="Content languages">
               <button
                 type="button"
@@ -4704,7 +4704,7 @@ function SurfaceView({
                 ))}
               </select>
             </label>
-            <p className="settings-note">“Any” shows every language. Choosing one or more filters to just those. Stored locally in this browser only.</p>
+            <p className="settings-note">Untagged posts are detected from their text, so short or ambiguous ones may slip through (kept, not hidden). “Any” clears the filter. Stored locally in this browser only.</p>
           </article>
           <article className="settings-panel">
             <span>Local</span>
