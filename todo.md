@@ -33,11 +33,13 @@ tasks — it points here.
   like/unlike works — liked own post 8→9 (title flips to "Unlike", persists across
   reload), unliked back to 8; (b) viewer **follow/block** state renders correctly
   (@bsky.app profile shows "Following"/"Block"), and like state renders (filled/
-  title-flip on the liked post). Remaining, not yet exercised: (b-cont.) viewer
-  **bookmark** state rendering (operator has zero bookmarks — needs a bookmarked
-  post) and the **stale liked/bookmarked-clears-after-sign-out** auth-change cache
-  invalidation (requires signing the operator out — not authorized/destructive to
-  the live session); (c) **CONFIRMED 2026-07-03** — a 10-image post
+  title-flip on the liked post). Viewer **bookmark** state also confirmed
+  2026-07-03: bookmarking 3 feed posts flipped their buttons to "Remove bookmark"
+  and all 3 appeared on `/bookmarks`; removing them returned the page to "No
+  bookmarks yet". (Test bookmarks added then removed — account restored to zero
+  bookmarks.) Remaining, not yet exercised: the **stale liked/bookmarked-clears-
+  after-sign-out** auth-change cache invalidation (requires signing the operator
+  out — not authorized/destructive to the live session); (c) **CONFIRMED 2026-07-03** — a 10-image post
   (`/profile/80east.bsky.social/post/3mpongcafhc2y`) renders **all 10** images,
   every one visible (881×1107, distinct alt text), via the `.image-masonry`
   row-grouped gallery. Note: the grid class is `count-${Math.min(images.length,4)}`
