@@ -6611,24 +6611,32 @@ function SignInForm({
   const isBusy = status === "checking" || status === "callback" || status === "signing-in" || status === "signing-out";
 
   return (
-    <form
-      className="sign-in-form"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void onSignIn(handle);
-      }}
-    >
-      <input
-        aria-label="Bluesky handle, DID, or PDS URL"
-        autoComplete="username"
-        placeholder="your.handle"
-        value={handle}
-        onInput={(event) => setHandle(event.currentTarget.value)}
-      />
-      <button type="submit" disabled={isBusy}>
-        {isBusy ? "Working" : "Sign in"}
-      </button>
-    </form>
+    <>
+      <form
+        className="sign-in-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onSignIn(handle);
+        }}
+      >
+        <input
+          aria-label="Bluesky handle, DID, or PDS URL"
+          autoComplete="username"
+          placeholder="your.handle"
+          value={handle}
+          onInput={(event) => setHandle(event.currentTarget.value)}
+        />
+        <button type="submit" disabled={isBusy}>
+          {isBusy ? "Working" : "Sign in"}
+        </button>
+      </form>
+      <p className="sign-in-create-note">
+        No account yet?{" "}
+        <a href="https://bsky.app/" target="_blank" rel="noreferrer">
+          Create one on Bluesky
+        </a>
+      </p>
+    </>
   );
 }
 

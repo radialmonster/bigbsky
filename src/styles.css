@@ -1891,6 +1891,17 @@ button {
   background: #41516a;
 }
 
+.sign-in-create-note {
+  margin-top: 10px;
+  color: var(--app-text-muted);
+  font-size: 13px;
+}
+
+.sign-in-create-note a {
+  color: var(--bsky-blue);
+  font-weight: 600;
+}
+
 .account-identity {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr);
