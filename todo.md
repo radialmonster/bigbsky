@@ -9,18 +9,14 @@ From the full code review of `src/App.tsx`, `src/auth.ts`, `src/api.ts`, `src/ri
 - [ ] **M1. `auth.ts:821-838` — `getMissingScopes` swallows `getTokenInfo` errors and returns `[]`** (indistinguishable from "fully granted"). The users who most need a re-auth prompt are silently skipped; App.tsx:6225 compounds with `.catch(() => [])`. Return `null` for "indeterminate."
 - [ ] **M2. `auth.ts` read paths — No centralized handling of revoked/deleted sessions.** `isDeletedSessionError` is checked only in `initAuthSession`; authed calls let it propagate raw and `activeSession` stays cached. The `SessionManager.subscribe` event is never wired. Centralize an authed-call wrapper or subscribe to the deleted/revoked event.
 - [ ] **M4. `auth.ts:1389-1400` — `clearOAuthSessionStorage` resolves on `onblocked`** — reports success while the OAuth DB is still present, so a later `init()` can resurrect a signed-out session. `clearOAuthLocalSession` is called from App.tsx:2633 without `signOut`'s dispose-first ordering. Reject (or retry) on `onblocked`.
-- [ ] **M5. `App.tsx:2442-2512` — `loadThreadBranch` computes `previousPostCount` from stale closure `thread.node`.** If the thread reloads between click and fetch-resolve, the "Loaded N more replies" count is wrong (can go negative → clamped). Compute it inside the `setThread` updater from `current.node`.
 - [ ] **M6. `App.tsx:3194-3201` — `surface:` scroll-restore races async surface data.** Restore runs synchronously on `activeScrollKey` change, but `BookmarksView`/`ListsSurface` content loads asynchronously — `restoreScrollOffset` no-ops against an empty container. Run restore after data lands.
 - [ ] **M7. `App.tsx:1424-1441` — Profile-feed & feed-search caches keyed without viewer DID.** Identity-change wipe only works because effects happen to be declared in the right order. Add a DID component to the cache key, or document the ordering dependency.
 
 ### LOW
 
-- [ ] **L1. `App.tsx:2781-2802/2993` — `navigate` recreated every render is listed in `handleDeletePost` deps**, invalidating the `deletePostContextValue` memo every render → every `PostCard` re-renders. Wrap `navigate` in `useCallback`.
-- [ ] **L2. `App.tsx:7611, 7637` — `hydrateProfileSelfThreads(response.feed)` omits `signal`**; requests run to completion on unmount/navigation. Thread a local AbortController.
 - [ ] **L3. `App.tsx:1919-1937` — Media-density load-more counts only the new page toward the prefetch target**, so each load-more can fetch up to `MEDIA_DENSITY_MAX_PREFETCH_PAGES` extra pages — rapid cursor exhaustion.
 - [ ] **L5. `auth.ts:117-120` — `looksLikeOAuthCallback` also scans `location.hash`**; a stray `#state=…&error=…` fragment falsely triggers the callback view. Restrict to `location.search`. **Deferred 2026-07-02:** atproto's own `readCallbackParams` chooses hash vs. search by `responseMode` (`docs/atproto/.../browser-oauth-client.ts:390`), so restricting to `location.search` would break a fragment-mode client. Confirm BigBsky's `responseMode` before touching this; not worth the risk without an OAuth test path.
 - [ ] **L6. `router.ts:17` — Split-then-decode means `%2F` in path segments decodes to `/`** and can malform `at://` URIs in the `/feed/<uri>` route. Edge case.
-- [ ] **L7. `api.ts:409-413` — `resolveHandle` cache sweep only removes already-expired entries**; within a 5-min window it grows unbounded for pathological callers. The "stays bounded" comment overstates it.
 - [ ] **L8. `auth.ts:365-382` — `signOut` deletes the OAuth IndexedDB twice** (async-dispose + `clearOAuthSessionStorage`); redundant, can collide.
 
 ### Verified correct (cleared during review)

@@ -2460,23 +2460,35 @@ export function App() {
       return;
     }
 
-    const previousBranch = findThreadNodeByUri(thread.node, uri);
-    const previousPostCount = Math.max(0, countThreadPostNodes(previousBranch ?? undefined) - 1);
-    const cachedBranch = threadBranchCacheRef.current[uri];
-    if (cachedBranch) {
-      setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
-      setThreadBranchResults((current) => ({ ...current, [uri]: { added: Math.max(0, countThreadPostNodes(cachedBranch) - 1 - previousPostCount) } }));
+    // Splice the loaded branch into the live thread and record how many NEW
+    // posts it added. Both the "added" count and the replaced node are derived
+    // from the SAME latest node (`current.node`) inside the updater, so if the
+    // thread reloads between the click and this branch resolving, the count
+    // stays consistent with the tree we're actually mutating (rather than a
+    // stale closure snapshot that could make the "Loaded N more" label wrong).
+    const applyBranch = (branch: ThreadNode) => {
       setThread((current) => {
         if (current.status !== "ready" || !current.node) {
           return current;
         }
 
-        const nextNode = replaceThreadBranch(current.node, uri, cachedBranch);
+        const previousBranch = findThreadNodeByUri(current.node, uri);
+        const previousPostCount = Math.max(0, countThreadPostNodes(previousBranch ?? undefined) - 1);
+        const added = Math.max(0, countThreadPostNodes(branch) - 1 - previousPostCount);
+        setThreadBranchResults((results) => ({ ...results, [uri]: { added } }));
+
+        const nextNode = replaceThreadBranch(current.node, uri, branch);
         if (route.kind === "post") {
           threadCacheRef.current[`${route.actor}:${route.rkey}`] = nextNode;
         }
         return { ...current, node: nextNode };
       });
+    };
+
+    const cachedBranch = threadBranchCacheRef.current[uri];
+    if (cachedBranch) {
+      setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
+      applyBranch(cachedBranch);
       return;
     }
 
@@ -2494,21 +2506,7 @@ export function App() {
           return;
         }
         threadBranchCacheRef.current[uri] = response.thread;
-        setThreadBranchResults((current) => ({
-          ...current,
-          [uri]: { added: Math.max(0, countThreadPostNodes(response.thread) - 1 - previousPostCount) },
-        }));
-        setThread((current) => {
-          if (current.status !== "ready" || !current.node) {
-            return current;
-          }
-
-          const nextNode = replaceThreadBranch(current.node, uri, response.thread);
-          if (route.kind === "post") {
-            threadCacheRef.current[`${route.actor}:${route.rkey}`] = nextNode;
-          }
-          return { ...current, node: nextNode };
-        });
+        applyBranch(response.thread);
       })
       .catch((error) => {
         if (signal?.aborted) {
@@ -2794,6 +2792,15 @@ export function App() {
     setBookmarkOverrides((current) => ({ ...current, [uri]: false }));
   }, []);
 
+  // Stable across renders (only closes over the stable setRoute setter) so that
+  // consumers listing it in dependency arrays — e.g. handleDeletePost below and
+  // the DeletePostContext memo — don't invalidate on every render, which would
+  // re-render every PostCard.
+  const navigate = useCallback((nextRoute: RouteState, path = "/") => {
+    window.history.pushState(null, "", path);
+    setRoute(nextRoute);
+  }, []);
+
   const handleDeletePost = useCallback(
     (post: FeedPost) => {
       if (!signedInDid || post.author.did !== signedInDid) {
@@ -3004,11 +3011,6 @@ export function App() {
       safeLocalStorageSet(collapsedFeedGroupsStorageKey, JSON.stringify(next));
       return next;
     });
-  }
-
-  function navigate(nextRoute: RouteState, path = "/") {
-    window.history.pushState(null, "", path);
-    setRoute(nextRoute);
   }
 
   function openNavigation(item: string) {
@@ -7627,6 +7629,10 @@ function BookmarksView({
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | undefined>(undefined);
+  // Aborts an in-flight load-more when the surface unmounts so its fetch +
+  // thread hydration don't run to completion after navigation.
+  const loadMoreControllerRef = useRef<AbortController | null>(null);
+  useEffect(() => () => loadMoreControllerRef.current?.abort(), []);
 
   useEffect(() => {
     if (!signedIn) {
@@ -7635,26 +7641,27 @@ function BookmarksView({
       setCursor(undefined);
       return undefined;
     }
-    let cancelled = false;
+    const controller = new AbortController();
+    const { signal } = controller;
     setStatus("loading");
     void (async () => {
       try {
-        const response = await getBookmarks();
-        const hydratedItems = await hydrateProfileSelfThreads(response.feed);
-        if (cancelled) {
+        const response = await getBookmarks(undefined, signal);
+        const hydratedItems = await hydrateProfileSelfThreads(response.feed, signal);
+        if (signal.aborted) {
           return;
         }
         setItems(hydratedItems);
         setCursor(response.cursor);
         setStatus("ready");
       } catch {
-        if (!cancelled) {
+        if (!signal.aborted) {
           setStatus("error");
         }
       }
     })();
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [signedIn]);
 
@@ -7664,19 +7671,30 @@ function BookmarksView({
     }
     setLoadingMore(true);
     setLoadMoreError(undefined);
+    const controller = new AbortController();
+    loadMoreControllerRef.current = controller;
+    const { signal } = controller;
     void (async () => {
       try {
-        const response = await getBookmarks(cursor);
-        const hydratedItems = await hydrateProfileSelfThreads(response.feed);
+        const response = await getBookmarks(cursor, signal);
+        const hydratedItems = await hydrateProfileSelfThreads(response.feed, signal);
+        if (signal.aborted) {
+          return;
+        }
         setItems((current) => [...current, ...hydratedItems]);
         setCursor(response.cursor);
       } catch (error) {
+        if (signal.aborted) {
+          return;
+        }
         // Keep what we have and surface the error so AutoLoadMoreButton stops
         // auto-firing (which would hammer a rate-limited endpoint) and shows an
         // explicit Retry instead.
         setLoadMoreError(rateLimitMessage(error));
       } finally {
-        setLoadingMore(false);
+        if (!signal.aborted) {
+          setLoadingMore(false);
+        }
       }
     })();
   };

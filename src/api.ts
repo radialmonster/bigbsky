@@ -395,6 +395,10 @@ export function searchActors(query: string, cursor?: string, signal?: AbortSigna
 // keeps its own AbortSignal (we deliberately don't share an in-flight promise
 // across callers, so one caller's abort can't reject another's lookup).
 const RESOLVE_HANDLE_TTL_MS = 5 * 60 * 1000;
+// Hard cap so a pathological caller resolving thousands of distinct handles
+// inside one TTL window (where the expiry sweep frees nothing) can't grow the
+// Map without bound. Well above any realistic working set of handles on screen.
+const RESOLVE_HANDLE_MAX_ENTRIES = 500;
 const resolvedHandleCache = new Map<string, { did: string; expires: number }>();
 
 export async function resolveHandle(handleOrDid: string, signal?: AbortSignal) {
@@ -413,8 +417,8 @@ export async function resolveHandle(handleOrDid: string, signal?: AbortSignal) {
     signal,
   );
   const now = Date.now();
-  // Sweep expired entries on write so the Map stays bounded by the number of
-  // distinct handles resolved within one TTL window, rather than growing for
+  // Sweep expired entries on write so the Map is normally bounded by the number
+  // of distinct handles resolved within one TTL window, rather than growing for
   // the lifetime of a long-lived tab. Entries are only ever read while live
   // (the `expires > now` check above), so dropping the expired ones is free.
   for (const [handle, entry] of resolvedHandleCache) {
@@ -426,6 +430,17 @@ export async function resolveHandle(handleOrDid: string, signal?: AbortSignal) {
     did: result.did,
     expires: now + RESOLVE_HANDLE_TTL_MS,
   });
+  // The sweep above frees nothing when every entry is still live, so also evict
+  // the oldest live entries (Map preserves insertion order) once over the cap.
+  // This bounds worst-case memory even for a caller churning through more than
+  // RESOLVE_HANDLE_MAX_ENTRIES distinct handles inside a single TTL window.
+  while (resolvedHandleCache.size > RESOLVE_HANDLE_MAX_ENTRIES) {
+    const oldest = resolvedHandleCache.keys().next().value;
+    if (oldest === undefined) {
+      break;
+    }
+    resolvedHandleCache.delete(oldest);
+  }
   return result.did;
 }
 

@@ -103,6 +103,37 @@ describe("resolveHandle", () => {
     await resolveHandle(fresh);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("evicts the oldest live entries once over the hard cap (bounded within a TTL window)", async () => {
+    // All resolutions stay live (no time advance), so the expiry sweep frees
+    // nothing. Resolve more distinct handles than the cap; the earliest one must
+    // be evicted by insertion order and thus re-resolve on next access.
+    fetchMock.mockImplementation(async (input: URL | RequestInfo) => {
+      const url = new URL(String(input));
+      const handle = url.searchParams.get("handle") ?? "";
+      return didResponse(`did:plc:cap${handle.replace(/\D/g, "").padStart(24, "0")}`);
+    });
+
+    const CAP = 500;
+    // First handle — this is the oldest entry and should be evicted once we
+    // exceed the cap.
+    await resolveHandle("cap-0.test");
+    const callsAfterFirst = fetchMock.mock.calls.length;
+    // Fill past the cap with fresh distinct handles (all still live).
+    for (let i = 1; i <= CAP; i += 1) {
+      await resolveHandle(`cap-${i}.test`);
+    }
+
+    // cap-0 was the oldest live entry, so it was evicted and now re-resolves.
+    const before = fetchMock.mock.calls.length;
+    await resolveHandle("cap-0.test");
+    expect(fetchMock.mock.calls.length).toBe(before + 1);
+    // A recently-inserted handle is still cached (no extra fetch).
+    const before2 = fetchMock.mock.calls.length;
+    await resolveHandle(`cap-${CAP}.test`);
+    expect(fetchMock.mock.calls.length).toBe(before2);
+    expect(callsAfterFirst).toBe(1);
+  });
 });
 
 describe("getRecordEmbed", () => {
