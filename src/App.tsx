@@ -3214,8 +3214,42 @@ export function App() {
       return undefined;
     }
 
-    restoreScrollOffset(timelineRef, scrollCacheRef.current[activeScrollKey] || 0);
-    return undefined;
+    const target = scrollCacheRef.current[activeScrollKey] || 0;
+    restoreScrollOffset(timelineRef, target);
+    // Surfaces (Bookmarks, Lists) load their content asynchronously, so the
+    // restore above (and its ~30-frame rAF budget) can run entirely against a
+    // still-empty container and clamp to 0. Watch for content growth and
+    // re-apply the saved offset once the surface is tall enough to reach it,
+    // then stop. Bounded by a timeout so the observer can't run indefinitely.
+    const timeline = timelineRef.current;
+    if (target <= 0 || !timeline || typeof MutationObserver === "undefined") {
+      return undefined;
+    }
+    let settled = false;
+    let timeoutId = 0;
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      observer.disconnect();
+      window.clearTimeout(timeoutId);
+    };
+    const tryRestore = () => {
+      if (settled) {
+        return;
+      }
+      // Already at (or past) the saved offset — the restore succeeded, stop.
+      if (readScrollOffset(timelineRef.current) >= target - 1) {
+        finish();
+        return;
+      }
+      restoreScrollOffset(timelineRef, target);
+    };
+    const observer = new MutationObserver(tryRestore);
+    observer.observe(timeline, { childList: true, subtree: true });
+    timeoutId = window.setTimeout(finish, 5000);
+    return finish;
   }, [activeScrollKey]);
 
   const loadMoreInFlightRef = useRef(false);
