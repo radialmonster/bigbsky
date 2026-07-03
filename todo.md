@@ -576,16 +576,18 @@ them.
 
 ### HIGH
 
-- [ ] **H1. No top-level React error boundary — one render error whitescreens
-  the app.** src/main.tsx:7 renders <App /> with no ErrorBoundary
-  (componentDidCatch / getDerivedStateFromError) anywhere in src/. A thrown
-  exception during render (malformed post record, unexpected undefined deep in
-  a post card, bad facet offset, future code change) unmounts the whole tree
-  and leaves #root blank. For a reader that ingests untrusted remote Bluesky
-  records this is a likely failure mode, not theoretical. Fix: wrap <App /> in
-  a top-level class ErrorBoundary (fallback UI + reload), and ideally a second
-  narrower one around the timeline/post-rendering subtree. Single
-  highest-impact item in this review.
+- [ ] **H1 follow-up (top-level boundary DONE 2026-07-03; narrower subtree
+  boundary still open).** Shipped `src/ErrorBoundary.tsx` (class component,
+  getDerivedStateFromError + componentDidCatch, self-contained inline-styled
+  fallback with Reload + Try-again, optional `label`/`fallback` props) and
+  wrapped `<App />` in it in `src/main.tsx` — a render error now shows the
+  fallback instead of whitescreening #root. Verified: tsc/vitest/build green;
+  reloaded the signed-in dev app via CDP — 6 posts render, no `[role=alert]`
+  fallback, no console errors. Remaining (optional, lower value now the
+  whitescreen is handled): add a *narrower* boundary around the timeline/
+  post-rendering subtree (or per-PostCard) so one malformed record degrades a
+  single row instead of the feed. The ErrorBoundary already renders children
+  with no wrapper DOM in the happy path, so wrapping rows is measurement-safe.
 
 ### MEDIUM
 
@@ -637,13 +639,6 @@ them.
   cross-tab change), the card keeps stale local state. Fix: add a useEffect
   keyed on list.uri / list.viewer?.blocked / list.viewer?.muted that re-seeds
   state, mirroring ProfileDetailHeader.
-- [ ] **M9. src/App.tsx:6819-6823 and 11039-11041 — copy-link buttons report
-  "Copied" even when the clipboard write fails.** The code does
-  void navigator.clipboard?.writeText(bskyUrl); setCopied(true); fire-and-forget:
-  if writeText rejects (permission denied, insecure context, no user gesture),
-  the UI still flips to "Copied" and the rejection propagates unhandled. Fix:
-  await the write and only setCopied(true) on success, with a fallback path on
-  failure.
 - [ ] **M10. src/App.tsx:7370-7384 — PostComposer.insertAtCaret uses a stale
   draftText closure.** insertAtCaret reads draftText (recomputed each render)
   and slices against it. If an EmojiPicker/button onSelect consumer holds an
@@ -663,17 +658,6 @@ them.
   the user navigates away right after, the profile refetch can resolve after the
   route changed and overwrite the new route's feed state. Fix: track a
   controller, or guard the setFeedState with a route-kind/actor check.
-- [ ] **M13. src/lib/content-language.ts x src/App.tsx:1919 — failed language
-  detection is cached forever, defeating getLande's retry.** When
-  detectPostLanguage rejects (transient lande chunk-load failure), the effect
-  caches "" for that URI in detectedByUri; postsNeedingDetection then excludes
-  that URI forever, so the post is never re-queued even though getLande
-  (content-language.ts:200-216) deliberately resets landePromise = null to allow
-  a retry. One transient error permanently disables language-filter correctness
-  for every post on the page at that moment (until reload). Fix: distinguish
-  "detection returned a code" from "detection errored" — don't cache the error
-  sentinel (leave the URI absent so it re-queues), or cache a distinct sentinel
-  treated as still-pending.
 - [ ] **M14. src/App.tsx:1608-1631 — toggleFollowFeed swallows follow/unfollow
   failures (console.error only, no user feedback).** The catch only logs; the
   button gives no error state, so a failed follow/unfollow silently does nothing
@@ -682,31 +666,17 @@ them.
 
 ### LOW
 
-- [ ] **L6. src/lib/preferences.ts:99-129 — parseObjectMap and
-  parseColumnVisibility are dead code with inaccurate docstrings.** Added in the
-  uncommitted preferences.ts change but with no callers:
-  readDensityPreferences (App.tsx:477), readCollapsedFeedGroups (App.tsx:587),
-  and readColumnPreferences (App.tsx:522) still do their own inline
-  JSON.parse(...) as ... casts. The comments claim they back those readers /
-  enable a legacy-width migration, which isn't true today. Fix: wire the three
-  read\* callers to the validators (which also fixes L7/L8 below), or delete the
-  unused helpers and correct the comments.
-- [ ] **L7. src/App.tsx:525 — readColumnPreferences accepts a JSON array as the
-  visibility object.** The check "stored && typeof stored === 'object'" is true
-  for arrays (typeof [] === "object"); a stored "[]" returns defaults and
-  silently skips the legacy-width migration. The newer parseColumnVisibility has
-  the missing !Array.isArray(stored) guard but isn't wired up (see L6).
-- [ ] **L8. src/App.tsx:587-594 — readCollapsedFeedGroups returns non-boolean
-  values verbatim.** Only a top-level object check; a historically-stored
-  {"g":"yes","h":1} comes back as-is. The sibling parseBooleanRecord
-  (preferences.ts:41) drops these. Consumers expecting booleans get arbitrary
-  JSON values; === false / === true comparisons silently misbehave.
-- [ ] **L9. src/lib/content-language.ts:61-63 — code3ToCode2 only translates
-  lowercase 3-letter codes.** The CODE3_TO_CODE2 table is all-lowercase; an
-  uppercase/mixed-case 3-letter tag passes through untranslated, then
-  detectPostLanguage rejects it and returns undefined (post treated as
-  "detection unavailable -> keep", silently bypassing the filter). Brittle
-  coupling to lande's case output. Fix: code.toLowerCase() before the lookup.
+- [ ] **L8. src/App.tsx — readCollapsedFeedGroups returns non-boolean values
+  verbatim (ACCEPTED BY DESIGN — do not "fix" without checking the consumer).**
+  It delegates to `parseObjectMap<boolean>`, which does a top-level object check
+  only, so a historically-stored `{"g":"yes","h":1}` comes back as-is (the
+  sibling `parseBooleanRecord` would drop these). This passthrough was
+  *deliberately preserved* by slice 8 to match the original inline reader's
+  behavior verbatim (the array-passthrough quirk). It only matters for corrupted
+  data the app never writes. Left as-is intentionally; if ever changed, verify
+  the collapsed-group consumers first. (L6 and L7 from this batch are resolved:
+  L6 — the three read\* callers ARE wired to the validators now, docstrings
+  accurate; L7 — `parseColumnVisibility` now has the `!Array.isArray` guard.)
 - [ ] **L10. src/lib/scroll.ts:88,134-153 — armScrollRestore's 2000 ms
   suppression window can lapse mid-restore on a backgrounded tab.** The apply
   rAF loop (up to 30 frames) only re-asserts the scroll offset; it doesn't
@@ -738,17 +708,6 @@ them.
   status (loading/error/empty) renders the hardcoded fallback list; users can't
   tell "trending API is down" from "these are real trends." Fix: surface a
   subtle "showing defaults" note or an error state.
-- [ ] **L15. src/App.tsx:2666-2684 — toggleContentLanguage doesn't dedupe like
-  setContentLanguageSelection does.** Two paths do the same job; only
-  setContentLanguageSelection runs Array.from(new Set(...)). A corrupted
-  contentLanguages from storage could accumulate duplicates via the toggle path.
-  Fix: route both through setContentLanguageSelection.
-- [ ] **L16. src/App.tsx:2838 — removePostFromState sets a false bookmark
-  override that never gets cleaned up.** setBookmarkOverrides({...current,
-  [uri]: false}) shadows the real post.viewer.bookmarked for that URI
-  indefinitely (until identity change) instead of deleting the key. Mostly
-  harmless (post is removed from the feed) but a latent wrong-state / minor
-  leak. Fix: delete the key from bookmarkOverrides.
 - [ ] **L17. src/main.tsx:11 + public/sw.js — service worker uses hardcoded
   root paths; dev install can cache the dev shell under the prod cache key.**
   register("/sw.js") and sw.js's SHELL_URLS = ["/","/index.html"] /

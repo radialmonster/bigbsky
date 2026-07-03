@@ -43,6 +43,12 @@ describe("code3ToCode2", () => {
     expect(code3ToCode2("en")).toBe("en");
     expect(code3ToCode2("xxx")).toBe("xxx");
   });
+
+  it("normalizes case before the lowercase lookup table", () => {
+    expect(code3ToCode2("ENG")).toBe("en");
+    expect(code3ToCode2("Spa")).toBe("es");
+    expect(code3ToCode2("JPN")).toBe("ja");
+  });
 });
 
 describe("baseLangCode", () => {

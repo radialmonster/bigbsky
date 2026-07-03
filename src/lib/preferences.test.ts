@@ -176,6 +176,11 @@ describe("parseColumnVisibility", () => {
     expect(parseColumnVisibility("42")).toBeNull();
   });
 
+  it("returns null for a JSON array (not a real visibility blob) so the caller can migrate", () => {
+    expect(parseColumnVisibility("[]")).toBeNull();
+    expect(parseColumnVisibility('["feeds"]')).toBeNull();
+  });
+
   it("defaults each column to shown unless explicitly false", () => {
     expect(parseColumnVisibility("{}")).toEqual({ feeds: true, right: true });
     expect(parseColumnVisibility('{"feeds": true, "right": true}')).toEqual({ feeds: true, right: true });

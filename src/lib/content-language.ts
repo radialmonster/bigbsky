@@ -57,9 +57,14 @@ const CODE3_TO_CODE2: Record<string, string> = {
   yor: "yo", zha: "za", zho: "zh", zul: "zu",
 };
 
-/** Translate a detector 639-3 code to its 639-1 code; passes others through. */
+/**
+ * Translate a detector 639-3 code to its 639-1 code; passes others through.
+ * The lookup table is all-lowercase, so normalize case before it (lande's
+ * output case shouldn't silently defeat the map — an uppercase "ENG" must still
+ * resolve to "en").
+ */
 export function code3ToCode2(code: string): string {
-  return code.length === 3 ? (CODE3_TO_CODE2[code] ?? code) : code;
+  return code.length === 3 ? (CODE3_TO_CODE2[code.toLowerCase()] ?? code) : code;
 }
 
 /** Normalize a BCP-47 tag to its lowercased base code: "en-US" -> "en". */

@@ -121,7 +121,10 @@ export function parseObjectMap<T>(raw: string | null): Record<string, T> {
 export function parseColumnVisibility(raw: string | null): { feeds: boolean; right: boolean } | null {
   try {
     const stored = JSON.parse(raw ?? "null") as { feeds?: unknown; right?: unknown } | null;
-    if (stored && typeof stored === "object") {
+    // `typeof [] === "object"`, so guard against a stored JSON array — it isn't a
+    // real visibility blob; returning `null` lets the caller fall back to its
+    // legacy width-preference migration instead of silently skipping it.
+    if (stored && typeof stored === "object" && !Array.isArray(stored)) {
       return { feeds: stored.feeds !== false, right: stored.right !== false };
     }
     return null;

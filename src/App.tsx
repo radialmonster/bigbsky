@@ -1905,9 +1905,13 @@ export function App() {
         try {
           detected = await detectPostLanguage(text);
         } catch {
-          // Detector unavailable (e.g. chunk load failed): keep the post by
-          // caching the sentinel so we neither hide it nor retry endlessly.
-          detected = undefined;
+          // Detector transiently unavailable (e.g. lande chunk load failed).
+          // getLande() clears its cached promise so a later attempt retries the
+          // load — so do NOT cache a sentinel here. Caching "" would mark the URI
+          // "done" in detectedLangByUri, permanently excluding it from
+          // postsNeedingDetection and defeating that retry. Skip it instead; it
+          // re-queues on the next detection pass (new page, filter change, etc.).
+          continue;
         }
         batch.push([post.uri, detected ?? ""]);
         // Publish in small batches so the feed refilters progressively and the
@@ -2667,13 +2671,13 @@ export function App() {
   }
 
   function toggleContentLanguage(code: string) {
-    setContentLanguages((current) => {
-      const next = current.includes(code)
-        ? current.filter((entry) => entry !== code)
-        : [...current, code];
-      safeLocalStorageSet(contentLanguagesStorageKey, JSON.stringify(next));
-      return next;
-    });
+    const next = contentLanguages.includes(code)
+      ? contentLanguages.filter((entry) => entry !== code)
+      : [...contentLanguages, code];
+    // Route through setContentLanguageSelection so both selection paths dedupe
+    // and drop empties identically (a corrupted stored list could otherwise
+    // accumulate duplicates via this toggle path).
+    setContentLanguageSelection(next);
   }
 
   async function clearLocalReaderData() {
@@ -2828,7 +2832,17 @@ export function App() {
     searchCacheRef.current = {};
     threadCacheRef.current = {};
     threadBranchCacheRef.current = {};
-    setBookmarkOverrides((current) => ({ ...current, [uri]: false }));
+    // The post is gone from every surface, so drop any bookmark override for it
+    // rather than leaving a stale `false` shadowing the real viewer state
+    // indefinitely (a latent wrong-state/leak if the same URI reappears).
+    setBookmarkOverrides((current) => {
+      if (!(uri in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[uri];
+      return next;
+    });
   }, []);
 
   // Stable across renders (only closes over the stable setRoute setter) so that
@@ -6810,9 +6824,19 @@ function ProfileDetailHeader({
           <button
             type="button"
             onClick={() => {
-              void navigator.clipboard?.writeText(bskyUrl);
-              setCopied(true);
-              scheduleReset(() => setCopied(false), 1600);
+              const write = navigator.clipboard?.writeText(bskyUrl);
+              if (!write) {
+                return;
+              }
+              void write
+                .then(() => {
+                  setCopied(true);
+                  scheduleReset(() => setCopied(false), 1600);
+                })
+                .catch(() => {
+                  // Clipboard blocked (insecure context / denied / no gesture) —
+                  // don't falsely report "Copied".
+                });
             }}
           >
             {copied ? "Copied" : "Copy link"}
@@ -11029,9 +11053,18 @@ function FeedContextPanel({
         <button
           type="button"
           onClick={() => {
-            void navigator.clipboard?.writeText(source.uri);
-            setCopied(true);
-            scheduleReset(() => setCopied(false), 1600);
+            const write = navigator.clipboard?.writeText(source.uri);
+            if (!write) {
+              return;
+            }
+            void write
+              .then(() => {
+                setCopied(true);
+                scheduleReset(() => setCopied(false), 1600);
+              })
+              .catch(() => {
+                // Clipboard blocked — don't falsely report "Copied URI".
+              });
           }}
         >
           {copied ? "Copied URI" : "Copy URI"}
