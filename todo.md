@@ -26,18 +26,23 @@ tasks — it points here.
   the official reader/posting set over authoring our own, and batch the
   re-consent with the "Permissions updated" prompt. Not blocking; trust/clarity
   polish only.
-- [ ] **Runtime-verify the 2026-06-10 bug-fix + cleanup pass on the deployed
-  origin.** Those changes pass `tsc` + the build verifiers but the OAuth-gated
-  paths were never exercised in a real browser (localhost-only preview rejects
-  OAuth). Confirm on `bigbsky.com` after deploy: (a) the Like control shows a
-  heart (not a bell) and like/unlike works; (b) viewer state (like/bookmark/
-  follow/block) is correct on a feed/profile/thread first loaded signed-out then
-  viewed signed-in, and stale liked/bookmarked state clears after sign-out
-  (auth-change cache invalidation); (c) image posts accept up to 10 attachments
-  and render 5–10 via `app.bsky.embed.gallery` (`app.bsky.embed.images` stays
-  capped at 4); (d) Bookmarks and Lists restore scroll on revisit. Low risk but
-  auth-dependent, so operator-only. (Same auth-gated limitation as the composer/
-  follow/M2 items — fold into the next deliberate signed-in check.)
+- [ ] **Runtime-verify the 2026-06-10 bug-fix + cleanup pass (partially confirmed
+  2026-07-03 in an authed localhost session).** Confirmed via CDP against a real
+  signed-in session on `http://127.0.0.1:5173/` (@radialmonster.com): (a) the Like
+  control renders a heart (`lucide-heart`, label "Like"), not a bell, and
+  like/unlike works — liked own post 8→9 (title flips to "Unlike", persists across
+  reload), unliked back to 8; (b) viewer **follow/block** state renders correctly
+  (@bsky.app profile shows "Following"/"Block"), and like state renders (filled/
+  title-flip on the liked post). Remaining, not yet exercised: (b-cont.) viewer
+  **bookmark** state rendering (operator has zero bookmarks — needs a bookmarked
+  post) and the **stale liked/bookmarked-clears-after-sign-out** auth-change cache
+  invalidation (requires signing the operator out — not authorized/destructive to
+  the live session); (c) image posts accept up to 10 attachments and render 5–10
+  via `app.bsky.embed.gallery` (`app.bsky.embed.images` stays capped at 4) — needs
+  a 5–10-image post to view; (d) Bookmarks and Lists restore scroll on revisit —
+  Bookmarks is empty ("No bookmarks yet") so scroll-restore there can't be
+  exercised until there are bookmarks; Lists scroll-restore still to check with a
+  populated list.
 
 ## Code review findings (2026-07-02)
 
@@ -252,9 +257,19 @@ From the full code review of `src/App.tsx`, `src/auth.ts`, `src/api.ts`, `src/ri
   - Relevant files/functions found:
     - `src/InfoPage.tsx`: "Reporting content & abuse" + "Contact" panels.
     - `README.md`: "Reporting content & abuse" section + Links list.
-- [ ] Confirm saved-feed-order account sync in a real signed-in session (follow-up).
-  - Follow-up from the saved-feed-order sync work above. The `syncSavedFeedsOrder` account write only runs on an authenticated reorder and couldn't be exercised read-only.
-  - In a real signed-in session: reorder feeds on `/feeds`, then confirm (a) no console error from the background sync, (b) reloading BigBsky in a fresh browser/profile (empty `bigbsky:feed-order`) shows the new order, and (c) the official bsky.app client reflects the same saved-feed order (cross-client sync) and that pinned state + the Following timeline + saved lists are unchanged.
+- [ ] Confirm saved-feed-order account sync — cross-client half still open (follow-up).
+  - Confirmed 2026-07-03 in an authed localhost session (@radialmonster.com, CDP):
+    reordering feeds on `/feeds` (Move up/down) works, writes the explicit order to
+    `bigbsky:feed-order`, and fires `syncSavedFeedsOrder` with **no console error**;
+    moving a feed and moving it back restored the exact original order. Restored the
+    operator's state afterward (moved back + cleared `bigbsky:feed-order` to its
+    original null; the account order it synced back is identical to the original).
+  - Still open: confirm (a) reloading BigBsky in a **fresh browser/profile** (empty
+    `bigbsky:feed-order`) shows the account-synced order, and (b) the official
+    **bsky.app** client reflects the same saved-feed order (true cross-client sync)
+    with pinned state + Following timeline + saved lists unchanged. (a)/(b) weren't
+    exercised because the test restored the original order rather than leaving a
+    changed order to observe cross-client.
   - Optional: surface a subtle "saving…/synced" affordance on `/feeds` so the user knows the order is account-synced, and consider a manual retry if the sync fails.
   - Relevant files/functions found:
     - `src/auth.ts`: `syncSavedFeedsOrder`.
@@ -468,14 +483,3 @@ From the full code review of `src/App.tsx`, `src/auth.ts`, `src/api.ts`, `src/ri
     each component's styles. (Already flagged in `docs/plan.md`; tracked here.)
   - Relevant files/functions found:
     - `src/styles.css`.
-- [ ] Add a Follow button to the feed-page header for unsubscribed feeds. (IMPLEMENTED 2026-06-30 — remaining: signed-in confirmation only.)
-  - Done (2026-06-30): added a Follow button beside the feed title in the `.workspace-header`.
-    - `src/App.tsx`: new derived `canFollowActiveFeed` = `route.kind === "feed" && signedInDid && isFeedGeneratorUri(activeSource.uri) && !followedFeedUris.has(activeSource.uri)` (so it shows only for a signed-in viewer on a custom feed generator they have not subscribed to; hidden for the Following timeline, lists, and signed-out viewers). When true, a Follow button renders between the `<h1>` title and the `.nav-toggle` in the workspace header. It reuses the existing `toggleFollowFeed(activeSource.uri, label)` handler (the same one the `/feeds` + Discover surfaces use — no duplicated logic), shows a `Loader2` spinner while `followBusyUri === activeSource.uri`, and disables during the write. Per the spec, when already subscribed the button simply does not render (no Following/Unfollow state in the header — that lives on `/feeds`).
-    - Styling reuses the `/feeds`/Discover Follow class `discover-feed-follow` (blue pill + `Plus` icon + "Follow"), plus a `workspace-header-follow` class with `flex: 0 0 auto` in `src/styles.css` so it doesn't shrink in the header flex row.
-    - `src/api.ts`: added `isFeedGeneratorUri(uri)` helper (mirrors `isListUri`), imported in `src/App.tsx`.
-    - Verified: `npm run build` passes (tsc, vite, audit initial JS 121 kB gzip, reader + layout + rich-text verifiers all green). Drove the dev server via `scripts/cdp.mjs` on `/feed/at://…/app.bsky.feed.generator/aaacqpx6p7n7i` ("Graphic Design on bsky"): signed-out → feed title renders and the Follow button is correctly **absent**, no console errors. Injecting the exact `discover-feed-follow workspace-header-follow` markup into the live header confirmed it renders as a blue pill cleanly to the right of the title (visually consistent with `/feeds`). Killed the dev server afterward.
-  - Remaining: confirm in a real **signed-in** session that the button (a) appears for an unsubscribed feed generator, (b) follows the feed on click (subscribes via `followFeed`, optimistic list update), (c) disappears once subscribed, and (d) the saved feed shows up in `/feeds` + the official bsky.app client. This is the same authenticated-write limitation as prior composer/follow work — not exercisable on the local origin (no OAuth session present), needs the deployed origin with the operator signed in.
-  - Relevant files/functions found:
-    - `src/App.tsx`: `.workspace-header` render (`canFollowActiveFeed`, `toggleFollowFeed`, `followedFeedUris`, `followBusyUri`), `activeSource`.
-    - `src/api.ts`: `isFeedGeneratorUri`, `isListUri`.
-    - `src/auth.ts`: `followFeed`, `unfollowFeed`, `getSubscribedFeeds` (saved-feeds preference read/write).
