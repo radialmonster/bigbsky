@@ -37,9 +37,18 @@ tasks — it points here.
   **bookmark** state rendering (operator has zero bookmarks — needs a bookmarked
   post) and the **stale liked/bookmarked-clears-after-sign-out** auth-change cache
   invalidation (requires signing the operator out — not authorized/destructive to
-  the live session); (c) image posts accept up to 10 attachments and render 5–10
-  via `app.bsky.embed.gallery` (`app.bsky.embed.images` stays capped at 4) — needs
-  a 5–10-image post to view; (d) Bookmarks and Lists restore scroll on revisit —
+  the live session); (c) **CONFIRMED 2026-07-03** — a 10-image post
+  (`/profile/80east.bsky.social/post/3mpongcafhc2y`) renders **all 10** images,
+  every one visible (881×1107, distinct alt text), via the `.image-masonry`
+  row-grouped gallery. Note: the grid class is `count-${Math.min(images.length,4)}`
+  (App.tsx:8509), so a 10-image post gets `count-4` — but that's inert: only
+  `.image-grid.count-1` is ever styled; for the masonry (2+) the layout comes
+  entirely from `.image-row`/`.image-row-solo`, so `count-2/3/4` are dead class
+  values, not a bug. The full-screen `.image-viewer` lightbox opens on a real
+  pointer click and shows "1 / 10" — all 10 images navigable. (A programmatic
+  `.click()` was a no-op because the viewer opens on pointerdown/mousedown, not
+  the React onClick — a CDP synthetic-event quirk, not a defect.)
+  (d) Bookmarks and Lists restore scroll on revisit —
   Bookmarks is empty ("No bookmarks yet") so scroll-restore there can't be
   exercised until there are bookmarks; Lists scroll-restore still to check with a
   populated list.
