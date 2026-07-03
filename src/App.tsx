@@ -686,13 +686,25 @@ function parsePostUrl(value: string) {
 }
 
 function isRateLimit(error: unknown) {
-  return error instanceof ApiError && error.status === 429;
+  // getJson throws our ApiError; the authed atproto agent (notifications,
+  // bookmarks, writes) throws an XRPCError that also carries a numeric `status`.
+  // Match both so a 429 reads as a rate limit regardless of the call path.
+  if (error instanceof ApiError) {
+    return error.status === 429;
+  }
+  return (error as { status?: number } | null)?.status === 429;
 }
 
 function isNetworkError(error: unknown) {
   // fetch() rejects with a TypeError ("Failed to fetch") on network/CORS failures,
-  // which also covers rate-limited responses returned without CORS headers.
-  return error instanceof TypeError;
+  // which also covers rate-limited responses returned without CORS headers. The
+  // atproto agent rewraps that rejection, so also match the message text (its
+  // XRPCError is not a TypeError instance).
+  if (error instanceof TypeError) {
+    return true;
+  }
+  const message = (error instanceof Error ? error.message : "").toLowerCase();
+  return message.includes("failed to fetch") || message.includes("networkerror") || message.includes("network request failed");
 }
 
 // A feed generator (or other upstream service) being down, as opposed to our
