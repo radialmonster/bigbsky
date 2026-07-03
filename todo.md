@@ -4,33 +4,20 @@
 
 From the full code review of `src/App.tsx`, `src/auth.ts`, `src/api.ts`, `src/richtext.ts`, `src/router.ts`, `src/lib/*`. Baseline was healthy: `tsc -b` clean, 177/177 tests pass. Items below are real bugs / silent failures, ordered by severity.
 
-### HIGH — fix first
-
-- [x] **H1. `auth.ts:439` — Raw `localStorage.getItem` bypasses safe-storage wrapper.** Fixed 2026-07-02. `ensureSession()` now reads the active DID via `safeLocalStorageGet(activeDidKey)`, so a `SecurityError` (Safari private mode / disabled storage) degrades to "no session" instead of rejecting every in-flight authed call.
-- [x] **H2. `auth.ts:166-186` — Successful OAuth callback misclassified as failure on transient profile read.** Fixed 2026-07-02. The callback branch of `initAuthSession` now returns `buildFastSnapshot(session, true)` + `profilePromise: hydrateSessionProfile(session)` instead of `snapshotSessionFull` (which blocked on `getProfile`). The DID comes from the session (no network), the session persists immediately, and a PDS hiccup no longer turns a successful token exchange into "Sign-in didn't finish" — the profile hydrates in the background (same pattern App.tsx already merges via `result.profilePromise`). Removed the now-dead `snapshotSessionFull`. **Live-verified 2026-07-02** (operator signed out via `/profile` → signed back in via the real OAuth flow): the callback landed signed-in with no "Sign-in didn't finish" error. Follow-up change same day: the post-sign-in landing was moved from `/settings` to `/feed/following` (drop the user straight into posts); verified `/feed/following` renders the Following timeline signed in.
-- [x] **H3. `api.ts:528-546` — Quote embed `viewNotFound`/`viewBlocked` passes the guard, renders empty quote cards.** Fixed 2026-07-02. `getRecordEmbed` now deny-lists `$type` matching `viewNotFound|viewBlocked|viewDetached` (chosen over requiring `author` so legitimate authorless record embeds — generator/list/starter-pack views — still render). Added 7 `getRecordEmbed` unit tests in `src/api.test.ts`.
-- [x] **H4. `lib/content-language.ts:198-208` — One failed `lande` chunk load kills language detection for the session.** Fixed 2026-07-02. `getLande` now `.catch((e) => { landePromise = null; throw e; })` so a transient chunk-load failure doesn't cache a rejected promise; the next detection retries the load.
-- [x] **H5. `App.tsx:7629-7646` & `:5798-5810` — Load-more errors silently swallowed; `AutoLoadMoreButton` can hammer a rate-limited endpoint.** Fixed + **live-verified 2026-07-02** (signed in as radialmonster.com, CDP). `BookmarksView` now tracks `loadMoreError` (set via `rateLimitMessage`, cleared on retry) and passes it to `AutoLoadMoreButton` — which already stops the IntersectionObserver auto-fire and shows a Retry when `error` is set — and suppresses the End-of-feed card while errored. `AuthedNotifications.loadMore` (a manual button) now surfaces the error via the shared `.load-more-error` affordance + Retry instead of an empty `.catch`. Verified by CDP network fault-injection on `/notifications`: injected a cursor into the first `listNotifications` response so "Load more" rendered, then 429'd the load-more request → the `.load-more-error` box + Retry button appeared (no silent swallow). **Follow-on fix surfaced by this test:** `isRateLimit`/`isNetworkError` only recognized BigBsky's `ApiError` (from `getJson`) / `TypeError`, but the authed agent paths (notifications, bookmarks, writes) throw an atproto `XRPCError` — so a real 429 there showed a raw message. Both classifiers now also match a generic numeric `.status === 429` and the wrapped "failed to fetch"/network message text, so agent-based rate-limit/network errors read with the friendly copy everywhere.
-- [x] **H6. `App.tsx:2189-2223` — `globalSearchText` not cleared when leaving `/search`.** Fixed + **live-verified 2026-07-02** (CDP). The `route.kind !== "search"` branch now also calls `setGlobalSearchText("")`. Verified: loaded `/search?q=cats` (both search inputs showed "cats"), navigated in-app to `/feed/discover` → the right-rail SearchBox cleared to empty.
-
 ### MEDIUM
 
 - [ ] **M1. `auth.ts:821-838` — `getMissingScopes` swallows `getTokenInfo` errors and returns `[]`** (indistinguishable from "fully granted"). The users who most need a re-auth prompt are silently skipped; App.tsx:6225 compounds with `.catch(() => [])`. Return `null` for "indeterminate."
 - [ ] **M2. `auth.ts` read paths — No centralized handling of revoked/deleted sessions.** `isDeletedSessionError` is checked only in `initAuthSession`; authed calls let it propagate raw and `activeSession` stays cached. The `SessionManager.subscribe` event is never wired. Centralize an authed-call wrapper or subscribe to the deleted/revoked event.
-- [x] **M3. `auth.ts:435-446` — `ensureSession` has no in-flight de-dup.** Fixed 2026-07-02 (alongside H1). Added a module-scoped `restorePromise` memo: concurrent cold-start callers share one `client.restore(activeDid)` and it's cleared in a `finally`. Also cleared on `signOut` (see L4).
 - [ ] **M4. `auth.ts:1389-1400` — `clearOAuthSessionStorage` resolves on `onblocked`** — reports success while the OAuth DB is still present, so a later `init()` can resurrect a signed-out session. `clearOAuthLocalSession` is called from App.tsx:2633 without `signOut`'s dispose-first ordering. Reject (or retry) on `onblocked`.
 - [ ] **M5. `App.tsx:2442-2512` — `loadThreadBranch` computes `previousPostCount` from stale closure `thread.node`.** If the thread reloads between click and fetch-resolve, the "Loaded N more replies" count is wrong (can go negative → clamped). Compute it inside the `setThread` updater from `current.node`.
 - [ ] **M6. `App.tsx:3194-3201` — `surface:` scroll-restore races async surface data.** Restore runs synchronously on `activeScrollKey` change, but `BookmarksView`/`ListsSurface` content loads asynchronously — `restoreScrollOffset` no-ops against an empty container. Run restore after data lands.
 - [ ] **M7. `App.tsx:1424-1441` — Profile-feed & feed-search caches keyed without viewer DID.** Identity-change wipe only works because effects happen to be declared in the right order. Add a DID component to the cache key, or document the ordering dependency.
-- [x] **M8. `api.ts:149-181` — `getJson` has no fetch timeout.** Fixed 2026-07-02. Every request now combines the caller's signal with `AbortSignal.timeout(15000)` via `AbortSignal.any` when available (feature-detected; falls back to the caller's signal alone on older engines), so a stalled TCP connection can't hold loading state / a hydration batch open indefinitely.
-- [x] **M9. `auth.ts:301` — `describeSignInError` cause-walk has no depth cap.** Fixed 2026-07-02. Added a `depth < 10` cap to the cause-chain loop so a self-referential `cause` can't spin forever.
 
 ### LOW
 
 - [ ] **L1. `App.tsx:2781-2802/2993` — `navigate` recreated every render is listed in `handleDeletePost` deps**, invalidating the `deletePostContextValue` memo every render → every `PostCard` re-renders. Wrap `navigate` in `useCallback`.
 - [ ] **L2. `App.tsx:7611, 7637` — `hydrateProfileSelfThreads(response.feed)` omits `signal`**; requests run to completion on unmount/navigation. Thread a local AbortController.
 - [ ] **L3. `App.tsx:1919-1937` — Media-density load-more counts only the new page toward the prefetch target**, so each load-more can fetch up to `MEDIA_DENSITY_MAX_PREFETCH_PAGES` extra pages — rapid cursor exhaustion.
-- [x] **L4. `auth.ts:373` — `clientPromise = null` only set inside `if (did)`**; Fixed 2026-07-02. Moved `clientPromise = null` (and the new `restorePromise = null`) out of the `if (did)` block in `signOut`, so a DID-less `signOut()` no longer leaks the cached `BrowserOAuthClient` into the next session's `init()`.
 - [ ] **L5. `auth.ts:117-120` — `looksLikeOAuthCallback` also scans `location.hash`**; a stray `#state=…&error=…` fragment falsely triggers the callback view. Restrict to `location.search`. **Deferred 2026-07-02:** atproto's own `readCallbackParams` chooses hash vs. search by `responseMode` (`docs/atproto/.../browser-oauth-client.ts:390`), so restricting to `location.search` would break a fragment-mode client. Confirm BigBsky's `responseMode` before touching this; not worth the risk without an OAuth test path.
 - [ ] **L6. `router.ts:17` — Split-then-decode means `%2F` in path segments decodes to `/`** and can malform `at://` URIs in the `/feed/<uri>` route. Edge case.
 - [ ] **L7. `api.ts:409-413` — `resolveHandle` cache sweep only removes already-expired entries**; within a 5-min window it grows unbounded for pathological callers. The "stays bounded" comment overstates it.
@@ -44,15 +31,6 @@ From the full code review of `src/App.tsx`, `src/auth.ts`, `src/api.ts`, `src/ri
 - `startThreadLoad` prior-controller abort; `VideoEmbedCard` HLS cleanup; `MeasuredPostRow`/`AutoLoadMoreButton` observer disconnects.
 - Composer unmount cleanup uses `imagesRef.current` (avoids the documented leak).
 - OAuth callback effect `cancelled` guard + DID-guarded profile merge.
-
-## Done
-
-- [x] "Show posts from language" viewing filter (Settings). Filters the posts the user *views* down to selected languages, mirroring bsky.app's client-side content-language filter.
-  - Scope: custom (feedgen) feeds only, incl. Discover; Following and Lists are never filtered — bsky parity via `isFeedGeneratorUri`.
-  - Default is "Any" (empty selection = no filter); explicit Any chip, mutually exclusive with specific picks.
-  - Untagged-but-has-text posts are language-detected client-side via `lande` (lazy-loaded only when a specific-language filter is active; ~88 kB gzip separate chunk, kept out of the initial bundle). Text-less posts always kept. Never-blank fallback preserved.
-  - Verified end-to-end on the real verified-news feed (92% untagged): 98 posts → 76 kept for English.
-  - Files: `src/lib/content-language.ts` (+ `.test.ts`, 22 tests), `src/App.tsx` (state `contentLanguages`/`detectedLangByUri`, `readContentLanguages`, `contentLanguagesStorageKey`, detection effect + `visibleFeedItems`, Settings panel), `lande` dependency.
 
 ## Working Rules
 
@@ -208,44 +186,6 @@ From the full code review of `src/App.tsx`, `src/auth.ts`, `src/api.ts`, `src/ri
 
 ## From the 2026-06-30 thread code review
 
-- [x] Bug 1 — feed combined card dropped non-media embeds (link cards, quotes). Fixed
-  2026-06-30. `ThreadedPostCard` (`src/App.tsx`) now renders each self-thread part
-  with `PostEmbeds` (passing `onOpenPost`/`onOpenProfile`) instead of
-  `PostImageVideoMedia`, mirroring the thread-view `CombinedThreadViewCard`. Also
-  added the `hasEmbeds` check so a part with neither text nor embeds is skipped
-  (no more spurious "Post N has no plain text." on a link-card-only part).
-  Remaining: confirm visually in a signed-in deployed session with a self-thread
-  that carries a link card or quote (not reproducible on the local origin without
-  OAuth; logic is a faithful mirror of the verified thread-view path).
-- [x] Bug 2 — long threads opened mid-chain never hydrated their tail. Fixed
-  2026-06-30. `hydrateThreadContinuations` (`src/App.tsx`) now derives the marker
-  total from `buildAnchoredThreadParts(hydrated)` (walks UP the `.parent` chain to
-  the true root so the 1/N marker is read from the root) instead of
-  `buildThreadParts` (which started at the anchor's 3/N marker and aborted
-  hydration). Root-anchored callers are unaffected (no ancestors → identical
-  result). Added a `expectedThreadMarkerTotal` test for the mid-chain anchor case
-  in `src/lib/threads.test.ts`.
-- [x] Bug 3 — `splitTextForThread` could infinite-loop when `graphemeLimit === 0`.
-  Fixed 2026-06-30. Added a `limit < 1` guard in `src/lib/threads.ts` that bails to
-  a single trimmed post (latent — no call site passes < 1). Added a regression test.
-- [x] Bug A — ancestor parts in `LongThreadCard` (Separated mode) rendered dead
-  reply buttons. Fixed 2026-06-30. When you open a mid-chain self-thread post and
-  switch to Separated mode, `buildAnchoredThreadParts` produces ancestor parts whose
-  `replies` is forced to `[]` (the AppView only hydrates the anchor subtree —
-  `src/lib/threads.ts:168`), but the per-part `commentCount` still read
-  `post.replyCount`, so the button showed a non-zero count whose click was swallowed
-  (`if (part.replies.length > 0)`). `LongThreadCard` (`src/App.tsx`) now, when a part
-  has no inline replies but `commentCount > 0`, falls through to
-  `handlers.onOpenPost(post)` (opens that post in its own thread view where its
-  replies hydrate) instead of doing nothing; the `commentTitle` reflects the
-  open-thread affordance. Descendant parts (replies hydrated) toggle inline as before.
-- [x] Bug B — `MediaOnlyPostCard` ignored thread markers. Fixed 2026-06-30. A
-  standalone self-thread root shown in media density (ungrouped — e.g. search
-  results, or where `hydrateProfileSelfThreads` didn't run) displayed the raw
-  "1/N 🧵" text with no way to open the thread. `MediaOnlyPostCard` (`src/App.tsx`)
-  now computes `threadMarkerMatch(text)` and renders the same `.thread-open-chip`
-  "Open Thread i/N" button as `PostCard` (`src/App.tsx:9035`) in its expanded
-  details, wired to `onOpenPost(post)`.
 - [ ] Bug 4 — combined reply-count math assumes a linear chain (`src/App.tsx`:
   `CombinedThreadCard` + `CombinedThreadCardCompact`: `Σ replyCount − (posts.length
   − 1)`). Re-examined 2026-06-30: the over-count is **real** — a forked self-thread
