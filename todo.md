@@ -161,10 +161,19 @@ From the full code review of `src/App.tsx`, `src/auth.ts`, `src/api.ts`, `src/ri
     - `public/oauth-client-metadata.json`: browser OAuth scopes with AppView `aud=did:web:api.bsky.app#bsky_appview`.
     - `src/auth.ts`: OAuth session restoration and AppView proxy usage.
     - `src/scopes.ts`: `APPVIEW_AUD` and scope comments for client-server AppView RPC calls.
-- [ ] Publish a monitored contact email + document reports/deletion handling (follow-up from Developer Guidelines audit).
-  - Bluesky's developer guidelines suggest a regularly monitored **email address**, not only a Bluesky profile / GitHub Issues link. BigBsky currently exposes the Bluesky profile and GitHub Issues (both added in the audit above) but no email.
-  - **Question for operator:** which email address should BigBsky publish for content/abuse reports and contact? Once provided, add it to the "Reporting content & abuse" + "Contact" panels in `src/InfoPage.tsx` and the README Links/Reporting sections.
-  - Also document an explicit process for how reports are tracked/responded to and how content-deletion requests are handled (even a short stated turnaround), and do a dedicated security-posture review of local OAuth/session data, browser-local preferences, drafts, pins, and collections.
+- [ ] Document report-handling process + do a local-data security-posture review (follow-up from Developer Guidelines audit).
+  - **Contact email question — RESOLVED (2026-07-02):** operator declined to publish a
+    dedicated email. Decision: BigBsky hosts none of its own content, so content/abuse
+    reports route to **Bluesky's** moderation (already wired in `InfoPage.tsx` — links
+    Bluesky's report flow + community guidelines). Problems with the BigBsky site itself
+    go to the operator's **Bluesky profile `@radialmonster.com`** (plus GitHub Issues),
+    which the Contact panel already lists. Do NOT paste Bluesky's abuse email as BigBsky's
+    contact (misdirects reports, implies BigBsky monitors that inbox). No page change
+    needed for contact routing.
+  - Still open: document an explicit process for how reports are tracked/responded to and
+    how content-deletion requests are handled (even a short stated turnaround), and do a
+    dedicated security-posture review of local OAuth/session data, browser-local
+    preferences, drafts, pins, and collections.
   - Relevant files/functions found:
     - `src/InfoPage.tsx`: "Reporting content & abuse" + "Contact" panels.
     - `README.md`: "Reporting content & abuse" section + Links list.
