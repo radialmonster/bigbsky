@@ -86,6 +86,7 @@ import {
   parseStringArray,
 } from "./lib/preferences";
 import { safeHttpUrl } from "./lib/url";
+import { detectPostLanguage, filterFeedByLanguages, postsNeedingDetection } from "./lib/content-language";
 import {
   MOBILE_SCROLL_QUERY,
   armScrollRestore,
@@ -270,6 +271,13 @@ function readShowMedia() {
   }
 }
 
+// Selected content languages (base 639-1 codes) for the "Show posts from
+// language" filter. An empty list means "Any" (no filtering) — the default.
+// Browser-local only, like showMedia/showNsfw; never synced to the account.
+function readContentLanguages() {
+  return parseNonEmptyStringArray(safeLocalStorageGet(contentLanguagesStorageKey));
+}
+
 type FeedState = {
   items: FeedItem[];
   cursor?: string;
@@ -429,6 +437,7 @@ const columnsStorageKey = "bigbsky:columns";
 const showNsfwStorageKey = "bigbsky:show-nsfw";
 const showMediaStorageKey = "bigbsky:show-media";
 const showMediaByFeedStorageKey = "bigbsky:show-media-by-feed";
+const contentLanguagesStorageKey = "bigbsky:content-languages";
 const pinnedFeedsStorageKey = "bigbsky:pinned-feeds";
 const feedOrderStorageKey = "bigbsky:feed-order";
 const pinnedFeedMetaStorageKey = "bigbsky:pinned-feed-meta";
@@ -1137,6 +1146,11 @@ export function App() {
   const [showNsfw, setShowNsfw] = useState<boolean>(() => readShowNsfw());
   const [showMedia, setShowMedia] = useState<boolean>(() => readShowMedia());
   const [showMediaByFeed, setShowMediaByFeed] = useState<Record<string, boolean>>(() => readShowMediaPreferences());
+  const [contentLanguages, setContentLanguages] = useState<string[]>(() => readContentLanguages());
+  // Cache of client-side language detections for untagged-but-has-text posts,
+  // keyed by post URI (see src/lib/content-language.ts). Populated lazily by the
+  // detection effect so scrolling stays smooth and lande loads only on demand.
+  const [detectedLangByUri, setDetectedLangByUri] = useState<Map<string, string>>(() => new Map());
   const [pinnedFeedMeta, setPinnedFeedMeta] = useState<FeedSource[]>(() => readPinnedFeedMeta());
   const [pinnedFeedIds, setPinnedFeedIds] = useState<string[]>(() => readPinnedFeedIds(pinnedFeedMeta));
   const [pinnedSearches, setPinnedSearches] = useState<string[]>(() => readPinnedSearches());
@@ -1794,6 +1808,77 @@ export function App() {
       return !!rootItem && isSelfThreadReply(item, rootItem.post);
     });
   }, [feedState.items, profileTab, route.kind]);
+
+  // The "Show posts from language" filter runs only on custom (feedgen) feeds —
+  // mirroring bsky, which leaves Following and Lists unfiltered. Discover counts
+  // as a feedgen, so it is filtered too.
+  const contentLanguageFilterActive =
+    route.kind === "feed" && contentLanguages.length > 0 && isFeedGeneratorUri(activeSource.uri);
+
+  const visibleFeedItems = useMemo(() => {
+    if (!contentLanguageFilterActive) {
+      return feedState.items;
+    }
+    return filterFeedByLanguages(feedState.items, contentLanguages, detectedLangByUri);
+  }, [contentLanguageFilterActive, feedState.items, contentLanguages, detectedLangByUri]);
+
+  // Lazily detect the language of untagged-but-has-text posts so the filter can
+  // judge them (most posts on real feeds declare no language). Runs only while
+  // the filter is active; results (including a "" sentinel for indeterminate
+  // posts, which are kept) are cached per URI so lande runs once per post.
+  useEffect(() => {
+    if (!contentLanguageFilterActive) {
+      return;
+    }
+    const pending = postsNeedingDetection(feedState.items, contentLanguages, detectedLangByUri);
+    if (pending.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      let batch: Array<[string, string]> = [];
+      const flush = () => {
+        if (batch.length === 0 || cancelled) {
+          return;
+        }
+        const entries = batch;
+        batch = [];
+        setDetectedLangByUri((current) => {
+          const next = new Map(current);
+          for (const [uri, code] of entries) {
+            next.set(uri, code);
+          }
+          return next;
+        });
+      };
+      for (let i = 0; i < pending.length; i += 1) {
+        if (cancelled) {
+          return;
+        }
+        const post = pending[i];
+        const text = typeof post.record?.text === "string" ? post.record.text : "";
+        let detected: string | undefined;
+        try {
+          detected = await detectPostLanguage(text);
+        } catch {
+          // Detector unavailable (e.g. chunk load failed): keep the post by
+          // caching the sentinel so we neither hide it nor retry endlessly.
+          detected = undefined;
+        }
+        batch.push([post.uri, detected ?? ""]);
+        // Publish in small batches so the feed refilters progressively and the
+        // event loop stays responsive on large pages.
+        if (batch.length >= 25) {
+          flush();
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+      }
+      flush();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [contentLanguageFilterActive, feedState.items, contentLanguages, detectedLangByUri]);
 
   const loadFeed = useCallback(async (source: FeedSource, cursor?: string, signal?: AbortSignal) => {
     const cacheKey = `feed:${source.id}`;
@@ -2515,6 +2600,29 @@ export function App() {
     });
   }
 
+  // "Show posts from language" selection. Passing an empty array selects Any
+  // (no filter). Selecting a specific language while on Any starts a fresh set;
+  // toggling the last language off returns to Any.
+  function setContentLanguageSelection(next: string[]) {
+    const cleaned = Array.from(new Set(next.filter((code) => typeof code === "string" && code)));
+    setContentLanguages(cleaned);
+    safeLocalStorageSet(contentLanguagesStorageKey, JSON.stringify(cleaned));
+  }
+
+  function selectAnyContentLanguage() {
+    setContentLanguageSelection([]);
+  }
+
+  function toggleContentLanguage(code: string) {
+    setContentLanguages((current) => {
+      const next = current.includes(code)
+        ? current.filter((entry) => entry !== code)
+        : [...current, code];
+      safeLocalStorageSet(contentLanguagesStorageKey, JSON.stringify(next));
+      return next;
+    });
+  }
+
   async function clearLocalReaderData() {
     Object.keys(localStorage)
       .filter((key) => key.startsWith("bigbsky:"))
@@ -2529,6 +2637,8 @@ export function App() {
     // and storage don't diverge until a reload (defaults match the read* helpers).
     setShowMedia(true);
     setShowNsfw(false);
+    setContentLanguages([]);
+    setDetectedLangByUri(new Map());
     setHomeSourceIdState("following");
     setPinnedFeedMeta([]);
     setColumns({ feeds: true, right: true });
@@ -3522,6 +3632,9 @@ export function App() {
             onToggleNsfw={toggleShowNsfw}
             showMedia={showMedia}
             onToggleShowMedia={toggleShowMedia}
+            contentLanguages={contentLanguages}
+            onSelectAnyContentLanguage={selectAnyContentLanguage}
+            onToggleContentLanguage={toggleContentLanguage}
             canFollowFeeds={!!signedInDid}
             subscribedFeeds={orderedSubscribedFeeds}
             onMoveFeed={moveSubscribedFeed}
@@ -3643,7 +3756,7 @@ export function App() {
               <VirtualPostList
                 containerRef={timelineRef}
                 density={density}
-                items={feedState.items}
+                items={visibleFeedItems}
                 mediaOnly={density === "media"}
                 onOpenImage={openImageViewer}
                 onOpenPost={openPost}
@@ -4266,6 +4379,9 @@ function SurfaceView({
   onToggleNsfw,
   showMedia,
   onToggleShowMedia,
+  contentLanguages,
+  onSelectAnyContentLanguage,
+  onToggleContentLanguage,
   canFollowFeeds,
   subscribedFeeds,
   onMoveFeed,
@@ -4324,6 +4440,9 @@ function SurfaceView({
   onToggleNsfw: () => void;
   showMedia: boolean;
   onToggleShowMedia: () => void;
+  contentLanguages: string[];
+  onSelectAnyContentLanguage: () => void;
+  onToggleContentLanguage: (code: string) => void;
   canFollowFeeds: boolean;
   subscribedFeeds: FeedSource[];
   onMoveFeed: (uri: string, direction: -1 | 1) => void;
@@ -4539,6 +4658,53 @@ function SurfaceView({
               <span>{showMedia ? "Showing media" : "Hiding media"}</span>
             </button>
             <p>This preference is stored locally in this browser only.</p>
+          </article>
+          <article className="settings-panel">
+            <span>{contentLanguages.length === 0 ? "Any" : `${contentLanguages.length} selected`}</span>
+            <h3>Show posts from language</h3>
+            <p>Filter the posts you see down to the languages you read. Posts that declare no language are detected automatically; posts with no text are always shown. Applies to custom feeds (including Discover) — Following and Lists are never filtered.</p>
+            <div className="settings-control-group" aria-label="Content languages">
+              <button
+                type="button"
+                className={contentLanguages.length === 0 ? "selected-setting" : ""}
+                aria-pressed={contentLanguages.length === 0}
+                onClick={onSelectAnyContentLanguage}
+              >
+                Any
+              </button>
+              {contentLanguages.map((code) => (
+                <button
+                  key={code}
+                  type="button"
+                  className="selected-setting"
+                  aria-pressed={true}
+                  title={`Remove ${languageDisplayName(code)}`}
+                  onClick={() => onToggleContentLanguage(code)}
+                >
+                  {languageDisplayName(code)} ✕
+                </button>
+              ))}
+            </div>
+            <label className="settings-select">
+              <span>Add a language</span>
+              <select
+                value=""
+                onChange={(event) => {
+                  const code = event.target.value;
+                  if (code) {
+                    onToggleContentLanguage(code);
+                  }
+                }}
+              >
+                <option value="">Add a language…</option>
+                {POST_LANGUAGE_OPTIONS.filter((option) => !contentLanguages.includes(option.code)).map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="settings-note">“Any” shows every language. Choosing one or more filters to just those. Stored locally in this browser only.</p>
           </article>
           <article className="settings-panel">
             <span>Local</span>

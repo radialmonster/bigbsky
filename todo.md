@@ -1,5 +1,14 @@
 # Todo
 
+## Done
+
+- [x] "Show posts from language" viewing filter (Settings). Filters the posts the user *views* down to selected languages, mirroring bsky.app's client-side content-language filter.
+  - Scope: custom (feedgen) feeds only, incl. Discover; Following and Lists are never filtered — bsky parity via `isFeedGeneratorUri`.
+  - Default is "Any" (empty selection = no filter); explicit Any chip, mutually exclusive with specific picks.
+  - Untagged-but-has-text posts are language-detected client-side via `lande` (lazy-loaded only when a specific-language filter is active; ~88 kB gzip separate chunk, kept out of the initial bundle). Text-less posts always kept. Never-blank fallback preserved.
+  - Verified end-to-end on the real verified-news feed (92% untagged): 98 posts → 76 kept for English.
+  - Files: `src/lib/content-language.ts` (+ `.test.ts`, 22 tests), `src/App.tsx` (state `contentLanguages`/`detectedLangByUri`, `readContentLanguages`, `contentLanguagesStorageKey`, detection effect + `visibleFeedItems`, Settings panel), `lande` dependency.
+
 ## Working Rules
 
 - If a task needs an answer from the human, do not skip or abandon the task. Ask the specific question needed, then continue once answered.
