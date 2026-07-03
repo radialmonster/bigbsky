@@ -460,21 +460,6 @@ From the full code review of `src/App.tsx`, `src/auth.ts`, `src/api.ts`, `src/ri
       (static-source regex checks).
     - `scripts/verify-richtext.mjs` (executable esbuild-transpiled harness).
     - `package.json`: `build` script; no `test` script, no vitest/jest/RTL.
-- [ ] Harden the `signOut` SDK-disposal workaround against version drift.
-  - Severity: medium. `src/auth.ts:191-214`. The `Symbol.asyncDispose` cast
-    works around an `@atproto/oauth-client-browser` bug (sync `dispose()` calls
-    undefined `Symbol.dispose`). Well documented, but coupled to a specific
-    library version's internals — an SDK upgrade could silently re-break sign-out.
-    Pin the version and add a regression check.
-  - Relevant files/functions found:
-    - `src/auth.ts`: `signOut`, `clearOAuthLocalSession`.
-- [ ] Service worker: evict stale hashed `/assets/*` across deploys.
-  - Severity: low. `public/sw.js:51` caches `/assets/*` cache-first with no
-    per-entry eviction; only a whole `CACHE_NAME` bump (`bigbsky-shell-v5`)
-    cleans stale assets. Make the per-release `CACHE_NAME` bump explicit as
-    load-bearing for storage hygiene, or add an LRU/sweep pass in `activate`.
-  - Relevant files/functions found:
-    - `public/sw.js`: `CACHE_NAME`, the `/assets/*` fetch handler, `activate`.
 - [ ] CSS dead-selector sweep (co-locate with component extraction).
   - Severity: low. `src/styles.css` (5,116 lines) likely has orphaned rules after
     the Save→Bookmark rename and removed panels, but several classes are applied

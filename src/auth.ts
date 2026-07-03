@@ -389,6 +389,10 @@ export async function startSignIn(input: string) {
 // core-js import). Best-effort: never throws (disposal must not turn a
 // successful revoke into a sign-out warning). Reached via a cast because
 // Symbol.asyncDispose isn't in our TS lib target.
+// @atproto/oauth-client-browser is pinned to an exact version in package.json
+// and guarded by src/auth.dispose.test.ts, which asserts the async disposer
+// still exists and the sync dispose() is still broken — so an SDK bump that
+// changes this shape fails a test instead of silently re-breaking sign-out.
 async function disposeCachedClient(): Promise<void> {
   if (!clientPromise) {
     return;
