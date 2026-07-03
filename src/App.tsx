@@ -1216,9 +1216,10 @@ export function App() {
       });
 
       if (result.status === "callback") {
-        // Successful sign-in via the callback → land on Settings.
-        window.history.replaceState(null, "", "/settings");
-        setRoute({ kind: "surface", name: "settings" });
+        // Successful sign-in via the callback → drop the user straight into
+        // posts (the signed-in Following timeline) rather than Settings.
+        window.history.replaceState(null, "", "/feed/following");
+        setRoute({ kind: "feed", uri: "following" });
       } else if (hadCallback && !result.session) {
         // The callback came back but produced no session — a transient token
         // exchange failure, or the pre-redirect OAuth state was missing (sign-in
