@@ -154,6 +154,7 @@ import {
   unsubscribeBlockList,
   clearOAuthLocalSession,
   initAuthSession,
+  setSessionInvalidatedListener,
   likePost,
   MAX_POST_IMAGES,
   publishPost,
@@ -1252,6 +1253,29 @@ export function App() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Centralized revoked/deleted-session handling. auth.ts wires the OAuth
+  // client's onDelete hook to this listener, so a session that ends server-side
+  // (token revoked from Bluesky's account UI, refresh failure, or a sign-out in
+  // another tab) drops the signed-in UI back to signed-out with an actionable
+  // message, instead of authed reads silently failing against a stale session.
+  useEffect(() => {
+    setSessionInvalidatedListener(() => {
+      setAuthState((current) => {
+        // An intentional local sign-out already handles its own state; don't
+        // clobber it (or an already signed-out state) with an error banner.
+        if (current.status === "signed-out" || current.status === "signing-out") {
+          return current;
+        }
+        return {
+          status: "error",
+          session: null,
+          message: "Your Bluesky session ended (it expired or was signed out elsewhere). Sign in again to continue.",
+        };
+      });
+    });
+    return () => setSessionInvalidatedListener(null);
   }, []);
 
   // When signed in, load the user's subscribed/pinned feeds from their AT

@@ -47,6 +47,48 @@ let activeSession: OAuthSession | null = null;
 // cold start don't each fire a client.restore() racing on the IndexedDB lock.
 let restorePromise: Promise<OAuthSession> | null = null;
 
+// Set while signOut()/clearOAuthLocalSession() run their own intentional
+// teardown. The OAuth library's revoke()/delStored() fire the onDelete hook as
+// part of that teardown; suppress our reactive handling then so we don't fight
+// the explicit sign-out (which already resets state and notifies the UI).
+let teardownInProgress = false;
+
+// Notified when the OAuth library deletes a session out from under us —
+// server-side token revocation (e.g. via Bluesky's account UI), a failed
+// refresh, an invalid/expired session, or a sign-out in another tab. Wired
+// centrally through the client's onDelete hook (see getClient) so it's caught
+// no matter which authed read/write triggered the refresh, instead of letting
+// a raw "session deleted" error propagate while activeSession stays cached.
+type SessionInvalidatedListener = (did: string) => void;
+let sessionInvalidatedListener: SessionInvalidatedListener | null = null;
+
+export function setSessionInvalidatedListener(listener: SessionInvalidatedListener | null) {
+  sessionInvalidatedListener = listener;
+}
+
+// React to the library deleting a stored session. The library has already
+// removed it from its own IndexedDB store, so this only drops BigBsky's cached
+// pointers (in-memory session + the did/handle hints) — it must NOT
+// deleteDatabase (that is sign-out's job). Idempotent, and a no-op during our
+// own intentional teardown. Notifies the app so the signed-in UI can fall back
+// to signed-out.
+function handleSessionInvalidated(did: string) {
+  if (teardownInProgress) {
+    return;
+  }
+  // Ignore a delete for a different account than the one we consider active
+  // (e.g. a stale cross-tab event) so it can't wipe the current session.
+  const activeDid = safeLocalStorageGet(activeDidKey);
+  if (activeDid && did && activeDid !== did) {
+    return;
+  }
+  activeSession = null;
+  restorePromise = null;
+  safeLocalStorageRemove(activeDidKey);
+  safeLocalStorageRemove(activeHandleKey);
+  sessionInvalidatedListener?.(did);
+}
+
 function asAppViewAgent(agent: InstanceType<typeof import("@atproto/api").Agent>) {
   return agent.withProxy(appViewServiceType, appViewDid);
 }
@@ -156,6 +198,11 @@ async function getClient() {
     return BrowserOAuthClient.load({
       clientId,
       identityResolver: buildIdentityResolver(),
+      // Centralized revoked/deleted-session handling: the library calls this
+      // whenever it removes a session from its store (token revoked, refresh
+      // failed, invalid session, or a sign-out in another tab), regardless of
+      // which authed call triggered it.
+      onDelete: (sub) => handleSessionInvalidated(sub),
     });
   })();
   return clientPromise;
@@ -361,41 +408,54 @@ async function disposeCachedClient(): Promise<void> {
 export async function signOut(did?: string) {
   let revokeWarning: string | undefined;
 
+  // client.revoke() deletes the session from the library store, which fires the
+  // onDelete hook; suppress the reactive handler for our own intentional
+  // teardown so it doesn't race the explicit state reset below.
+  teardownInProgress = true;
   try {
-    if (did) {
-      const client = await getClient();
-      await client.revoke(did);
+    try {
+      if (did) {
+        const client = await getClient();
+        await client.revoke(did);
+      }
+    } catch (error) {
+      revokeWarning = error instanceof Error ? error.message : String(error);
     }
-  } catch (error) {
-    revokeWarning = error instanceof Error ? error.message : String(error);
+
+    // Close the client's IndexedDB connection BEFORE deleting the OAuth DB, so
+    // deleteDatabase isn't blocked by the open handle.
+    await disposeCachedClient();
+
+    // Drop the cached OAuth client unconditionally: even a DID-less signOut()
+    // must not leak the client into the next session's init().
+    clientPromise = null;
+    restorePromise = null;
+    activeSession = null;
+    safeLocalStorageRemove(activeDidKey);
+    safeLocalStorageRemove(activeHandleKey);
+    await clearOAuthSessionStorage();
+  } finally {
+    teardownInProgress = false;
   }
-
-  // Close the client's IndexedDB connection BEFORE deleting the OAuth DB, so
-  // deleteDatabase isn't blocked by the open handle.
-  await disposeCachedClient();
-
-  // Drop the cached OAuth client unconditionally: even a DID-less signOut() must
-  // not leak the client into the next session's init().
-  clientPromise = null;
-  restorePromise = null;
-  activeSession = null;
-  safeLocalStorageRemove(activeDidKey);
-  safeLocalStorageRemove(activeHandleKey);
-  await clearOAuthSessionStorage();
   return revokeWarning;
 }
 
 export async function clearOAuthLocalSession() {
-  activeSession = null;
-  // Close the client's connection before deleting the DB (same reason as
-  // signOut): unlike signOut this path never disposed the client, so its open
-  // handle could block deleteDatabase and leave a signed-out session on disk for
-  // a later init() to resurrect.
-  await disposeCachedClient();
-  clientPromise = null;
-  safeLocalStorageRemove(activeDidKey);
-  safeLocalStorageRemove(activeHandleKey);
-  await clearOAuthSessionStorage();
+  teardownInProgress = true;
+  try {
+    activeSession = null;
+    // Close the client's connection before deleting the DB (same reason as
+    // signOut): unlike signOut this path never disposed the client, so its open
+    // handle could block deleteDatabase and leave a signed-out session on disk
+    // for a later init() to resurrect.
+    await disposeCachedClient();
+    clientPromise = null;
+    safeLocalStorageRemove(activeDidKey);
+    safeLocalStorageRemove(activeHandleKey);
+    await clearOAuthSessionStorage();
+  } finally {
+    teardownInProgress = false;
+  }
 }
 
 // Authenticated reverse-chronological "Following" home timeline. Returns an

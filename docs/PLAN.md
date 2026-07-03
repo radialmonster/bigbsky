@@ -2,16 +2,16 @@
 
 ## TODO (open tasks)
 
-Remaining work from the OAuth-scope / write-feature pass (2026-06-09). Most of
-these use scopes already granted in `public/oauth-client-metadata.json`, but a
-few need NEW scope lines added (and existing users to re-authorize) — see the
-"scope maintenance" caution at the end.
+**Open work now lives in `todo.md` — the single source of truth.** This file
+keeps BigBsky's design context and the historical changelog of completed passes
+(below), plus the reference cautions on OAuth scope maintenance; it no longer
+tracks open tasks. See `todo.md` for the current list. (Reconciled 2026-07-02:
+the previously-open items here were either done — "User-sortable feed order" — or
+migrated to `todo.md` — the upstream-blocked "Consent UX", the 2026-06-10
+runtime-verify note, and the CSS dead-selector sweep.)
 
-- [ ] **Consent UX (BLOCKED on upstream — revisit when atproto permission sets stabilize)** — goal: replace the raw ~25-token consent list with friendly capability summaries via an `include:<nsid>?aud=…` permission set. **Investigated 2026-06-10:** permission sets are now *spec-finalized* (`/specs/permission`: named bundles published as Lexicon schemas, resolved by the auth server, with user-meaningful titles/summaries on the consent screen) — BUT not production-ready. Bluesky's official `app.bsky.*` sets are published yet *"still problematic"* as of Apr 2026 (`inheritAud: true` issues forcing per-method `aud=*` workarounds; lexicon resolution + PDS caching still maturing — atproto discussions #4437/#4118). Do NOT adopt yet: (a) it would force *another* full re-consent for every user on top of the notifications/mute batch; (b) it's an OAuth-mechanism change verifiable only by the operator on the deployed origin (we can't test sign-in locally) and a resolution failure breaks sign-in for everyone; (c) authoring our own set needs a DNS-controlled NSID + a published lexicon record, awkward for a static no-backend app. **Revisit trigger:** Bluesky announces stable official `app.bsky` permission sets (or `inheritAud` is fixed). Then prefer adopting the official reader/posting set over authoring our own, and batch the re-consent with the "Permissions updated" prompt. Not blocking; trust/clarity polish only.
-
-- [ ] **Runtime-verify the 2026-06-10 bug-fix + cleanup pass on the deployed origin** — the changes recorded below pass `tsc` and the build verifiers but were NOT exercised in a real browser (OAuth-gated paths can't run in the localhost-only preview). Confirm on `bigbsky.com` after deploy: (a) the Like control shows a heart (not a notification bell) and like/unlike still works; (b) viewer state (like/bookmark/follow/block) is correct on a feed/profile/thread first loaded signed-out then viewed signed-in, and stale liked/bookmarked state clears after sign-out — exercises the new auth-change cache invalidation; (c) image posts accept up to 10 attachments and render them via `app.bsky.embed.gallery` for 5–10 images (`app.bsky.embed.images` remains capped at 4); (d) the Bookmarks and Lists surfaces restore scroll position on revisit. Low risk, but auth-dependent so operator-only. **Found during deployed verification 2026-06-10:** re-auth worked and signed-in Bookmarks/Lists/Notifications loaded; the first 10-image write failed because the app was still writing old `app.bsky.embed.images` with 10 items. Fix in progress: write `app.bsky.embed.gallery` for 5–10 and read gallery view items.
-- [ ] **User-sortable feed order** — on `/feeds` (`http://127.0.0.1:5173/feeds` in local dev), let signed-in users reorder their feeds, preferably by drag-and-drop with accessible fallback controls. The saved order should drive the desktop feed-selector column beside the left rail, so the feeds appear there in the same user-defined order.
-- [ ] **CSS dead-selector sweep (deferred, low priority)** — `src/styles.css` likely has orphaned rules after the Save→Bookmark rename and the removed Feed Map / Build Posture panels, but several classes are applied via dynamically-built names, so a blind strip is unsafe. Do it with a real usage cross-check, not a global delete. Not blocking.
+The scope-maintenance cautions below remain relevant reference material for any
+future authenticated AppView method.
 
 **Re-consent needed (one-time):** the scope batch below added `notification.listNotifications`/`getUnreadCount`/`updateSeen`, `graph.muteActorList`/`unmuteActorList`, and (2026-06-10) `bookmark.getBookmarks`/`createBookmark`/`deleteBookmark` to `public/oauth-client-metadata.json`. Existing signed-in users keep their old grant until they re-authorize — the "Permissions updated" banner detects this and offers one-click re-auth. New sign-ins get the full scope immediately.
 **Scope maintenance caution:** because we enumerate `rpc:` methods instead of using `rpc:*`, any NEW authenticated AppView method (notifications, mutes, future reads) must be added to the `scope` string in `public/oauth-client-metadata.json`, and existing signed-in users must re-authorize before it works. Plan scope-adds in batches to minimize re-consents, and pair them with the "Permissions updated" re-auth prompt above.

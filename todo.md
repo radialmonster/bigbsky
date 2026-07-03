@@ -1,12 +1,90 @@
 # Todo
 
+This is the single source of truth for BigBsky's open work. `docs/plan.md` keeps
+the project's design context + historical changelog but no longer tracks open
+tasks — it points here.
+
+## Migrated from docs/plan.md (2026-07-02 reconcile)
+
+- [ ] **Consent UX (BLOCKED on upstream — revisit when atproto permission sets
+  stabilize).** Goal: replace the raw ~25-token consent list with friendly
+  capability summaries via an `include:<nsid>?aud=…` permission set.
+  **Investigated 2026-06-10:** permission sets are now *spec-finalized*
+  (`/specs/permission`: named bundles published as Lexicon schemas, resolved by
+  the auth server, with user-meaningful titles/summaries on the consent screen)
+  — BUT not production-ready. Bluesky's official `app.bsky.*` sets are published
+  yet *"still problematic"* as of Apr 2026 (`inheritAud: true` issues forcing
+  per-method `aud=*` workarounds; lexicon resolution + PDS caching still
+  maturing — atproto discussions #4437/#4118). Do NOT adopt yet: (a) it would
+  force *another* full re-consent for every user on top of the notifications/
+  mute/bookmark batches; (b) it's an OAuth-mechanism change verifiable only by
+  the operator on the deployed origin (we can't test sign-in locally) and a
+  resolution failure breaks sign-in for everyone; (c) authoring our own set
+  needs a DNS-controlled NSID + a published lexicon record, awkward for a static
+  no-backend app. **Revisit trigger:** Bluesky announces stable official
+  `app.bsky` permission sets (or `inheritAud` is fixed). Then prefer adopting
+  the official reader/posting set over authoring our own, and batch the
+  re-consent with the "Permissions updated" prompt. Not blocking; trust/clarity
+  polish only.
+- [ ] **Runtime-verify the 2026-06-10 bug-fix + cleanup pass on the deployed
+  origin.** Those changes pass `tsc` + the build verifiers but the OAuth-gated
+  paths were never exercised in a real browser (localhost-only preview rejects
+  OAuth). Confirm on `bigbsky.com` after deploy: (a) the Like control shows a
+  heart (not a bell) and like/unlike works; (b) viewer state (like/bookmark/
+  follow/block) is correct on a feed/profile/thread first loaded signed-out then
+  viewed signed-in, and stale liked/bookmarked state clears after sign-out
+  (auth-change cache invalidation); (c) image posts accept up to 10 attachments
+  and render 5–10 via `app.bsky.embed.gallery` (`app.bsky.embed.images` stays
+  capped at 4); (d) Bookmarks and Lists restore scroll on revisit. Low risk but
+  auth-dependent, so operator-only. (Same auth-gated limitation as the composer/
+  follow/M2 items — fold into the next deliberate signed-in check.)
+
 ## Code review findings (2026-07-02)
 
 From the full code review of `src/App.tsx`, `src/auth.ts`, `src/api.ts`, `src/richtext.ts`, `src/router.ts`, `src/lib/*`. Baseline was healthy: `tsc -b` clean, 177/177 tests pass. Items below are real bugs / silent failures, ordered by severity.
 
 ### MEDIUM
 
-- [ ] **M2. `auth.ts` read paths — No centralized handling of revoked/deleted sessions.** `isDeletedSessionError` is checked only in `initAuthSession`; authed calls let it propagate raw and `activeSession` stays cached. The `SessionManager.subscribe` event is never wired. Centralize an authed-call wrapper or subscribe to the deleted/revoked event.
+- [ ] **M2. Centralized revoked/deleted-session handling. (IMPLEMENTED 2026-07-02 — remaining: signed-in confirmation only.)**
+  - Done (2026-07-02): wired the OAuth client's `onDelete` hook so a session
+    deleted out from under us (server-side token revocation via Bluesky's
+    account UI, a failed refresh, an invalid/expired session, or a sign-out in
+    another tab) is handled centrally, regardless of which authed read/write
+    triggered the refresh — instead of letting a raw "session deleted" error
+    propagate while `activeSession` stayed cached.
+    - `src/auth.ts`: `BrowserOAuthClient.load({ … onDelete })` now points at a
+      new `handleSessionInvalidated(did)` that drops BigBsky's cached pointers
+      (`activeSession`, `restorePromise`, and the `activeDidKey`/`activeHandleKey`
+      localStorage hints) and notifies the app. It deliberately does **not**
+      `deleteDatabase` (the library already removed the session from its own
+      IndexedDB store; DB teardown remains sign-out's job), ignores deletes for a
+      non-active DID (stale cross-tab events), and is suppressed during our own
+      intentional `signOut()`/`clearOAuthLocalSession()` via a `teardownInProgress`
+      flag (both wrapped in try/finally) so the reactive handler doesn't race the
+      explicit sign-out state reset. Verified against the library source that
+      `onDelete` fires from `SessionGetter.delStored` on revoke/refresh-failure/
+      invalid-session/cross-tab-delete (`@atproto/oauth-client` session-getter.js).
+    - `src/auth.ts`: new `setSessionInvalidatedListener(listener)` export.
+    - `src/App.tsx`: a dedicated effect registers the listener; on invalidation it
+      sets `authState` to `status: "error"` with an actionable message ("Your
+      Bluesky session ended … Sign in again to continue.") — but leaves an
+      in-flight local `signed-out`/`signing-out` alone so it can't clobber an
+      intentional sign-out. Dropping `session`/`signedInDid` cascades through the
+      existing effects that clear subscribed feeds etc. The pre-existing
+      `isDeletedSessionError` check in `initAuthSession` (cold-start init failure)
+      is a separate path and stays.
+    - Verified: `tsc -b` clean; `npx vitest run` green (185 tests / 11 files);
+      `npm run build` green (vite, audit initial JS 151 kB gzip, reader + layout +
+      rich-text verifiers). Confirmed localhost still typechecks/builds; the app
+      loads unchanged for signed-out readers (init returns early before the client
+      loads).
+  - Remaining: confirm in a real **signed-in** session that revoking BigBsky's
+    authorization from Bluesky's account UI (or letting the refresh token expire)
+    drops the reader to the signed-out/error state with the message and no console
+    spew, and that a normal local Sign out is unaffected (no double banner). Not
+    exercisable locally (no OAuth session on the localhost origin) and destructive
+    to trigger against the operator's live session, so deferred to a deliberate
+    signed-in check — same auth-gated limitation as the composer/follow items.
 
 ### LOW
 
@@ -397,14 +475,6 @@ From the full code review of `src/App.tsx`, `src/auth.ts`, `src/api.ts`, `src/ri
     load-bearing for storage hygiene, or add an LRU/sweep pass in `activate`.
   - Relevant files/functions found:
     - `public/sw.js`: `CACHE_NAME`, the `/assets/*` fetch handler, `activate`.
-- [ ] Reconcile `docs/plan.md` and `todo.md` (single source of truth).
-  - Severity: low. The two already drift — e.g. `docs/plan.md` still lists
-    "User-sortable feed order" as open, while `todo.md` shows it done. Pick one
-    source of truth for open work (recommend `todo.md`) and have the other
-    reference it.
-  - Relevant files/functions found:
-    - `docs/plan.md`: "TODO (open tasks)".
-    - `todo.md`.
 - [ ] CSS dead-selector sweep (co-locate with component extraction).
   - Severity: low. `src/styles.css` (5,116 lines) likely has orphaned rules after
     the Save→Bookmark rename and removed panels, but several classes are applied
