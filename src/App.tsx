@@ -79,10 +79,12 @@ import {
 } from "./lib/storage";
 import {
   parseBooleanRecord,
+  parseColumnVisibility,
   parseComposerDraft,
   parseFiniteNumberRecord,
   parseNonEmptyStringArray,
   parseObjectArray,
+  parseObjectMap,
   parseStringArray,
 } from "./lib/preferences";
 import { safeHttpUrl } from "./lib/url";
@@ -475,11 +477,7 @@ function countBigBskyLocalKeys() {
 }
 
 function readDensityPreferences() {
-  try {
-    return JSON.parse(localStorage.getItem("bigbsky:density-by-context") || "{}") as Record<string, DensityMode>;
-  } catch {
-    return {};
-  }
+  return parseObjectMap<DensityMode>(safeLocalStorageGet("bigbsky:density-by-context"));
 }
 
 function readShowMediaPreferences() {
@@ -520,11 +518,11 @@ function readComposerDraft() {
 type ColumnVisibility = { feeds: boolean; right: boolean };
 
 function readColumnPreferences(): ColumnVisibility {
+  const stored = parseColumnVisibility(safeLocalStorageGet(columnsStorageKey));
+  if (stored) {
+    return stored;
+  }
   try {
-    const stored = JSON.parse(localStorage.getItem(columnsStorageKey) || "null") as Partial<ColumnVisibility> | null;
-    if (stored && typeof stored === "object") {
-      return { feeds: stored.feeds !== false, right: stored.right !== false };
-    }
     // Migrate the legacy width preference (per-context map first, then the
     // older single-value key). "focus" was the only mode that hid a column.
     const legacyMap = JSON.parse(localStorage.getItem(widthByContextStorageKey) || "{}") as Record<string, string>;
@@ -585,12 +583,7 @@ function readPinnedNotifications() {
 }
 
 function readCollapsedFeedGroups() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(collapsedFeedGroupsStorageKey) || "{}") as Record<string, boolean>;
-    return stored && typeof stored === "object" ? stored : {};
-  } catch {
-    return {};
-  }
+  return parseObjectMap<boolean>(safeLocalStorageGet(collapsedFeedGroupsStorageKey));
 }
 
 function readTimelineScrollCache() {

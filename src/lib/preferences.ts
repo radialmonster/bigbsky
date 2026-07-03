@@ -96,6 +96,40 @@ export function parseObjectArray<T>(
   }
 }
 
+// Object map returned after a JSON.parse with a top-level `typeof === "object"`
+// check but no per-value validation (the caller supplies the value type). A
+// non-object top-level (number, string, or null) and any parse failure degrade
+// to an empty map. Matches the originals' `typeof x === "object"` guard, which
+// tolerates a JSON array (it is `typeof "object"`) and returns it verbatim —
+// `readCollapsedFeedGroups` historically relied on that, so it is preserved.
+// Backs `readDensityPreferences` (string -> DensityMode) and
+// `readCollapsedFeedGroups` (string -> boolean).
+export function parseObjectMap<T>(raw: string | null): Record<string, T> {
+  try {
+    const parsed = JSON.parse(raw ?? "{}") as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, T>) : {};
+  } catch {
+    return {};
+  }
+}
+
+// Primary side-column visibility blob: `{ feeds?: boolean; right?: boolean }`.
+// Returns the resolved visibility (each column defaults to shown unless
+// explicitly `false`) or `null` when the key is absent/non-object/malformed so
+// the caller can fall back to its legacy width-preference migration. Uses the
+// same `typeof === "object"` guard as the original inline reader. Never throws.
+export function parseColumnVisibility(raw: string | null): { feeds: boolean; right: boolean } | null {
+  try {
+    const stored = JSON.parse(raw ?? "null") as { feeds?: unknown; right?: unknown } | null;
+    if (stored && typeof stored === "object") {
+      return { feeds: stored.feeds !== false, right: stored.right !== false };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // Composer draft blob: `{ posts?: string[] }`. Non-string post entries are
 // dropped; the surviving posts are joined into a single combined draft string
 // (BigBsky's composer edits one combined post), and an empty/malformed draft

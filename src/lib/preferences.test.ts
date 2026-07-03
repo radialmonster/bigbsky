@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   parseBooleanRecord,
+  parseColumnVisibility,
   parseComposerDraft,
   parseFiniteNumberRecord,
   parseNonEmptyStringArray,
   parseObjectArray,
+  parseObjectMap,
   parseStringArray,
 } from "./preferences";
 
@@ -138,5 +140,53 @@ describe("parseComposerDraft", () => {
 
   it("returns a single post unchanged", () => {
     expect(parseComposerDraft('{"posts": ["solo"]}')).toEqual({ posts: ["solo"] });
+  });
+});
+
+describe("parseObjectMap", () => {
+  it("returns {} for null, malformed JSON, and non-object primitives", () => {
+    expect(parseObjectMap(null)).toEqual({});
+    expect(parseObjectMap("not json")).toEqual({});
+    expect(parseObjectMap("5")).toEqual({});
+    expect(parseObjectMap('"str"')).toEqual({});
+    expect(parseObjectMap("true")).toEqual({});
+    expect(parseObjectMap("null")).toEqual({});
+  });
+
+  it("returns the parsed object verbatim, keeping all values (no per-value validation)", () => {
+    // Value type is the caller's concern — mixed values pass through untouched.
+    expect(parseObjectMap('{"a": true, "b": "comfortable", "c": 3}')).toEqual({
+      a: true,
+      b: "comfortable",
+      c: 3,
+    });
+  });
+
+  it("preserves an array verbatim (typeof [] === 'object'), matching the original guard", () => {
+    // readCollapsedFeedGroups historically returned an array unchanged; keep it.
+    expect(parseObjectMap('["x", "y"]')).toEqual(["x", "y"]);
+  });
+});
+
+describe("parseColumnVisibility", () => {
+  it("returns null for null, non-object, and malformed input so the caller can migrate", () => {
+    expect(parseColumnVisibility(null)).toBeNull();
+    expect(parseColumnVisibility("null")).toBeNull();
+    expect(parseColumnVisibility("nope")).toBeNull();
+    expect(parseColumnVisibility("42")).toBeNull();
+  });
+
+  it("defaults each column to shown unless explicitly false", () => {
+    expect(parseColumnVisibility("{}")).toEqual({ feeds: true, right: true });
+    expect(parseColumnVisibility('{"feeds": true, "right": true}')).toEqual({ feeds: true, right: true });
+  });
+
+  it("hides only the column set to false", () => {
+    expect(parseColumnVisibility('{"feeds": false, "right": true}')).toEqual({ feeds: false, right: true });
+    expect(parseColumnVisibility('{"right": false}')).toEqual({ feeds: true, right: false });
+  });
+
+  it("treats any non-false value (including missing/other types) as shown", () => {
+    expect(parseColumnVisibility('{"feeds": 0, "right": "no"}')).toEqual({ feeds: true, right: true });
   });
 });
