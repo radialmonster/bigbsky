@@ -1,8 +1,13 @@
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 
-const app = readFileSync("src/App.tsx", "utf8");
-const api = readFileSync("src/api.ts", "utf8");
-const infoPage = readFileSync("src/InfoPage.tsx", "utf8");
+// Resolve source paths from this file's location (like verify-richtext.mjs) so
+// the harness works regardless of the CWD a CI / pre-commit hook runs it from.
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const app = readFileSync(resolve(repoRoot, "src/App.tsx"), "utf8");
+const api = readFileSync(resolve(repoRoot, "src/api.ts"), "utf8");
+const infoPage = readFileSync(resolve(repoRoot, "src/InfoPage.tsx"), "utf8");
 const failures = [];
 
 function requirePattern(pattern, label) {

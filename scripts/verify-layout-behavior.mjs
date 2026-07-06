@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 
-const app = readFileSync("src/App.tsx", "utf8");
-const css = readFileSync("src/styles.css", "utf8");
+// Resolve source paths from this file's location (like verify-richtext.mjs) so
+// the harness works regardless of the CWD a CI / pre-commit hook runs it from.
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const app = readFileSync(resolve(repoRoot, "src/App.tsx"), "utf8");
+const css = readFileSync(resolve(repoRoot, "src/styles.css"), "utf8");
 const failures = [];
 
 function requirePattern(source, pattern, label) {

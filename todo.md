@@ -591,14 +591,14 @@ them.
 
 ### MEDIUM
 
-- [ ] **M3. src/api.ts:191 — success-path response.json() is unguarded, unlike
-  the error path.** getJson carefully wraps the error-body decode in try/catch
-  (182-187) but returns response.json() as Promise<T> on 2xx with no guard. A
-  2xx response with an empty/truncated body (proxy returning 200 + empty, a
-  response truncated mid-stream, or the 15s timeout aborting after headers)
-  throws a raw SyntaxError instead of the consistent ApiError callers expect.
-  Fix: decode + try/catch on the success path too, throwing ApiError (or
-  returning a typed fallback) so callers see one error shape.
+- [x] **M3. src/api.ts:191 — success-path response.json() is unguarded, unlike
+  the error path. (DONE 2026-07-06.)** `getJson`'s 2xx path now wraps
+  `response.json()` in try/catch and throws `new ApiError(response.status,
+  "Malformed response body")` on a decode failure, so callers see the same
+  `ApiError` shape for an empty/truncated 2xx body as for an error body instead of
+  a raw SyntaxError. Added a behavioral test in `src/api.test.ts` (a 2xx whose
+  `json()` throws → `resolveHandle` rejects with an `ApiError` and caches nothing,
+  so a retry re-fetches). `tsc -b`, vitest (201), and `npm run build` all green.
 - [ ] **M4. src/auth.ts:1496-1502 — clearOAuthSessionStorage resolves success
   after onblocked, contradicting its own warning comment.** The 3s fallback
   setTimeout(done) fires when deleteDatabase is blocked, even though the
@@ -610,13 +610,13 @@ them.
   like clean success. Fix: resolve with a distinct "blocked/timed-out" outcome
   (or reject with a typed error) so callers can warn the user / retry instead of
   reporting a clean sign-out.
-- [ ] **M5. src/auth.ts:257 — initAuthSession uses raw localStorage.getItem
-  while the rest of the module uses safeLocalStorageGet.** In a private-mode /
-  storage-disabled / quota-error context the raw getItem throws SecurityError,
-  control jumps to the outer catch (309), isDeletedSessionError is false, and
-  the user lands on status "error" with a SecurityError message instead of the
-  signed-out view. Fix: use safeLocalStorageGet(activeDidKey) here for
-  consistency.
+- [x] **M5. src/auth.ts:257 — initAuthSession uses raw localStorage.getItem
+  while the rest of the module uses safeLocalStorageGet. (DONE 2026-07-06.)**
+  Swapped the raw `localStorage.getItem(activeDidKey)` for the throw-safe
+  `safeLocalStorageGet(activeDidKey)` (already imported and used elsewhere in the
+  module), so a private-mode / storage-disabled context now falls through to the
+  signed-out view instead of the "error" view with a SecurityError message.
+  `tsc -b` + vitest + build green.
 - [ ] **M6. src/auth.ts:400-403 — disposeCachedClient returns silently when
   Symbol.asyncDispose is missing.** If the symbol isn't polyfilled at runtime
   (core-js import tree-shaken or a future build change), the client's IndexedDB
@@ -624,14 +624,19 @@ them.
   from M4. Currently believed-polyfilled by the library's core-js import, but
   nothing observes the early-return. Fix: at minimum log when the early return
   is taken so this is observable; ideally fall back to an explicit close.
-- [ ] **M7. src/App.tsx:5871-5891 — AuthedNotifications.load has no abort /
-  generation guard (retry race).** load fires on mount and again on each Retry
-  click with no AbortController or request-id. If the user clicks Retry while a
-  prior getNotifications() is in flight, both resolve and the older response can
-  overwrite the newer (setItems(page.notifications)). Contrast BookmarksView
-  (7722) and ThreadEngagementPanel (9695), which correctly abort the previous
-  request. Fix: thread an AbortController through load and abort the prior one
-  on retry.
+- [x] **M7. src/App.tsx:5871-5891 — AuthedNotifications.load has no abort /
+  generation guard (retry race). (DONE 2026-07-06.)** `getNotifications` takes no
+  abort signal (it builds an atproto `Agent` internally), so rather than widen the
+  auth API surface, added a `loadGenerationRef` counter to `AuthedNotifications`:
+  each `load()` bumps the id, and both the `.then` and `.catch` bail early if
+  `loadGenerationRef.current !== generation`. A Retry click while a prior
+  `getNotifications()` is in flight now discards the stale resolution instead of
+  letting it overwrite the newer `setItems`/`setStatus`/`setNeedsReauth`. This
+  fully fixes the observable bug (stale response clobbering newer state); the older
+  network request still completes but its result is ignored. `tsc -b` + vitest +
+  build green. (A true abort would need threading a `signal` into
+  `getNotifications` → the agent's `listNotifications` call options — a larger
+  change deferred unless we also want to cancel the in-flight request.)
 - [ ] **M8. src/App.tsx:6264-6268 — BlueskyListCard local block/mute state never
   re-syncs from props.** blockUri / muted are seeded via useState only; there is
   no re-sync effect (unlike ProfileDetailHeader at 6722, which has one). When
@@ -729,12 +734,14 @@ them.
   user sees a blank page forever. Combined with H1, the failure UX is uniformly
   "blank page." Fix: add a noscript message and a minimal loading/error
   placeholder inside #root.
-- [ ] **L20. scripts/verify-layout-behavior.mjs:3-4 and
+- [x] **L20. scripts/verify-layout-behavior.mjs:3-4 and
   verify-reader-behavior.mjs:3-5 use pathless readFileSync("src/App.tsx", ...)
-  — break under non-root CWD.** verify-richtext.mjs correctly resolves from
-  import.meta.url; these two don't. Any CI / pre-commit hook that doesn't cd to
-  repo root throws ENOENT with a misleading "verification failed" framing. Fix:
-  resolve paths from import.meta.url like verify-richtext.mjs.
+  — break under non-root CWD. (DONE 2026-07-06.)** Both scripts now derive a
+  `repoRoot` from `dirname(fileURLToPath(import.meta.url))` + `..` and resolve
+  their source paths against it (mirroring `verify-richtext.mjs`), so they run
+  from any CWD instead of throwing ENOENT under a "verification failed" framing.
+  Verified by running both from `C:\` — both pass; `npm run build` (which runs
+  them from repo root) still green.
 - [ ] **L21. tsconfig.json:6,21 — scripts/audit-build.mjs is in include but
   allowJs: false, so it's silently not type-checked.** Misleading: implies
   coverage that doesn't happen; the other .mjs scripts aren't included at all.

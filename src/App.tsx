@@ -5874,11 +5874,17 @@ function AuthedNotifications({
   // notification scope (added after this user's last consent) so we can offer a
   // contextual re-authorize instead of a dead-end error.
   const [needsReauth, setNeedsReauth] = useState(false);
+  // getNotifications takes no abort signal, so guard against the retry race with
+  // a generation counter: a Retry click while a prior load is in flight bumps the
+  // id, and the stale resolution is ignored instead of overwriting the newer one.
+  const loadGenerationRef = useRef(0);
 
   const load = useCallback(() => {
+    const generation = ++loadGenerationRef.current;
     setStatus("loading");
     getNotifications()
       .then((page) => {
+        if (loadGenerationRef.current !== generation) return;
         setItems(page.notifications);
         setCursor(page.cursor);
         setStatus("ready");
@@ -5888,6 +5894,7 @@ function AuthedNotifications({
           .catch(() => {});
       })
       .catch(() => {
+        if (loadGenerationRef.current !== generation) return;
         setStatus("error");
         // A missing notification scope means re-auth fixes it; a generic gap
         // (network) does not. getMissingScopes tells them apart.

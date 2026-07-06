@@ -188,7 +188,15 @@ async function getJson<T>(path: string, params: Record<string, string>, signal?:
     throw new ApiError(response.status, detail);
   }
 
-  return response.json() as Promise<T>;
+  // The success path deserves the same guard as the error path above. A 2xx with
+  // an empty/truncated body (a proxy returning 200 + empty, a mid-stream
+  // truncation, or the 15s timeout aborting after headers) would otherwise throw
+  // a raw SyntaxError instead of the ApiError callers are written to expect.
+  try {
+    return (await response.json()) as T;
+  } catch {
+    throw new ApiError(response.status, "Malformed response body");
+  }
 }
 
 export function getFeed(feed: string, cursor?: string, signal?: AbortSignal) {

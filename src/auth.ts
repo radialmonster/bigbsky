@@ -254,7 +254,10 @@ async function hydrateSessionProfile(session: OAuthSession): Promise<Partial<Aut
 export async function initAuthSession(): Promise<AuthInitResult> {
   try {
     const hasCallback = looksLikeOAuthCallback();
-    const activeDid = localStorage.getItem(activeDidKey);
+    // Use the throw-safe reader (like the rest of the module): a raw getItem
+    // throws SecurityError in private-mode / storage-disabled contexts, which
+    // would land the user on the "error" view instead of the signed-out view.
+    const activeDid = safeLocalStorageGet(activeDidKey);
     if (!hasCallback && !activeDid) {
       return { session: null, status: "signed-out" };
     }

@@ -8,7 +8,7 @@
 // persists across tests within this file.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getRecordEmbed, resolveHandle } from "./api";
+import { ApiError, getRecordEmbed, resolveHandle } from "./api";
 
 const NOW = new Date("2026-06-27T12:00:00.000Z").getTime();
 const TTL_MS = 5 * 60 * 1000;
@@ -78,6 +78,25 @@ describe("resolveHandle", () => {
     await expect(resolveHandle(handle)).resolves.toBe("did:plc:recovered00000000000000");
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws a typed ApiError (not a raw SyntaxError) on a malformed 2xx body", async () => {
+    const handle = "malformed-body.test";
+    // A 2xx whose body fails to decode (empty/truncated stream, proxy 200 +
+    // empty). The success-path guard must surface the same ApiError shape callers
+    // handle for the error path, not a raw SyntaxError.
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new SyntaxError("Unexpected end of JSON input");
+      },
+    } as unknown as Response);
+
+    await expect(resolveHandle(handle)).rejects.toBeInstanceOf(ApiError);
+    // The malformed attempt threw, so nothing was cached; a retry hits the network.
+    fetchMock.mockResolvedValueOnce(didResponse("did:plc:malformedok00000000000"));
+    await expect(resolveHandle(handle)).resolves.toBe("did:plc:malformedok00000000000");
   });
 
   it("sweeps expired entries on write so the cache stays bounded", async () => {
