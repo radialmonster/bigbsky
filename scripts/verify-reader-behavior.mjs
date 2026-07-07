@@ -78,6 +78,7 @@ if (!/export function getActorLists\(/.test(api)) {
 }
 requirePattern(/isListUri\(source\.uri\)\s*\?\s*await getListFeed\(source\.uri, cursor, signal\)/s, "feed loading should read list timelines via getListFeed for list URIs");
 requirePattern(/isCurateList\s*\?\s*\(\s*<button type="button" className="discover-feed-open" onClick=\{\(\) => onOpenFeed\(source\)\}/s, "curated lists should open their timeline in-app from the profile Lists tab");
+requirePattern(/function BlueskyListCard\([\s\S]*useEffect\(\(\) => \{[\s\S]*setBlockUri\(list\.viewer\?\.blocked\);[\s\S]*setMuted\(\!\!list\.viewer\?\.muted\);[\s\S]*\}, \[list\.uri, list\.viewer\?\.blocked, list\.viewer\?\.muted\]\);/s, "Bluesky list block/mute controls should re-sync from refreshed viewer state");
 if (!/export function getListFeed\(/.test(api) || !/export function getList\(/.test(api) || !/export function isListUri\(/.test(api)) {
   failures.push("api should expose public getListFeed/getList/isListUri helpers");
 }

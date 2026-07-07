@@ -6281,6 +6281,10 @@ function BlueskyListCard({
   // AppView procedure (no record uri), so this is just a boolean.
   const [muted, setMuted] = useState<boolean>(!!list.viewer?.muted);
   const [muteBusy, setMuteBusy] = useState(false);
+  useEffect(() => {
+    setBlockUri(list.viewer?.blocked);
+    setMuted(!!list.viewer?.muted);
+  }, [list.uri, list.viewer?.blocked, list.viewer?.muted]);
   // Surfaced when a subscribe/mute write fails. `reauth` flags a missing-scope
   // failure (re-authorize fixes it) vs a generic one.
   const [subError, setSubError] = useState<{ message: string; reauth: boolean } | null>(null);

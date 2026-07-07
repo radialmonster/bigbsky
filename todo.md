@@ -637,13 +637,14 @@ them.
   build green. (A true abort would need threading a `signal` into
   `getNotifications` → the agent's `listNotifications` call options — a larger
   change deferred unless we also want to cancel the in-flight request.)
-- [ ] **M8. src/App.tsx:6264-6268 — BlueskyListCard local block/mute state never
-  re-syncs from props.** blockUri / muted are seeded via useState only; there is
-  no re-sync effect (unlike ProfileDetailHeader at 6722, which has one). When
-  ListsSurface re-fetches myLists (after creating a list, onReloadMyLists, or a
-  cross-tab change), the card keeps stale local state. Fix: add a useEffect
-  keyed on list.uri / list.viewer?.blocked / list.viewer?.muted that re-seeds
-  state, mirroring ProfileDetailHeader.
+- [x] **M8. src/App.tsx:6264-6268 — BlueskyListCard local block/mute state never
+  re-syncs from props. (DONE 2026-07-06.)** Added a `useEffect` keyed on
+  `list.uri` / `list.viewer?.blocked` / `list.viewer?.muted` that re-seeds the
+  local block-list subscription URI and mute boolean whenever a refreshed list
+  card arrives. This mirrors the profile header's viewer-state re-sync, so a
+  `ListsSurface` refresh, list creation reload, or cross-tab state change can no
+  longer leave the block/mute buttons stale. The reader verifier now guards this
+  effect; `npm run build` green.
 - [ ] **M10. src/App.tsx:7370-7384 — PostComposer.insertAtCaret uses a stale
   draftText closure.** insertAtCaret reads draftText (recomputed each render)
   and slices against it. If an EmojiPicker/button onSelect consumer holds an
