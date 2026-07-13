@@ -645,13 +645,14 @@ them.
   `ListsSurface` refresh, list creation reload, or cross-tab state change can no
   longer leave the block/mute buttons stale. The reader verifier now guards this
   effect; `npm run build` green.
-- [ ] **M10. src/App.tsx:7370-7384 — PostComposer.insertAtCaret uses a stale
-  draftText closure.** insertAtCaret reads draftText (recomputed each render)
-  and slices against it. If an EmojiPicker/button onSelect consumer holds an
-  older insertAtCaret, two rapid inserts from the picker can drop the first one
-  (second call slices against pre-first-insert text). Fix: use the functional
-  updater form (setText(prev => ...)) or operate on the textarea's current
-  selection/value directly.
+- [x] **M10. src/App.tsx — PostComposer.insertAtCaret used a stale draftText
+  closure. (DONE 2026-07-13.)** `insertAtCaret` now reads the live textarea
+  `el.value` / `el.selectionStart` / `el.selectionEnd` and splices against that
+  instead of the `draftText` render closure, so a stale `insertAtCaret` reference
+  (or a rapid second emoji insert) can no longer slice against a pre-insert
+  snapshot and drop the first insertion. The `!textareaRef.current` fallback still
+  appends to `draftText` (best effort when the field isn't mounted). `tsc -b`,
+  vitest (201), and `npm run build` all green.
 - [ ] **M11. src/App.tsx:3302-3333 — loadMore (profile/search) passes undefined
   signal; late pages can't be aborted.** The manual loadMore calls
   loadSearch / loadActorSearch / loadProfileFeed / loadFeed with no signal on the
@@ -691,24 +692,27 @@ them.
   transient near-zero offset, clobbering the value being restored. Fix: re-arm /
   extend the guard each frame while the restore is ongoing, or tie suppression
   to the token being active rather than a wall-clock deadline.
-- [ ] **L11. src/App.tsx:10299-10322 — ImageViewer preloaded new Image() onload
-  can setState after unmount.** preloadOriginal's img.onload fires
-  setLoadedOriginals(...) with no cancel/null check; if the viewer closes while
-  an original is still loading, the handler leaks and holds the component in
-  memory until the image loads. Fix: track a cancelled flag per preload,
-  invalidated on unmount/index change.
-- [ ] **L12. src/App.tsx:6192-6203 — ListMemberManager.handleRemove has no busy
-  guard (unlike handleAdd).** Remove buttons are disabled={busy}, but a rapid
-  double-click before re-render can fire two concurrent removeListItem calls;
-  both then setMembers(filter...). Fix: add "if (busy) return;" for symmetry
-  with handleAdd.
-- [ ] **L13. src/App.tsx:11211-11223 — BackToTopButton container listener never
-  attaches if the ref is null on mount.** The effect reads containerRef.current
-  once at mount; if the scroll container isn't mounted yet, only the window
-  listener attaches and the desktop container's scroll is never observed.
-  containerRef identity is stable so the dep array won't re-run when it later
-  populates. Fix: use a callback ref or re-run on a watchKey that coincides with
-  mount.
+- [x] **L11. src/App.tsx — ImageViewer preloaded new Image() onload could
+  setState after unmount. (DONE 2026-07-13.)** `preloadOriginal` now registers
+  each pending preload `Image` in a `preloadImagesRef` set (and removes it in its
+  own onload), and a mount-scoped cleanup effect nulls every pending `img.onload`
+  and clears the set on unmount. A viewer closed mid-preload therefore no longer
+  fires `setLoadedOriginals` on the unmounted component or pins it in memory until
+  the image finishes loading. `tsc -b` + vitest + `npm run build` green.
+- [x] **L12. src/App.tsx — ListMemberManager.handleRemove had no busy guard
+  (unlike handleAdd). (DONE 2026-07-13.)** Added `if (busy) return;` at the top of
+  `handleRemove`, mirroring `handleAdd`, so a rapid double-click before the button
+  re-renders as `disabled={busy}` can no longer fire two concurrent
+  `removeListItem` calls. `tsc -b` + vitest + `npm run build` green.
+- [x] **L13. src/App.tsx — BackToTopButton container listener never attached if
+  the ref was null on mount. (DONE 2026-07-13.)** The effect now attaches the
+  window listener immediately, and if `containerRef.current` is null at mount
+  (feed still loading) it polls a bounded 120 rAF frames for the container to
+  appear, then attaches the element `scroll` listener via `attachEl`. The rAF is
+  cancelled in cleanup and the (possibly-later-assigned) `el` is detached. So on
+  desktop, where the container (not the window) scrolls, the button now becomes
+  visible even when the scroll container mounts after the button. `tsc -b` +
+  vitest + `npm run build` green.
 - [ ] **L14. src/App.tsx:11068-11078 — TrendingPanel swallows network errors;
   user always sees the static fallback with no indication.** Every non-"ready"
   status (loading/error/empty) renders the hardcoded fallback list; users can't

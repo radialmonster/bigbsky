@@ -6204,6 +6204,9 @@ function ListMemberManager({ listUri }: { listUri: string }) {
   }
 
   async function handleRemove(listItemUri: string) {
+    if (busy) {
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -7401,10 +7404,14 @@ function PostComposer({
       setText(draftText + snippet);
       return;
     }
-    const start = el.selectionStart ?? draftText.length;
-    const end = el.selectionEnd ?? draftText.length;
+    // Read the live DOM value/selection rather than the `draftText` render
+    // closure so a stale `insertAtCaret` reference (or a rapid second insert)
+    // splices against the text actually in the field, not a pre-insert snapshot.
+    const value = el.value;
+    const start = el.selectionStart ?? value.length;
+    const end = el.selectionEnd ?? value.length;
     const caret = start + snippet.length;
-    setText(draftText.slice(0, start) + snippet + draftText.slice(end));
+    setText(value.slice(0, start) + snippet + value.slice(end));
     requestAnimationFrame(() => {
       el.focus();
       el.setSelectionRange(caret, caret);
@@ -10324,6 +10331,7 @@ function ImageViewer({
     },
     [image.images, onChange, resetZoom],
   );
+  const preloadImagesRef = useRef<Set<HTMLImageElement>>(new Set());
   const preloadOriginal = useCallback((viewerImage?: ImageViewerImage) => {
     if (!viewerImage?.src) {
       return;
@@ -10334,6 +10342,7 @@ function ImageViewer({
 
     const img = new window.Image();
     img.onload = () => {
+      preloadImagesRef.current.delete(img);
       setLoadedOriginals((current) => {
         if (current.has(viewerImage.src)) {
           return current;
@@ -10343,11 +10352,23 @@ function ImageViewer({
         return next;
       });
     };
+    preloadImagesRef.current.add(img);
     img.src = viewerImage.src;
     if (img.complete) {
       img.onload?.(new Event("load"));
     }
   }, [loadedOriginals]);
+  // Detach any still-loading preload handlers on unmount so a late onload can't
+  // setState on the closed viewer (and hold it in memory until the image loads).
+  useEffect(() => {
+    const pending = preloadImagesRef.current;
+    return () => {
+      pending.forEach((img) => {
+        img.onload = null;
+      });
+      pending.clear();
+    };
+  }, []);
   const imageDistance = useCallback((points: Array<{ x: number; y: number }>) => {
     const [a, b] = points;
     return Math.hypot(b.x - a.x, b.y - a.y);
@@ -11246,14 +11267,39 @@ function Avatar({ profile }: { profile?: Profile }) {
 function BackToTopButton({ containerRef, watchKey }: { containerRef: RefObject<HTMLDivElement | null>; watchKey: string }) {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
-    const el = containerRef.current;
+    let el = containerRef.current;
+    let rafId: number | null = null;
     // On mobile the document scrolls (el.scrollTop stays ~0), so read the
     // active offset and listen on window too; on desktop el is the scroller.
     const onScroll = () => setVisible(readScrollOffset(el) > 600);
-    onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
-    el?.addEventListener("scroll", onScroll, { passive: true });
+    const attachEl = (node: HTMLDivElement) => {
+      el = node;
+      node.addEventListener("scroll", onScroll, { passive: true });
+      onScroll();
+    };
+    if (el) {
+      attachEl(el);
+    } else {
+      // The scroll container may not be mounted yet (feed still loading). Poll a
+      // bounded number of frames so the desktop container's scroll is observed
+      // once it appears — otherwise the button only reacts to window scroll and
+      // never shows on desktop (where the container, not the window, scrolls).
+      let frames = 0;
+      const wait = () => {
+        const node = containerRef.current;
+        if (node) {
+          attachEl(node);
+        } else if (frames++ < 120) {
+          rafId = requestAnimationFrame(wait);
+        }
+      };
+      rafId = requestAnimationFrame(wait);
+    }
     return () => {
+      if (rafId != null) {
+        cancelAnimationFrame(rafId);
+      }
       window.removeEventListener("scroll", onScroll);
       el?.removeEventListener("scroll", onScroll);
     };
