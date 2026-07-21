@@ -734,11 +734,25 @@ them.
   mentions, links, and media, a CSP would meaningfully reduce XSS blast radius.
   Hardening gap, not a strict bug. Fix: add a CSP via _headers (allow atproto/CDN
   image hosts, connect-src to the PDS/AppView/PLC/handle resolvers).
-- [ ] **L19. index.html:18 — no noscript / no JS-load failure placeholder in
-  #root.** If the bundle fails to load (network, bad deploy, CSP block), the
-  user sees a blank page forever. Combined with H1, the failure UX is uniformly
-  "blank page." Fix: add a noscript message and a minimal loading/error
-  placeholder inside #root.
+- [x] **L19. index.html — no noscript / no JS-load failure placeholder in
+  #root. (DONE 2026-07-21.)** `index.html` now inlines a small boot stylesheet in
+  `<head>` (the app stylesheet is bundled into the JS entry, so it only loads once
+  JS runs — without inline CSS any pre-mount state would be unstyled and the body
+  would flash white). Three additions: (a) a styled `#app-loading` spinner
+  placeholder inside `#root`, which React removes when it renders — so a slow/failed
+  bundle now shows a branded "Loading BigBsky…" screen (dark `#0b111c` bg matching
+  `:root`), not a blank page; (b) a `<noscript>` block whose scoped `<style>` hides
+  the spinner and shows a "JavaScript is required" message when scripting is off;
+  (c) an inline classic script that, after a 15s timeout, swaps `#app-loading` to an
+  actionable "BigBsky failed to load" error with Reload / Go-home buttons if the app
+  never mounted (bundle load error, CSP block, broken deploy). Verified: dev server
+  boots clean (loading placeholder replaced, `#root` populated, body bg
+  `rgb(11,17,28)`, zero console errors); `npm run build` green (tsc, vite, audit
+  initial JS 152 kB gzip, reader + layout + rich-text verifiers); confirmed the
+  boot placeholder, noscript message, and failure detector all survive vite's
+  production `dist/index.html` minification. Note for L18 (CSP): the failure-detector
+  is an inline script and its buttons use an inline `onclick` — when a CSP lands it
+  will need a hash/nonce (or refactor to addEventListener).
 - [x] **L20. scripts/verify-layout-behavior.mjs:3-4 and
   verify-reader-behavior.mjs:3-5 use pathless readFileSync("src/App.tsx", ...)
   — break under non-root CWD. (DONE 2026-07-06.)** Both scripts now derive a

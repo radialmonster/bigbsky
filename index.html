@@ -13,9 +13,146 @@
     <link rel="preconnect" href="https://public.api.bsky.app" />
     <link rel="dns-prefetch" href="https://public.api.bsky.app" />
     <title>BigBsky</title>
+    <!--
+      Boot styles are inlined here on purpose: the app stylesheet (src/styles.css)
+      is bundled into the JS entry, so it only loads once JS runs. Without this,
+      a slow/failed bundle or disabled JS would render as a blank white page.
+      Keep this small and self-contained. Palette mirrors :root in src/styles.css
+      (the app is dark-only: color-scheme: dark).
+    -->
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #0b111c;
+        color: #f9fafb;
+      }
+      .app-boot {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 24px;
+        text-align: center;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        color: #aebdcc;
+      }
+      .app-boot-spinner {
+        width: 34px;
+        height: 34px;
+        border-radius: 999px;
+        border: 3px solid #2c3a4f;
+        border-top-color: #0560ff;
+        animation: app-boot-spin 0.8s linear infinite;
+      }
+      @keyframes app-boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .app-boot-spinner {
+          animation-duration: 2.4s;
+        }
+      }
+      .app-boot-title {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 600;
+        color: #f9fafb;
+      }
+      .app-boot-text {
+        margin: 0;
+        max-width: 30rem;
+        font-size: 0.9rem;
+        line-height: 1.5;
+      }
+      .app-boot-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .app-boot-btn {
+        appearance: none;
+        border: 1px solid #3b4c65;
+        border-radius: 999px;
+        background: #0560ff;
+        color: #f9fafb;
+        font: inherit;
+        font-weight: 600;
+        padding: 8px 18px;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      .app-boot-btn:hover {
+        background: #034dcc;
+      }
+      .app-boot-btn.secondary {
+        background: #1d293b;
+      }
+      .app-boot-btn.secondary:hover {
+        background: #2c3a4f;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Replaced by React on mount; the failure detector below swaps it to an
+           error state if the app never mounts (e.g. the bundle fails to load). -->
+      <div id="app-loading" class="app-boot" role="status" aria-live="polite">
+        <div class="app-boot-spinner" aria-hidden="true"></div>
+        <p class="app-boot-text">Loading BigBsky…</p>
+      </div>
+    </div>
+    <noscript>
+      <!-- Hide the spinner (which would otherwise spin forever) and show a
+           JavaScript-required message when scripting is disabled. -->
+      <style>
+        #app-loading {
+          display: none;
+        }
+      </style>
+      <div class="app-boot">
+        <p class="app-boot-title">JavaScript is required</p>
+        <p class="app-boot-text">
+          BigBsky is a client-side Bluesky reader that runs entirely in your
+          browser. Please enable JavaScript to continue.
+        </p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // If the app entry never mounts (bundle fails to load, a syntax/CSP error,
+      // or a broken deploy), replace the loading spinner with an actionable error
+      // instead of leaving the reader on a blank page forever. React removes
+      // #app-loading when it renders into #root, so its continued presence after
+      // the timeout means the app did not boot.
+      (function () {
+        var TIMEOUT_MS = 15000;
+        window.setTimeout(function () {
+          var loading = document.getElementById("app-loading");
+          if (!loading) return; // React mounted and replaced it — all good.
+          loading.setAttribute("role", "alert");
+          loading.innerHTML =
+            '<p class="app-boot-title">BigBsky failed to load</p>' +
+            '<p class="app-boot-text">The app could not start. This is usually a' +
+            " network hiccup or a stale cache. Reloading often fixes it.</p>" +
+            '<div class="app-boot-actions">' +
+            '<button type="button" class="app-boot-btn" onclick="location.reload()">Reload</button>' +
+            '<a class="app-boot-btn secondary" href="/">Go to home</a>' +
+            "</div>";
+        }, TIMEOUT_MS);
+      })();
+    </script>
   </body>
 </html>
