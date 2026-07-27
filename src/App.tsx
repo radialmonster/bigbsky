@@ -3306,6 +3306,23 @@ export function App() {
   }, [activeScrollKey]);
 
   const loadMoreInFlightRef = useRef(false);
+  const loadMoreControllerRef = useRef<AbortController | null>(null);
+  const reloadProfileControllerRef = useRef<AbortController | null>(null);
+  // The initial loads above are scoped by their effect's AbortController, but
+  // pagination and the post-publish profile refetch are fired from callbacks. A
+  // page that resolves after the user has moved on would append rows to (or
+  // overwrite) whatever surface is now mounted, so both get a controller that is
+  // aborted whenever the surface they were reading changes.
+  useEffect(
+    () => () => {
+      loadMoreControllerRef.current?.abort();
+      loadMoreControllerRef.current = null;
+      loadMoreInFlightRef.current = false;
+      reloadProfileControllerRef.current?.abort();
+      reloadProfileControllerRef.current = null;
+    },
+    [activeSource, profileTab, route, searchLanguage, searchSort, searchTab],
+  );
   const loadMore = () => {
     // Single in-flight gate across feed/profile/search: the cursor isn't updated
     // until the fetch resolves, so two rapid fires (un-disabled manual button, or
@@ -3315,35 +3332,47 @@ export function App() {
       return;
     }
 
+    const controller = new AbortController();
+    const { signal } = controller;
     let promise: Promise<unknown> | undefined;
     if (route.kind === "search") {
       if (route.query && searchTab === "posts" && searchState.cursor) {
-        promise = loadSearch(route.query, searchSort, searchLanguage, searchState.cursor);
+        promise = loadSearch(route.query, searchSort, searchLanguage, searchState.cursor, signal);
       } else if (route.query && searchTab === "people" && actorSearchState.cursor) {
-        promise = loadActorSearch(route.query, actorSearchState.cursor);
+        promise = loadActorSearch(route.query, actorSearchState.cursor, signal);
       }
     } else if (feedState.cursor) {
       promise =
         route.kind === "profile"
-          ? loadProfileFeed(route.actor, feedState.cursor, undefined, profileFeedFilterForTab(profileTab))
-          : loadFeed(activeSource, feedState.cursor);
+          ? loadProfileFeed(route.actor, feedState.cursor, signal, profileFeedFilterForTab(profileTab))
+          : loadFeed(activeSource, feedState.cursor, signal);
     }
 
     if (!promise) {
       return;
     }
 
+    loadMoreControllerRef.current = controller;
     loadMoreInFlightRef.current = true;
     void promise.finally(() => {
-      loadMoreInFlightRef.current = false;
+      // An aborted page can still settle after a newer load-more started; only
+      // the current controller may release the in-flight gate.
+      if (loadMoreControllerRef.current === controller) {
+        loadMoreControllerRef.current = null;
+        loadMoreInFlightRef.current = false;
+      }
     });
   };
   const reloadCurrentProfile = useCallback(() => {
     if (route.kind !== "profile") {
       return;
     }
-    delete profileCacheRef.current[`profile:${route.actor}:${profileFeedFilterForTab(profileTab)}`];
-    void loadProfileFeed(route.actor, undefined, undefined, profileFeedFilterForTab(profileTab));
+    const filter = profileFeedFilterForTab(profileTab);
+    delete profileCacheRef.current[`profile:${route.actor}:${filter}`];
+    reloadProfileControllerRef.current?.abort();
+    const controller = new AbortController();
+    reloadProfileControllerRef.current = controller;
+    void loadProfileFeed(route.actor, undefined, controller.signal, filter);
   }, [loadProfileFeed, profileTab, route]);
   // After the signed-in user creates a post or reply, drop the SPA caches that
   // would otherwise serve a stale list omitting the new record: the Following

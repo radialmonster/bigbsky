@@ -137,6 +137,13 @@ export function restoreScrollOffset(timelineRef: { readonly current: HTMLElement
     if (token !== scrollRestoreToken) {
       return;
     }
+    // Keep the save-suppression window alive for as long as this loop is still
+    // re-asserting the target. rAF throttles to ~1 Hz on a backgrounded tab, so
+    // the frame budget can easily outlive armScrollRestore's fixed 2 s deadline;
+    // once it lapsed, a save-on-scroll handler could persist the transient
+    // near-zero offset we are in the middle of correcting. The loop's exit path
+    // below clears the guard, so this can't keep suppression on indefinitely.
+    armScrollRestore(top);
     const timeline = timelineRef.current;
     if (readScrollOffset(timeline) < top - 1) {
       scrollOffsetTo(timeline, top);

@@ -169,6 +169,33 @@ describe("restoreScrollOffset", () => {
     expect(timeline.scrollTop).toBe(300);
   });
 
+  it("keeps save-suppression armed while the restore loop is still running past the 2s window", () => {
+    // rAF throttles to ~1 Hz on a backgrounded tab, so the 30-frame budget can
+    // outlive armScrollRestore's fixed 2s deadline. If suppression lapsed
+    // mid-restore, a save-on-scroll handler could persist the transient ~0
+    // offset the loop is still correcting.
+    const nowSpy = vi.spyOn(performance, "now");
+    try {
+      let clock = 1000;
+      nowSpy.mockImplementation(() => clock);
+      // A null container never reaches the target, so the loop keeps re-asserting.
+      restoreScrollOffset({ current: null }, 500);
+      expect(shouldSuppressScrollSave(0)).toBe(true);
+      // Five backgrounded frames = 5s, well past the original 2s deadline.
+      for (let i = 0; i < 5; i += 1) {
+        clock += 1000;
+        (rafQueue.shift() as FrameRequestCallback)(clock);
+      }
+      expect(rafQueue.length).toBeGreaterThan(0);
+      expect(shouldSuppressScrollSave(0)).toBe(true);
+      // Draining the remaining frames ends the loop, which releases the guard.
+      flushFrames();
+      expect(shouldSuppressScrollSave(0)).toBe(false);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   it("supersedes an in-flight restore when a newer one starts", () => {
     const first = makeFakeTimeline(0);
     restoreScrollOffset({ current: first }, 400);

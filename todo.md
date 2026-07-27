@@ -653,23 +653,49 @@ them.
   snapshot and drop the first insertion. The `!textareaRef.current` fallback still
   appends to `draftText` (best effort when the field isn't mounted). `tsc -b`,
   vitest (201), and `npm run build` all green.
-- [ ] **M11. src/App.tsx:3302-3333 — loadMore (profile/search) passes undefined
-  signal; late pages can't be aborted.** The manual loadMore calls
-  loadSearch / loadActorSearch / loadProfileFeed / loadFeed with no signal on the
-  cursor path. Initial-load effects use controllers; pagination does not, so an
-  in-flight "load more" on profile A can resolve after navigating to profile B
-  and append rows to the wrong feed. Fix: thread an AbortController (a ref
-  replaced on route change) through loadMore. (Same class of race as M12.)
-- [ ] **M12. src/App.tsx:3334-3340 — reloadCurrentProfile fetches with no
-  AbortController.** Called from handleOwnPostPublished after posting a reply; if
-  the user navigates away right after, the profile refetch can resolve after the
-  route changed and overwrite the new route's feed state. Fix: track a
-  controller, or guard the setFeedState with a route-kind/actor check.
+- [x] **M11 + M12. Pagination and the post-publish profile refetch are now
+  abortable. (DONE 2026-07-27.)** Both were fired from callbacks with no signal,
+  so a page that resolved after the user moved on could append rows to (or
+  overwrite) whatever surface was mounted next. All four loaders already accepted
+  an optional `signal` and guarded on `signal.aborted`, so the fix was purely at
+  the call sites in `src/App.tsx`:
+  - `loadMore` now builds an `AbortController` per call and threads its signal
+    into `loadSearch` / `loadActorSearch` / `loadProfileFeed` / `loadFeed`,
+    storing it in a new `loadMoreControllerRef`. The `.finally` that releases the
+    single-in-flight gate only fires when `loadMoreControllerRef.current ===
+    controller`, so an aborted page settling late can no longer un-gate a newer
+    load-more.
+  - `reloadCurrentProfile` (called by `handleOwnPostPublished`) aborts any prior
+    refetch and passes a fresh `reloadProfileControllerRef` signal.
+  - A single cleanup-only `useEffect` keyed on
+    `[activeSource, profileTab, route, searchLanguage, searchSort, searchTab]`
+    aborts both controllers whenever the surface being read changes (and on
+    unmount). It is declared after the route-load effect, so its cleanup runs
+    before that effect re-runs — it can never abort the *new* route's controller.
+  - Three guardrails added to `scripts/verify-reader-behavior.mjs` (pagination
+    carries a signal; the surface-change cleanup aborts both refs; the profile
+    refetch is abortable).
+  - Verified: `tsc -b`, vitest (202), `npm run build` all green. Live check on the
+    dev server: load-more grew the timeline (scrollHeight 16432 → 24232); firing a
+    load-more on `/feed/bluesky-team` and navigating to `/feed/discover` 40 ms
+    later left discover rendering exactly its own content (8413 px, same first
+    post as a clean load) with **zero** appended rows from the previous feed and
+    no console errors. Dev server stopped afterward.
 - [ ] **M14. src/App.tsx:1608-1631 — toggleFollowFeed swallows follow/unfollow
   failures (console.error only, no user feedback).** The catch only logs; the
   button gives no error state, so a failed follow/unfollow silently does nothing
   visible. Fix: surface the error (banner or button error state) like the list
   subscribe path already does (subError in BlueskyListCard).
+  - Note (2026-07-27): there is **no toast/banner primitive anywhere in `src/`**
+    (grepped: no toast/Toast/statusMessage/global banner), and `followBusyUri` is
+    already prop-threaded to three separate subtrees (the feed header at
+    `App.tsx:~3658`, the feeds column at `~5210`, and the discover-feed cards at
+    `~5502`). So a per-call-site error prop means threading a fourth prop through
+    all three. Prefer either (a) a tiny `FollowFeedStateContext` carrying
+    `{ busyUri, errorUri, errorMessage }` so each button can render its own
+    inline error without more prop drilling, or (b) a small shared toast/banner
+    component that other silent-failure paths (L14, future writes) can reuse.
+    Decide which before implementing.
 
 ### LOW
 
@@ -684,14 +710,20 @@ them.
   the collapsed-group consumers first. (L6 and L7 from this batch are resolved:
   L6 — the three read\* callers ARE wired to the validators now, docstrings
   accurate; L7 — `parseColumnVisibility` now has the `!Array.isArray` guard.)
-- [ ] **L10. src/lib/scroll.ts:88,134-153 — armScrollRestore's 2000 ms
-  suppression window can lapse mid-restore on a backgrounded tab.** The apply
-  rAF loop (up to 30 frames) only re-asserts the scroll offset; it doesn't
-  re-arm the suppression guard. rAF throttles to ~1 Hz when backgrounded, so 30
-  frames can exceed 2 s; after expiry a save-on-scroll handler can persist a
-  transient near-zero offset, clobbering the value being restored. Fix: re-arm /
-  extend the guard each frame while the restore is ongoing, or tie suppression
-  to the token being active rather than a wall-clock deadline.
+- [x] **L10. src/lib/scroll.ts — armScrollRestore's 2000 ms suppression window
+  could lapse mid-restore on a backgrounded tab. (DONE 2026-07-27.)**
+  `restoreScrollOffset`'s apply loop now calls `armScrollRestore(top)` on every
+  frame (right after the supersede-token check), so the save-suppression window
+  stays alive for exactly as long as the loop is still re-asserting the target.
+  rAF throttles to ~1 Hz when backgrounded, so the 30-frame budget could easily
+  outlive the fixed 2 s deadline and let a save-on-scroll handler persist the
+  transient near-zero offset the loop was still correcting. Suppression can't
+  linger: the loop's exit path already nulls the guard, and a superseded loop
+  returns before re-arming (so `resetScrollToTop` still wins). Added a regression
+  test in `src/lib/scroll.test.ts` that drives five 1-second "backgrounded"
+  frames past the old deadline and asserts suppression is still active, then that
+  draining the loop releases it — confirmed the test fails with the re-arm line
+  removed. `tsc -b`, vitest (202), `npm run build` green.
 - [x] **L11. src/App.tsx — ImageViewer preloaded new Image() onload could
   setState after unmount. (DONE 2026-07-13.)** `preloadOriginal` now registers
   each pending preload `Image` in a `preloadImagesRef` set (and removes it in its
