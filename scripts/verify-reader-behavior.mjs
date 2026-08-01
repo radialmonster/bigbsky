@@ -45,14 +45,20 @@ requirePattern(/shouldSuppressScrollSave\(offset\)/, "save-on-scroll should be s
 // flush, session-cleanup, per-tab/profile surface keys).
 requirePattern(/`profile:\$\{route\.actor\}:\$\{profileFeedFilterForTab\(profileTab\)\}`/, "profile timeline scroll keys should match the per-tab author-feed cache key");
 requirePattern(/const restoreScrollFor = useCallback\([\s\S]*restoreOrResetScroll\(timelineRef, target\)/, "cached feed/profile loads should restore cached scroll offset (or reset the reused container to top when none) via the anchor-aware helper");
-requirePattern(/restoreScrollFor\(cacheKey\)/, "feed/profile load sites should route scroll restoration through the content-anchor-aware helper");
+// The `restoreScrollFor(cacheKey)` call site (cached feed/profile loads routing
+// through the anchor-aware helper) moved to src/lib/loaders.ts with the data
+// loaders (issue #28); it is covered behaviorally by src/lib/loaders.test.tsx
+// (feed/profile cache-hit restoreScrollFor invocation). Retired per #19.
 requirePattern(/window\.addEventListener\("pagehide", persistScroll\)/, "timeline scroll offsets should flush before browser reloads");
 requirePattern(/Object\.keys\(sessionStorage\)[\s\S]*key\.startsWith\("bigbsky:"\)[\s\S]*safeSessionStorageRemove\(key\)/s, "local reader data reset should clear browser-local session scroll state");
 requirePattern(/route\.name === "bookmarks" \|\| route\.name === "lists"[\s\S]*`surface:\$\{route\.name\}`/s, "bookmarks and lists surfaces should receive route-specific scroll cache keys");
 requirePattern(/function threadUnavailableState\([\s\S]*Blocked reply[\s\S]*Reply not found[\s\S]*Deleted reply[\s\S]*Reply temporarily unavailable/s, "thread unavailable states should distinguish blocked, deleted, not-found, and rate-limited branches");
 requirePattern(/<div className=\{`thread-alert \$\{state\.tone\}`\}/, "thread unavailable branches should render typed alert tones");
 forbidPattern(/timelineRef\.current\?\.scrollTo\(\{ top: 0 \}\)/, "feed switching should not force the timeline back to the top");
-requirePattern(/cursor\s*\n?\s*\?\s*\{ \.\.\.current, status: "ready", loadMoreError: rateLimitMessage\(error\) \}/s, "a failed pagination request should keep already-loaded results instead of discarding them");
+// The `cursor ? { ...current, status: "ready", loadMoreError: rateLimitMessage(error) }`
+// load-more error retention moved to src/lib/loaders.ts with the data loaders
+// (issue #28); covered behaviorally by src/lib/loaders.test.tsx (pagination error
+// keeps already-loaded results). Retired per #19.
 requirePattern(/catch \{\s*\/\/ Revert to pre-click state\.[\s\S]*pushToast\(\s*blocked \? "Couldn't unblock this account\. Please try again\." : "Couldn't block this account\. Please try again\.",\s*"error",\s*\);[\s\S]*\} finally \{[\s\S]*blockInFlight\.current\.delete/s, "a failed block/unblock write should surface an actionable error toast (not just revert silently)");
 requirePattern(/console\.error\("Failed to sync feed order to account", error\);\s*pushToast\("Couldn't sync your feed order to your account\. It's saved on this browser\.", "error"\)/, "a failed saved-feed-order account sync should surface an error toast instead of logging silently");
 requirePattern(/const toast = useContext\(ToastContext\);[\s\S]*setDeleting\(true\);[\s\S]*catch \{\s*toast\("Couldn't delete this list\. Please try again\.", "error"\);\s*\} finally \{[\s\S]*setDeleting\(false\);/s, "a failed list delete should surface an error toast");
@@ -80,7 +86,10 @@ requirePattern(/profileTab === "lists" \? \(\s*<ProfileListsTab/s, "the profile 
 if (!/export function getActorLists\(/.test(api)) {
   failures.push("api should expose a public getActorLists reader");
 }
-requirePattern(/isListUri\(source\.uri\)\s*\?\s*await getListFeed\(source\.uri, cursor, signal\)/s, "feed loading should read list timelines via getListFeed for list URIs");
+// The list-timeline loader path (`isListUri(source.uri) ? await getListFeed(...)`)
+// moved to src/lib/loaders.ts with the data loaders (issue #28); covered
+// behaviorally by src/lib/loaders.test.tsx (feed loader list-URI routing).
+// Retired per #19.
 requirePattern(/function BlueskyListCard\([\s\S]*useEffect\(\(\) => \{[\s\S]*setBlockUri\(list\.viewer\?\.blocked\);[\s\S]*setMuted\(\!\!list\.viewer\?\.muted\);[\s\S]*\}, \[list\.uri, list\.viewer\?\.blocked, list\.viewer\?\.muted\]\);/s, "Bluesky list block/mute controls should re-sync from refreshed viewer state");
 if (!/export function getListFeed\(/.test(api) || !/export function getList\(/.test(api) || !/export function isListUri\(/.test(api)) {
   failures.push("api should expose public getListFeed/getList/isListUri helpers");
