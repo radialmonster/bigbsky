@@ -24,3 +24,8 @@ docs/*/
 .env
 .env.*
 !.env.example
+
+# run-prompt loop artifacts
+.loop-tmp/
+run.log
+run.log.*

@@ -25,10 +25,9 @@ login: false
 
 Required startup reads:
 
-1. Get-Content -LiteralPath memory.md (in-repo run memory; updated at session end)
-2. Get-Content -LiteralPath docs\PLAN.md
-3. git status --short --branch
-4. rg --files
+1. Get-Content -LiteralPath docs\PLAN.md
+2. git status --short --branch
+3. rg --files
 
 
 
@@ -64,7 +63,7 @@ Do not diagnose this as a repo path, PowerShell, npm, or git problem unless Powe
 
 After reading:
 
-\- Respect any useful notes in memory, especially recent completed work.
+\- Use todo.md and docs\PLAN.md as the source of truth for what has been done and what is next; there is no separate memory.md file.
 
 \- Inspect docs\PLAN.md for the next unfinished item that is feasible in the static SPA.
 
@@ -98,19 +97,7 @@ Implementation rules:
 
 Before finishing:
 
-\- Update the memory file with:
-
-  \- what changed
-
-  \- what was verified
-
-  \- commit hash if one was created
-
-  \- whether push succeeded
-
-  \- current run time
-
-  \- useful notes for the next run
+\- Record the run in the project's tracking files (todo.md / docs\PLAN.md status lines) with what changed, what was verified, commit hash if one was created, whether push succeeded, current run time, and useful notes for the next run.
 
 \- Return a short summary with files changed, verification result, and commit/push status.
 
@@ -123,3 +110,30 @@ If the session did not direct you what to work on, then check for open issues on
 You are encouraged to delegate tasks to agents to work on individual tasks, this will save tokens on this main session. Your job would be to coordinate those agents, verify their work, you can also send their returned work out to another agent and instruct that agent to 'roast' and code review what the other agent did.  Your goal is to manage these tasks and keep this project moving forward.  Minimize (eliminate if possible) blockers requiring a human to answer a question or make a decision.  You are the ai coder, there will be no human ai coder to check anything behind you, you are encouraged to check yourself depending on what this particular project is about, for example by opening the site, spin up a dev server and check there. you can use Node to open chrome in debug mode and remote control it for example.  If during this session you do start a server or process or something, and it was just temporary, ensure you terminate that process at session end. ensure temporary working folders or files you created are removed. 
 
 at this session end update nextsessionprompt.md with any corrections about how to work on our project effectively, use this session as lessons learned type of thing.  add also to give a clue to the next session on what it should work on.  do not be super specific, you can give it general goal, issue numbers, tasks to do.  give it a batch, and also leave it open ended to use its judgement for improvements also.  note nextsessionprompt.md is not a changelog, do not put in there what you did work on, only have forward looking items.  The next session will start with only 'read nextsessionprompt.md and proceed' so put in there useful guidance for it to do that.
+
+## General session-end rule: commit and push (shared baseline)
+
+This is the shared baseline for all projects; where the project-specific instructions above are more detailed (branch/PR workflow, multi-repo, worktree isolation, GitHub-native issue tracking), follow those specifics on top of this.
+
+At the end of every session, before wrapping up:
+
+1. **Commit if this directory is a Git repository.** Run `git status --short --branch` and review the diff. Stage only your own intended changes — never unrelated user changes, generated/build output, logs, temp files, or anything containing credentials, secrets, or tokens.
+2. **Verify before committing.** Run this project's verification gate (its build/test/lint/`check` command) and only commit when it passes. Do not commit a known-red state.
+3. **Keep commits clean and scoped.** Use a concise message describing what and why ("fix:", "feat:", "docs:"). One logical unit per commit; don't bundle unrelated work. Never force-push, amend shared history, or skip hooks.
+4. **Push to GitHub only when it is safe and expected.** If this repo has an `origin` remote and the project normally shares work there, push the verified commit — but only when safe: no secrets staged, no force-push required, the branch isn't diverged in a way that would clobber others, and the work is at a coherent, complete checkpoint. If anything is ambiguous or risky, commit locally and say in your summary that you did not push and why.
+5. **Record the run.** Update the project's handoff file (todo.md / docs/PLAN.md status lines, docs/notes.md, automation memory, etc.) with what changed, what was verified, the commit hash, push status, and current run time. (Do not recreate memory.md — it was removed to save startup tokens; keep handoff notes in the project's existing tracking files.)
+6. **Refresh nextsessionprompt.md** with any durable lesson and a forward-looking hint for the next session — not a changelog of what you did.
+7. **Clean up.** Terminate any servers, dev processes, or verification browsers you started, and remove temporary folders/files you created. Confirm with `git status` that no strays were left.
+
+## Windows shell note: launching npm (shared)
+
+On Windows, `npm` is a `.cmd` shim, not a real executable. `Start-Process -FilePath "npm" ...` fails with "%1 is not a valid Win32 application." Use `npm.cmd` (or invoke through `cmd /c`) instead:
+
+- `Start-Process -FilePath "npm.cmd" -ArgumentList "run","dev" -WorkingDirectory "N:\Projects\bigbsky" -PassThru`
+- or `& npm.cmd run dev`
+
+The same applies to `npx` (use `npx.cmd`) and any other `.cmd`-shimmed CLI when launching via `Start-Process`/CreateProcess.
+
+## Watchdog loop note (shared)
+
+This repo is driven by `run-prompt.bat` -> `run-prompt.ps1`, a loop that spawns `opencode run --auto` on this prompt file, then waits before the next session. The `.ps1` (shared verbatim across all projects) wraps the session in a watchdog: it kills the opencode process tree if there is no output for `IdleKillMinutes` (default 15), enforces a hard per-session cap (`HardTimeoutMinutes`, default 120), reaps orphan child processes (e.g. dev servers that would hold the stdout pipe open), and writes heartbeats to `run.log`. Watchdog kills are recorded in `.loop-tmp/last-killed.txt` and surfaced at the start of the next iteration. `run.log`, `run.log.*`, and `.loop-tmp/` are gitignored. Stop cleanly by dropping a file at `.loop-tmp/stop-after.flag` or pressing Q in the loop window. Tune with `-IdleKillMinutes`/`-HardTimeoutMinutes`/`-DelayMinutes` on the bat command line.
