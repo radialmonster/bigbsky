@@ -174,6 +174,7 @@ import { useReplyGate } from "./features/post/useReplyGate";
 import { ThreadEngagementPanel } from "./features/post/ThreadEngagementPanel";
 import { ImageViewer, type ImageViewerImage, type ImageViewerState } from "./features/post/ImageViewer";
 import { useSharePost } from "./features/common/useSharePost";
+import { useDismissMenu } from "./features/common/useDismissMenu";
 import { isSensitiveLabel, moderationLabelText, sensitiveMediaValues } from "./lib/moderation";
 import { RecentPanel, type RecentItem } from "./features/rightRail/RecentPanel";
 import { FeedContextPanel, type EntityCache } from "./features/rightRail/FeedContextPanel";
@@ -5619,32 +5620,7 @@ function PostActionBar({
   const { showReplyLimited, handleReplyClick } = useReplyGate(post, onReply);
   const displayedCommentCount = commentCount ?? post.replyCount ?? 0;
 
-  useEffect(() => {
-    if (!moreMenuOpen) {
-      return;
-    }
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (target instanceof Node && moreMenuRef.current?.contains(target)) {
-        return;
-      }
-      setMoreMenuOpen(false);
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setMoreMenuOpen(false);
-      }
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown, true);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown, true);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [moreMenuOpen]);
+  useDismissMenu(moreMenuRef, moreMenuOpen, () => setMoreMenuOpen(false));
 
   return (
     <>
