@@ -62,33 +62,35 @@ import {
   safeLocalStorageGet,
   safeLocalStorageRemove,
   safeLocalStorageSet,
-  safeSessionStorageGet,
   safeSessionStorageRemove,
 } from "./lib/storage";
 import {
   parseBooleanRecord,
   parseColumnVisibility,
   parseComposerDraft,
-  parseFiniteNumberRecord,
   parseNonEmptyStringArray,
   parseObjectArray,
   parseObjectMap,
   parseStringArray,
 } from "./lib/preferences";
 import { postBskyUrl, safeHttpUrl } from "./lib/url";
-import { useCache } from "./lib/cache";
+import { createCache, useCache } from "./lib/cache";
 import { detectPostLanguage, filterFeedByLanguages, postsNeedingDetection } from "./lib/content-language";
 import {
   MOBILE_SCROLL_QUERY,
   armScrollRestore,
   clampScrollTarget,
   readScrollOffset,
+  readTimelineAnchorCache,
+  readTimelineScrollCache,
   readTopVisibleAnchor,
   releaseScrollRestoreGuard,
   restoreOrResetScroll,
   restoreScrollOffset,
   scrollOffsetTo,
   shouldSuppressScrollSave,
+  writeTimelineAnchorCache,
+  writeTimelineScrollCache,
   type ScrollAnchor,
 } from "./lib/scroll";
 import {
@@ -425,8 +427,6 @@ const pinnedSearchesStorageKey = "bigbsky:pinned-searches";
 const pinnedProfilesStorageKey = "bigbsky:pinned-profiles";
 const pinnedNotificationsStorageKey = "bigbsky:pinned-notifications";
 const collapsedFeedGroupsStorageKey = "bigbsky:collapsed-feed-groups";
-const timelineScrollStorageKey = "bigbsky:timeline-scroll";
-const timelineAnchorStorageKey = "bigbsky:timeline-anchor";
 // Frame budgets for the content-anchored restore loop in VirtualPostList. Like
 // the pixel restore (restoreScrollOffset), the loop re-asserts the target across
 // a few frames; the difference is the target is recomputed each frame from the
@@ -569,27 +569,6 @@ function readCollapsedFeedGroups() {
   return parseObjectMap<boolean>(safeLocalStorageGet(collapsedFeedGroupsStorageKey));
 }
 
-function readTimelineScrollCache() {
-  return parseFiniteNumberRecord(safeSessionStorageGet(timelineScrollStorageKey));
-}
-
-function readTimelineAnchorCache(): Record<string, ScrollAnchor> {
-  const parsed = parseObjectMap<unknown>(safeSessionStorageGet(timelineAnchorStorageKey));
-  const out: Record<string, ScrollAnchor> = {};
-  for (const [key, value] of Object.entries(parsed)) {
-    if (
-      value &&
-      typeof value === "object" &&
-      typeof (value as { uri?: unknown }).uri === "string" &&
-      typeof (value as { intra?: unknown }).intra === "number" &&
-      Number.isFinite((value as { intra?: number }).intra)
-    ) {
-      out[key] = { uri: (value as { uri: string }).uri, intra: (value as { intra: number }).intra };
-    }
-  }
-  return out;
-}
-
 function profileFeedFilterForTab(tab: ProfileTab): ProfileFeedFilter {
   if (tab === "posts") {
     return "posts_no_replies";
@@ -601,22 +580,6 @@ function profileFeedFilterForTab(tab: ProfileTab): ProfileFeedFilter {
     return "posts_with_video";
   }
   return "posts_with_replies";
-}
-
-function writeTimelineScrollCache(cache: Record<string, number>) {
-  try {
-    sessionStorage.setItem(timelineScrollStorageKey, JSON.stringify(cache));
-  } catch {
-    // Scroll restoration is best-effort browser state.
-  }
-}
-
-function writeTimelineAnchorCache(cache: Record<string, ScrollAnchor>) {
-  try {
-    sessionStorage.setItem(timelineAnchorStorageKey, JSON.stringify(cache));
-  } catch {
-    // Scroll restoration is best-effort browser state.
-  }
 }
 
 function feedPreferenceKeys(source: FeedSource) {
@@ -1118,12 +1081,12 @@ export function App() {
   // Tracks the in-flight full-thread load (initial fetch or post-reply reload) so
   // a stale response can't overwrite the thread after navigating to another post.
   const threadLoadControllerRef = useRef<AbortController | null>(null);
-  const scrollCacheRef = useRef<Record<string, number>>(readTimelineScrollCache());
-  const scrollAnchorCacheRef = useRef<Record<string, ScrollAnchor>>(readTimelineAnchorCache());
+  const scrollCache = useCache(() => createCache<number>(readTimelineScrollCache()));
+  const scrollAnchorCache = useCache(() => createCache<ScrollAnchor>(readTimelineAnchorCache()));
   // The content-anchored restore target for the *current* surface, consumed by
   // the mounted VirtualPostList. Kept as state so the anchored-restore effect
   // re-runs when it changes; cleared (onAnchorRestored) once the anchor row has
-  // been scrolled into view and measured. Distinct from scrollAnchorCacheRef,
+  // been scrolled into view and measured. Distinct from scrollAnchorCache,
   // which is the persistent cache of the last-saved anchor for a key.
   const [pendingScrollAnchor, setPendingScrollAnchor] = useState<{ key: string; anchor: ScrollAnchor } | null>(null);
   const clearPendingAnchor = useCallback(() => setPendingScrollAnchor(null), []);
@@ -1136,8 +1099,8 @@ export function App() {
   // VirtualPostList instead, which derives the target from the measured row
   // layout and clamps against the live totalHeight, so it converges.
   const restoreScrollFor = useCallback((key: string) => {
-    const target = scrollCacheRef.current[key] || 0;
-    const anchor = scrollAnchorCacheRef.current[key];
+    const target = scrollCache.get(key) || 0;
+    const anchor = scrollAnchorCache.get(key);
     if (anchor && target > 0) {
       armScrollRestore(target);
       setPendingScrollAnchor((current) => (current?.key === key && current.anchor.uri === anchor.uri ? current : { key, anchor }));
@@ -1991,7 +1954,7 @@ export function App() {
         return next;
       });
       if (!cursor) {
-        restoreOrResetScroll(timelineRef, scrollCacheRef.current[cacheKey] || 0);
+        restoreOrResetScroll(timelineRef, scrollCache.get(cacheKey) || 0);
       }
     } catch (error) {
       if (!signal?.aborted) {
@@ -2696,8 +2659,8 @@ export function App() {
     setPinnedNotificationIds([]);
     setCollapsedFeedGroups({});
     clearAllDataCaches();
-    scrollCacheRef.current = {};
-    scrollAnchorCacheRef.current = {};
+    scrollCache.clear();
+    scrollAnchorCache.clear();
     setPendingScrollAnchor(null);
     setDevMetrics((current) => ({ ...current, cacheHits: 0 }));
     setAuthState({ status: "signed-out", session: null });
@@ -3144,7 +3107,7 @@ export function App() {
   // onAnchorRestored once the anchored row has rendered + measured.
   const activeScrollAnchor =
     pendingScrollAnchor && pendingScrollAnchor.key === activeScrollKey ? pendingScrollAnchor.anchor : null;
-  const activeScrollFallback = activeScrollKey ? scrollCacheRef.current[activeScrollKey] || 0 : 0;
+  const activeScrollFallback = activeScrollKey ? scrollCache.get(activeScrollKey) || 0 : 0;
   const renderedRows =
     route.kind === "post"
       ? countThreadRows(thread.node)
@@ -3216,14 +3179,14 @@ export function App() {
     // becomes active, before the feed finishes loading. Otherwise a transient
     // near-top scroll event during load saves ~0 over the persisted value, and
     // the later restore reads 0 and no-ops.
-    armScrollRestore(scrollCacheRef.current[activeScrollKey] || 0);
+    armScrollRestore(scrollCache.get(activeScrollKey) || 0);
 
     const rememberScroll = () => {
       const offset = readScrollOffset(timeline);
       if (shouldSuppressScrollSave(offset)) {
         return;
       }
-      scrollCacheRef.current[activeScrollKey] = offset;
+      scrollCache.set(activeScrollKey, offset);
       // Capture the content anchor (top-visible post URI + intra-row offset) so
       // a later restore can scroll *content into view* instead of re-asserting a
       // raw pixel offset. Raw pixels fight the virtualization measurement shrink
@@ -3235,15 +3198,15 @@ export function App() {
       // the fallback.
       const anchor = readTopVisibleAnchor(timeline);
       if (anchor) {
-        scrollAnchorCacheRef.current[activeScrollKey] = anchor;
+        scrollAnchorCache.set(activeScrollKey, anchor);
       } else {
-        delete scrollAnchorCacheRef.current[activeScrollKey];
+        scrollAnchorCache.delete(activeScrollKey);
       }
     };
     const persistScroll = () => {
       rememberScroll();
-      writeTimelineScrollCache(scrollCacheRef.current);
-      writeTimelineAnchorCache(scrollAnchorCacheRef.current);
+      writeTimelineScrollCache(Object.fromEntries(scrollCache.entries()));
+      writeTimelineAnchorCache(Object.fromEntries(scrollAnchorCache.entries()));
     };
     // On mobile the document scrolls (timeline stays at 0), so also listen on
     // window; on desktop the timeline element is the scroller.
@@ -3258,8 +3221,8 @@ export function App() {
       // re-read scroll here: on navigation this cleanup runs after the timeline
       // element has detached, and a detached element reports scrollTop 0, which
       // would clobber the saved offset and break restoration on return.
-      writeTimelineScrollCache(scrollCacheRef.current);
-      writeTimelineAnchorCache(scrollAnchorCacheRef.current);
+      writeTimelineScrollCache(Object.fromEntries(scrollCache.entries()));
+      writeTimelineAnchorCache(Object.fromEntries(scrollAnchorCache.entries()));
     };
   }, [activeScrollKey]);
 
@@ -3273,13 +3236,13 @@ export function App() {
     // surfaces. When a saved anchor exists, hand it to VirtualPostList, whose
     // anchored-restore effect re-runs as rows mount/measure and converges. Skip
     // the pixel restore + MutationObserver entirely in that case.
-    const savedAnchor = scrollAnchorCacheRef.current[activeScrollKey];
-    if (savedAnchor && (scrollCacheRef.current[activeScrollKey] || 0) > 0) {
+    const savedAnchor = scrollAnchorCache.get(activeScrollKey);
+    if (savedAnchor && (scrollCache.get(activeScrollKey) || 0) > 0) {
       restoreScrollFor(activeScrollKey);
       return undefined;
     }
 
-    const target = scrollCacheRef.current[activeScrollKey] || 0;
+    const target = scrollCache.get(activeScrollKey) || 0;
     restoreOrResetScroll(timelineRef, target);
     // Surfaces (Bookmarks, Lists) load their content asynchronously, so the
     // restore above (and its ~30-frame rAF budget) can run entirely against a

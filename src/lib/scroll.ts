@@ -1,6 +1,9 @@
 // Scroll geometry + scroll-restoration helpers, extracted from App.tsx so the
 // breakpoint-dependent scroller logic and the multi-frame restore loop can be
 // unit-tested in isolation.
+
+import { parseFiniteNumberRecord, parseObjectMap } from "./preferences";
+import { safeSessionStorageGet } from "./storage";
 //
 // The scroll container differs by breakpoint: on desktop the bounded
 // `.timeline` element scrolls, but on mobile `<html>` stays overflow:hidden
@@ -248,4 +251,51 @@ export function releaseScrollRestoreGuard() {
 export function __resetScrollRestoreStateForTests() {
   scrollRestoreGuard = null;
   scrollRestoreToken = 0;
+}
+
+// Per-key timeline scroll cache persisted to sessionStorage (survives reload so
+// a cached feed/profile/surface can restore its prior offset on revisit). The
+// pixel offsets and the content anchors are kept as separate keyed maps, both
+// keyed by the active surface's scroll key. Moved out of App.tsx (issue #27
+// item 1) so the persistence round-trip and per-value validation are
+// unit-testable without rendering the App; App holds the live maps via the
+// cache layer (useCache) and flushes them through the write helpers below.
+export const timelineScrollStorageKey = "bigbsky:timeline-scroll";
+export const timelineAnchorStorageKey = "bigbsky:timeline-anchor";
+
+export function readTimelineScrollCache(): Record<string, number> {
+  return parseFiniteNumberRecord(safeSessionStorageGet(timelineScrollStorageKey));
+}
+
+export function readTimelineAnchorCache(): Record<string, ScrollAnchor> {
+  const parsed = parseObjectMap<unknown>(safeSessionStorageGet(timelineAnchorStorageKey));
+  const out: Record<string, ScrollAnchor> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (
+      value &&
+      typeof value === "object" &&
+      typeof (value as { uri?: unknown }).uri === "string" &&
+      typeof (value as { intra?: unknown }).intra === "number" &&
+      Number.isFinite((value as { intra?: number }).intra)
+    ) {
+      out[key] = { uri: (value as { uri: string }).uri, intra: (value as { intra: number }).intra };
+    }
+  }
+  return out;
+}
+
+export function writeTimelineScrollCache(cache: Record<string, number>) {
+  try {
+    sessionStorage.setItem(timelineScrollStorageKey, JSON.stringify(cache));
+  } catch {
+    // Scroll restoration is best-effort browser state.
+  }
+}
+
+export function writeTimelineAnchorCache(cache: Record<string, ScrollAnchor>) {
+  try {
+    sessionStorage.setItem(timelineAnchorStorageKey, JSON.stringify(cache));
+  } catch {
+    // Scroll restoration is best-effort browser state.
+  }
 }

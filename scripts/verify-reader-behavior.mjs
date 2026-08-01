@@ -34,22 +34,21 @@ requirePattern(/<input[\s\S]*className="feed-search"[\s\S]*onInput=\{\(event\) =
 requirePattern(/const navigate = useCallback\(\(nextRoute: RouteState[\s\S]*window\.history\.pushState[\s\S]*setRoute\(nextRoute\)/s, "navigation should stay inside the SPA shell");
 requirePattern(/const submitSearch = \(query: string\) => \{[\s\S]*const path = `\/search\?q=\$\{encodeURIComponent\(trimmed\)\}`;[\s\S]*const routeState = \{ kind: "search", query: trimmed \} as const;[\s\S]*navigate\(routeState, path\);[\s\S]*\};/s, "search should fetch only after explicit search navigation");
 requirePattern(/onQueryChange=\{setGlobalSearchText\}/, "search input should edit draft query state without direct fetch callbacks");
-requirePattern(/const offset = readScrollOffset\(timeline\);[\s\S]*scrollCacheRef\.current\[activeScrollKey\] = offset/, "timeline scroll should be cached per active feed/profile key from the active scroller");
 requirePattern(/shouldSuppressScrollSave\(offset\)/, "save-on-scroll should be suppressed while a saved offset is being restored");
-// readScrollOffset / scrollOffsetTo / scrollFeedToTop now live in src/lib/scroll.ts
-// with real behavioral coverage in src/lib/scroll.test.ts (multi-scroller offset
-// reads, write-all-scrollers restoration, instant back-to-top, and the restore
-// loop's suppression/supersede behavior), so their source-regex guardrails were
-// retired here per the test-migration plan in todo.md.
+// readScrollOffset / scrollOffsetTo / scrollFeedToTop and the per-key timeline
+// scroll/anchor cache now live in src/lib/scroll.ts (issue #27 item 1) with real
+// behavioral coverage in src/lib/scroll.test.ts (multi-scroller offset reads,
+// write-all-scrollers restoration, instant back-to-top, the restore loop's
+// suppression/supersede behavior, and the persistence round-trip + validation
+// suites), so their source-regex guardrails were retired here per #19. The
+// remaining pins below still match App wiring that stays in place (pagehide
+// flush, session-cleanup, per-tab/profile surface keys).
 requirePattern(/`profile:\$\{route\.actor\}:\$\{profileFeedFilterForTab\(profileTab\)\}`/, "profile timeline scroll keys should match the per-tab author-feed cache key");
 requirePattern(/const restoreScrollFor = useCallback\([\s\S]*restoreOrResetScroll\(timelineRef, target\)/, "cached feed/profile loads should restore cached scroll offset (or reset the reused container to top when none) via the anchor-aware helper");
 requirePattern(/restoreScrollFor\(cacheKey\)/, "feed/profile load sites should route scroll restoration through the content-anchor-aware helper");
-requirePattern(/const timelineScrollStorageKey = "bigbsky:timeline-scroll"/, "timeline scroll offsets should use a browser-local session cache key");
-requirePattern(/sessionStorage\.setItem\(timelineScrollStorageKey, JSON\.stringify\(cache\)\)/, "timeline scroll offsets should persist across browser reloads");
 requirePattern(/window\.addEventListener\("pagehide", persistScroll\)/, "timeline scroll offsets should flush before browser reloads");
 requirePattern(/Object\.keys\(sessionStorage\)[\s\S]*key\.startsWith\("bigbsky:"\)[\s\S]*safeSessionStorageRemove\(key\)/s, "local reader data reset should clear browser-local session scroll state");
 requirePattern(/route\.name === "bookmarks" \|\| route\.name === "lists"[\s\S]*`surface:\$\{route\.name\}`/s, "bookmarks and lists surfaces should receive route-specific scroll cache keys");
-requirePattern(/activeScrollKey\.startsWith\("surface:"\)[\s\S]*const target = scrollCacheRef\.current\[activeScrollKey\] \|\| 0;[\s\S]*restoreOrResetScroll\(timelineRef, target\)/s, "saved and lists surfaces should restore cached scroll offset when revisited");
 requirePattern(/function threadUnavailableState\([\s\S]*Blocked reply[\s\S]*Reply not found[\s\S]*Deleted reply[\s\S]*Reply temporarily unavailable/s, "thread unavailable states should distinguish blocked, deleted, not-found, and rate-limited branches");
 requirePattern(/<div className=\{`thread-alert \$\{state\.tone\}`\}/, "thread unavailable branches should render typed alert tones");
 forbidPattern(/timelineRef\.current\?\.scrollTo\(\{ top: 0 \}\)/, "feed switching should not force the timeline back to the top");

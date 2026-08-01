@@ -6,12 +6,16 @@ import {
   armScrollRestore,
   clampScrollTarget,
   readScrollOffset,
+  readTimelineAnchorCache,
+  readTimelineScrollCache,
   readTopVisibleAnchor,
   resetScrollToTop,
   restoreOrResetScroll,
   restoreScrollOffset,
   scrollFeedToTop,
   shouldSuppressScrollSave,
+  writeTimelineAnchorCache,
+  writeTimelineScrollCache,
 } from "./scroll";
 
 // A fake scroll container whose `scrollTo({ top })` updates its own `scrollTop`,
@@ -300,6 +304,72 @@ describe("scrollFeedToTop", () => {
 describe("MOBILE_SCROLL_QUERY", () => {
   it("matches the 720px mobile breakpoint", () => {
     expect(MOBILE_SCROLL_QUERY).toBe("(max-width: 720px)");
+  });
+});
+
+// The per-key timeline scroll cache (issue #27 item 1): offsets + content
+// anchors persist to sessionStorage keyed by the active surface's scroll key, so
+// a cached feed/profile/surface restores its prior offset on revisit. These
+// behavioral tests replaced the reader-script source-text regexes that pinned
+// `scrollCacheRef.current[...]` in App.tsx (issue #19).
+describe("timeline scroll/anchor cache persistence", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  it("returns empty maps when nothing has been persisted", () => {
+    expect(readTimelineScrollCache()).toEqual({});
+    expect(readTimelineAnchorCache()).toEqual({});
+  });
+
+  it("round-trips per-key offsets through sessionStorage", () => {
+    writeTimelineScrollCache({
+      "feed:at://did:plc:example/app.bsky.feed.generator/at://x": 1200,
+      "surface:bookmarks": 45,
+      "profile:alice:posts_with_replies": 800,
+    });
+    expect(readTimelineScrollCache()).toEqual({
+      "feed:at://did:plc:example/app.bsky.feed.generator/at://x": 1200,
+      "surface:bookmarks": 45,
+      "profile:alice:posts_with_replies": 800,
+    });
+  });
+
+  it("drops non-finite offsets on read so a corrupt value can't break restore", () => {
+    sessionStorage.setItem("bigbsky:timeline-scroll", JSON.stringify({ ok: 100, bad: NaN, huge: Infinity, text: "x" }));
+    expect(readTimelineScrollCache()).toEqual({ ok: 100 });
+  });
+
+  it("round-trips valid anchors, preserving per-surface keys", () => {
+    writeTimelineAnchorCache({
+      "feed:at://x": { uri: "at://a/post", intra: 120 },
+      "surface:lists": { uri: "at://b/post", intra: 0 },
+    });
+    expect(readTimelineAnchorCache()).toEqual({
+      "feed:at://x": { uri: "at://a/post", intra: 120 },
+      "surface:lists": { uri: "at://b/post", intra: 0 },
+    });
+  });
+
+  it("drops malformed or non-finite anchor entries on read", () => {
+    sessionStorage.setItem(
+      "bigbsky:timeline-anchor",
+      JSON.stringify({
+        good: { uri: "at://a/post", intra: 10 },
+        missingUri: { intra: 10 },
+        badIntra: { uri: "at://b/post", intra: NaN },
+        nonNumberIntra: { uri: "at://c/post", intra: "x" },
+        nullValue: null,
+      }),
+    );
+    expect(readTimelineAnchorCache()).toEqual({ good: { uri: "at://a/post", intra: 10 } });
+  });
+
+  it("keeps offsets and anchors in separate stores", () => {
+    writeTimelineScrollCache({ "feed:at://x": 100 });
+    writeTimelineAnchorCache({ "feed:at://x": { uri: "at://a/post", intra: 5 } });
+    expect(readTimelineScrollCache()).toEqual({ "feed:at://x": 100 });
+    expect(readTimelineAnchorCache()).toEqual({ "feed:at://x": { uri: "at://a/post", intra: 5 } });
   });
 });
 
