@@ -1404,6 +1404,21 @@ export function App() {
   const [blockOverrides, setBlockOverrides] = useState<Record<string, { uri?: string }>>({});
   const blockInFlight = useRef<Set<string>>(new Set());
 
+  // Transient toast messages. Kept capped so a burst of failures can't pile up
+  // the overlay; each auto-dismisses after a few seconds. Declared before
+  // toggleBlock so the silent block catch can surface an actionable toast.
+  const pushToast = useCallback((message: string, kind: ToastKind = "info") => {
+    const id = ++toastIdRef.current;
+    setToasts((current) => [...current.slice(-3), { id, kind, message }]);
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, 6000);
+  }, []);
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts((current) => current.filter((toast) => toast.id !== id));
+  }, []);
+
   const getBlockState = useCallback(
     (author: Profile): BlockView => {
       const ov = blockOverrides[author.did];
@@ -1449,12 +1464,16 @@ export function App() {
         } catch {
           // Revert to pre-click state.
           setBlockOverrides((current) => ({ ...current, [author.did]: { uri: blocked ? blockUri : undefined } }));
+          pushToast(
+            blocked ? "Couldn't unblock this account. Please try again." : "Couldn't block this account. Please try again.",
+            "error",
+          );
         } finally {
           blockInFlight.current.delete(author.did);
         }
       })();
     },
-    [signedInDid, blockOverrides],
+    [signedInDid, blockOverrides, pushToast],
   );
 
   const blockContextValue = useMemo<BlockContextValue>(
@@ -1610,20 +1629,6 @@ export function App() {
   );
 
   const followedFeedUris = useMemo(() => new Set(subscribedFeeds.map((source) => source.uri)), [subscribedFeeds]);
-
-  // Transient toast messages. Kept capped so a burst of failures can't pile up
-  // the overlay; each auto-dismisses after a few seconds.
-  const pushToast = useCallback((message: string, kind: ToastKind = "info") => {
-    const id = ++toastIdRef.current;
-    setToasts((current) => [...current.slice(-3), { id, kind, message }]);
-    window.setTimeout(() => {
-      setToasts((current) => current.filter((toast) => toast.id !== id));
-    }, 6000);
-  }, []);
-
-  const dismissToast = useCallback((id: number) => {
-    setToasts((current) => current.filter((toast) => toast.id !== id));
-  }, []);
 
   // Follow/unfollow a feed generator against the signed-in account (real
   // AT Protocol write to the user's saved feeds). Optimistically updates the
@@ -3021,6 +3026,7 @@ export function App() {
     if (signedInDid) {
       void syncSavedFeedsOrder(uris).catch((error) => {
         console.error("Failed to sync feed order to account", error);
+        pushToast("Couldn't sync your feed order to your account. It's saved on this browser.", "error");
       });
     }
   }
@@ -5654,16 +5660,31 @@ function ProfileFeedsTab({
   onOpenFeed: (source: FeedSource) => void;
   onTogglePinnedFeed: (source: FeedSource) => void;
 }) {
-  const [state, setState] = useState<{ status: "loading" | "ready" | "error" | "rate-limit"; feeds: FeedGeneratorView[]; error?: string }>({
-    status: "loading",
-    feeds: [],
-  });
+  const [state, setState] = useState<{
+    status: "loading" | "ready" | "error" | "rate-limit";
+    feeds: FeedGeneratorView[];
+    cursor?: string;
+    error?: string;
+    loadMoreError?: string;
+  }>({ status: "loading", feeds: [] });
+  const loadMoreBusyRef = useRef(false);
+  const loadMoreControllerRef = useRef<AbortController | null>(null);
+
+  const loadPage = useCallback(
+    (cursor: string | undefined, signal?: AbortSignal) =>
+      getActorFeeds(actor, 50, signal, cursor).then((response) => ({ feeds: response.feeds, cursor: response.cursor })),
+    [actor],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
+    loadMoreBusyRef.current = false;
+    loadMoreControllerRef.current?.abort();
+    loadMoreControllerRef.current = null;
     setState({ status: "loading", feeds: [] });
-    getActorFeeds(actor, 50, controller.signal)
-      .then((response) => setState({ status: "ready", feeds: response.feeds }))
+
+    loadPage(undefined, controller.signal)
+      .then(({ feeds, cursor }) => setState({ status: "ready", feeds, cursor }))
       .catch((error) => {
         if (!controller.signal.aborted) {
           setState({
@@ -5673,8 +5694,47 @@ function ProfileFeedsTab({
           });
         }
       });
-    return () => controller.abort();
-  }, [actor]);
+    return () => {
+      controller.abort();
+      loadMoreControllerRef.current?.abort();
+      loadMoreControllerRef.current = null;
+    };
+  }, [loadPage]);
+
+  const loadMore = useCallback(() => {
+    if (state.status !== "ready" || !state.cursor || loadMoreBusyRef.current) {
+      return;
+    }
+    loadMoreBusyRef.current = true;
+    const controller = new AbortController();
+    loadMoreControllerRef.current = controller;
+    loadPage(state.cursor, controller.signal)
+      .then(({ feeds, cursor }) => {
+        loadMoreBusyRef.current = false;
+        if (loadMoreControllerRef.current === controller) {
+          loadMoreControllerRef.current = null;
+        }
+        setState((current) => ({
+          ...current,
+          feeds: [...current.feeds, ...feeds],
+          cursor,
+          loadMoreError: undefined,
+        }));
+      })
+      .catch((error) => {
+        loadMoreBusyRef.current = false;
+        if (loadMoreControllerRef.current === controller) {
+          loadMoreControllerRef.current = null;
+        }
+        // Keep the already-loaded results and the cursor so the user can retry;
+        // surface the failure on the load-more control (which also stops the
+        // auto-fire so we don't hammer a rate-limited endpoint).
+        setState((current) => ({
+          ...current,
+          loadMoreError: isRateLimit(error) ? rateLimitMessage(error) : "Couldn't load more right now.",
+        }));
+      });
+  }, [loadPage, state.cursor, state.status]);
 
   return (
     <section className="discover-feeds" aria-label="Feeds created by this account">
@@ -5685,17 +5745,22 @@ function ProfileFeedsTab({
         <EmptyState title="No Feeds" message="This account has not published any Feeds." />
       )}
       {state.status === "ready" && state.feeds.length > 0 && (
-        <div className="discover-feeds-grid">
-          {state.feeds.map((feed) => (
-            <DiscoverFeedCard
-              key={feed.uri}
-              feed={feed}
-              isPinned={pinnedFeedIds.includes(feed.uri)}
-              onOpenFeed={onOpenFeed}
-              onTogglePinnedFeed={onTogglePinnedFeed}
-            />
-          ))}
-        </div>
+        <>
+          <div className="discover-feeds-grid">
+            {state.feeds.map((feed) => (
+              <DiscoverFeedCard
+                key={feed.uri}
+                feed={feed}
+                isPinned={pinnedFeedIds.includes(feed.uri)}
+                onOpenFeed={onOpenFeed}
+                onTogglePinnedFeed={onTogglePinnedFeed}
+              />
+            ))}
+          </div>
+          {state.cursor && (
+            <AutoLoadMoreButton label="Load more Feeds" onLoadMore={loadMore} error={state.loadMoreError} />
+          )}
+        </>
       )}
     </section>
   );
@@ -5712,16 +5777,31 @@ function listPurposeLabel(purpose?: string) {
 }
 
 function ProfileListsTab({ actor, onOpenFeed }: { actor: string; onOpenFeed: (source: FeedSource) => void }) {
-  const [state, setState] = useState<{ status: "loading" | "ready" | "error" | "rate-limit"; lists: ListView[]; error?: string }>({
-    status: "loading",
-    lists: [],
-  });
+  const [state, setState] = useState<{
+    status: "loading" | "ready" | "error" | "rate-limit";
+    lists: ListView[];
+    cursor?: string;
+    error?: string;
+    loadMoreError?: string;
+  }>({ status: "loading", lists: [] });
+  const loadMoreBusyRef = useRef(false);
+  const loadMoreControllerRef = useRef<AbortController | null>(null);
+
+  const loadPage = useCallback(
+    (cursor: string | undefined, signal?: AbortSignal) =>
+      getActorLists(actor, 50, signal, cursor).then((response) => ({ lists: response.lists, cursor: response.cursor })),
+    [actor],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
+    loadMoreBusyRef.current = false;
+    loadMoreControllerRef.current?.abort();
+    loadMoreControllerRef.current = null;
     setState({ status: "loading", lists: [] });
-    getActorLists(actor, 50, controller.signal)
-      .then((response) => setState({ status: "ready", lists: response.lists }))
+
+    loadPage(undefined, controller.signal)
+      .then(({ lists, cursor }) => setState({ status: "ready", lists, cursor }))
       .catch((error) => {
         if (!controller.signal.aborted) {
           setState({
@@ -5731,8 +5811,44 @@ function ProfileListsTab({ actor, onOpenFeed }: { actor: string; onOpenFeed: (so
           });
         }
       });
-    return () => controller.abort();
-  }, [actor]);
+    return () => {
+      controller.abort();
+      loadMoreControllerRef.current?.abort();
+      loadMoreControllerRef.current = null;
+    };
+  }, [loadPage]);
+
+  const loadMore = useCallback(() => {
+    if (state.status !== "ready" || !state.cursor || loadMoreBusyRef.current) {
+      return;
+    }
+    loadMoreBusyRef.current = true;
+    const controller = new AbortController();
+    loadMoreControllerRef.current = controller;
+    loadPage(state.cursor, controller.signal)
+      .then(({ lists, cursor }) => {
+        loadMoreBusyRef.current = false;
+        if (loadMoreControllerRef.current === controller) {
+          loadMoreControllerRef.current = null;
+        }
+        setState((current) => ({
+          ...current,
+          lists: [...current.lists, ...lists],
+          cursor,
+          loadMoreError: undefined,
+        }));
+      })
+      .catch((error) => {
+        loadMoreBusyRef.current = false;
+        if (loadMoreControllerRef.current === controller) {
+          loadMoreControllerRef.current = null;
+        }
+        setState((current) => ({
+          ...current,
+          loadMoreError: isRateLimit(error) ? rateLimitMessage(error) : "Couldn't load more right now.",
+        }));
+      });
+  }, [loadPage, state.cursor, state.status]);
 
   return (
     <section className="discover-feeds" aria-label="Lists created by this account">
@@ -5743,6 +5859,7 @@ function ProfileListsTab({ actor, onOpenFeed }: { actor: string; onOpenFeed: (so
         <EmptyState title="No Lists" message="This account has not published any public Lists." />
       )}
       {state.status === "ready" && state.lists.length > 0 && (
+        <>
         <div className="discover-feeds-grid">
           {state.lists.map((list) => {
             const listRkey = list.uri.split("/").pop();
@@ -5800,6 +5917,10 @@ function ProfileListsTab({ actor, onOpenFeed }: { actor: string; onOpenFeed: (so
             );
           })}
         </div>
+        {state.cursor && (
+          <AutoLoadMoreButton label="Load more Lists" onLoadMore={loadMore} error={state.loadMoreError} />
+        )}
+      </>
       )}
     </section>
   );
@@ -6354,6 +6475,7 @@ function BlueskyListCard({
   onDelete?: (listUri: string) => Promise<void>;
   onReauthorize?: () => void;
 }) {
+  const toast = useContext(ToastContext);
   const isModlist = list.purpose?.includes("modlist") ?? false;
   const isOwn = owned || (!!signedInDid && list.creator?.did === signedInDid);
   const [managing, setManaging] = useState(false);
@@ -6384,6 +6506,8 @@ function BlueskyListCard({
     setDeleting(true);
     try {
       await onDelete(list.uri);
+    } catch {
+      toast("Couldn't delete this list. Please try again.", "error");
     } finally {
       setDeleting(false);
     }
@@ -8004,6 +8128,15 @@ function SearchView({
     );
   }, [feedSources, query]);
 
+  // When the NSFW preference is hidden, drop adult/graphic-labeled posts from
+  // search results entirely (like the feed/profile timelines) rather than only
+  // gating their media — a bad record in search is the highest-impact leak.
+  const showNsfw = useContext(ShowNsfwContext);
+  const visiblePosts = useMemo(
+    () => (showNsfw ? searchState.posts : searchState.posts.filter((post) => !isAdultPost(post))),
+    [searchState.posts, showNsfw],
+  );
+
   return (
     <div className="timeline comfortable">
       <form
@@ -8156,12 +8289,12 @@ function SearchView({
           {searchState.status === "loading" && <LoadingState label="Searching public Bluesky posts" />}
           {searchState.status === "error" && <ErrorState message={searchState.error || "Search failed to load."} />}
           {searchState.status === "rate-limit" && <RateLimitState message={searchState.error} />}
-          {searchState.status === "ready" && searchState.posts.length === 0 && (
+          {searchState.status === "ready" && visiblePosts.length === 0 && (
             <EmptyState title="No posts found" message="Try a broader query or switch between top and latest results." />
           )}
-          {searchState.status === "ready" && searchState.posts.length > 0 && (
+          {searchState.status === "ready" && visiblePosts.length > 0 && (
             <>
-              {searchState.posts.map((post) => (
+              {visiblePosts.map((post) => (
                 <PostCard
                   item={{ post }}
                   currentDid={currentDid}

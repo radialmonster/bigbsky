@@ -53,6 +53,9 @@ requirePattern(/function threadUnavailableState\([\s\S]*Blocked reply[\s\S]*Repl
 requirePattern(/<div className=\{`thread-alert \$\{state\.tone\}`\}/, "thread unavailable branches should render typed alert tones");
 forbidPattern(/timelineRef\.current\?\.scrollTo\(\{ top: 0 \}\)/, "feed switching should not force the timeline back to the top");
 requirePattern(/cursor\s*\n?\s*\?\s*\{ \.\.\.current, status: "ready", loadMoreError: rateLimitMessage\(error\) \}/s, "a failed pagination request should keep already-loaded results instead of discarding them");
+requirePattern(/catch \{\s*\/\/ Revert to pre-click state\.[\s\S]*pushToast\(\s*blocked \? "Couldn't unblock this account\. Please try again\." : "Couldn't block this account\. Please try again\.",\s*"error",\s*\);[\s\S]*\} finally \{[\s\S]*blockInFlight\.current\.delete/s, "a failed block/unblock write should surface an actionable error toast (not just revert silently)");
+requirePattern(/console\.error\("Failed to sync feed order to account", error\);\s*pushToast\("Couldn't sync your feed order to your account\. It's saved on this browser\.", "error"\)/, "a failed saved-feed-order account sync should surface an error toast instead of logging silently");
+requirePattern(/const toast = useContext\(ToastContext\);[\s\S]*setDeleting\(true\);[\s\S]*catch \{\s*toast\("Couldn't delete this list\. Please try again\.", "error"\);\s*\} finally \{[\s\S]*setDeleting\(false\);/s, "a failed list delete should surface an error toast");
 requirePattern(/if \(!button \|\| error \|\| !\("IntersectionObserver" in window\)\)/, "the auto-loader should stop firing after a pagination error to avoid retry storms");
 requirePattern(/const loadMore = \(\) => \{[\s\S]*const controller = new AbortController\(\);[\s\S]*loadMoreControllerRef\.current = controller;/s, "pagination requests should carry an abort signal so a late page can be discarded");
 requirePattern(/loadMoreControllerRef\.current\?\.abort\(\);[\s\S]*reloadProfileControllerRef\.current\?\.abort\(\);[\s\S]*\},\s*\[activeSource, profileTab, route, searchLanguage, searchSort, searchTab\]/s, "in-flight pagination and profile refetches should be aborted when the active surface changes");
@@ -69,13 +72,17 @@ requirePattern(/const loadFeedSearch = useCallback\([\s\S]*getPopularFeedGenerat
 requirePattern(/className="discover-feeds-search"[\s\S]*setActiveQuery\(draftQuery\.trim\(\)\)/s, "Explore Discover New Feeds should only refetch on explicit search submit");
 requirePattern(/getPopularFeedGenerators\(18, controller\.signal, activeQuery\)[\s\S]*\}, \[activeQuery\]\)/s, "Explore Discover New Feeds should refetch when the committed query changes");
 requirePattern(/const profileTabs = \["posts", "replies", "media", "videos", "feeds"/, "public profiles should expose a Feeds tab");
-requirePattern(/function ProfileFeedsTab\([\s\S]*getActorFeeds\(actor, 50, controller\.signal\)/s, "the profile Feeds tab should load the actor's published Feeds from the public endpoint");
+requirePattern(/function ProfileFeedsTab\([\s\S]*getActorFeeds\(actor, 50, signal, cursor\)/s, "the profile Feeds tab should load the actor's published Feeds from the public endpoint");
+requirePattern(/function ProfileFeedsTab\([\s\S]*const loadPage = useCallback\([\s\S]*response\.feeds, cursor: response\.cursor/s, "the profile Feeds tab should paginate published Feeds via the response cursor");
+requirePattern(/function ProfileFeedsTab\([\s\S]*const loadMore = useCallback\([\s\S]*loadPage\(state\.cursor, controller\.signal\)[\s\S]*feeds: \[\.\.\.current\.feeds, \.\.\.feeds\],[\s\S]*\bcursor,/s, "the profile Feeds tab should append later pages and advance the cursor");
 requirePattern(/profileTab === "feeds" \? \(\s*<ProfileFeedsTab/s, "the profile Feeds tab should render published Feeds instead of the post list");
 if (!/export function getActorFeeds\(/.test(api)) {
   failures.push("api should expose a public getActorFeeds reader");
 }
 requirePattern(/const profileTabs = \["posts", "replies", "media", "videos", "feeds", "lists"\]/, "public profiles should expose a Lists tab");
-requirePattern(/function ProfileListsTab\([\s\S]*getActorLists\(actor, 50, controller\.signal\)/s, "the profile Lists tab should load the actor's published Lists from the public endpoint");
+requirePattern(/function ProfileListsTab\([\s\S]*getActorLists\(actor, 50, signal, cursor\)/s, "the profile Lists tab should load the actor's published Lists from the public endpoint");
+requirePattern(/function ProfileListsTab\([\s\S]*const loadPage = useCallback\([\s\S]*response\.lists, cursor: response\.cursor/s, "the profile Lists tab should paginate published Lists via the response cursor");
+requirePattern(/function ProfileListsTab\([\s\S]*const loadMore = useCallback\([\s\S]*loadPage\(state\.cursor, controller\.signal\)[\s\S]*lists: \[\.\.\.current\.lists, \.\.\.lists\],[\s\S]*\bcursor,/s, "the profile Lists tab should append later pages and advance the cursor");
 requirePattern(/profileTab === "lists" \? \(\s*<ProfileListsTab/s, "the profile Lists tab should render published Lists instead of the post list");
 if (!/export function getActorLists\(/.test(api)) {
   failures.push("api should expose a public getActorLists reader");
@@ -105,6 +112,7 @@ requirePattern(/const TagSearchContext = createContext[\s\S]*onClick=\{\(event\)
 requirePattern(/renderRichText\(post\.record\.facets\?\.length \? post\.record\.text \|\| "" : text, post\.record\.facets, onOpenProfile/, "post cards should render rich-text facets for post body text");
 requirePattern(/renderRichText\(\s*record\.value\?\.facets\?\.length \? record\.value\.text \|\| "" : text,\s*record\.value\?\.facets,\s*onOpenProfile,\s*onOpenTag,/s, "quoted posts should render rich-text facets for their body text");
 requirePattern(/const gateMedia = !showNsfw && mediaWarningValues\.length > 0 && \(images\.length > 0 \|\| !!video\) && !mediaRevealed/, "adult/graphic media should be gated behind a reveal warning unless the NSFW preference is on");
+requirePattern(/const showNsfw = useContext\(ShowNsfwContext\);\s*const visiblePosts = useMemo\([\s\S]*isAdultPost\(post\)\)/, "search results should drop adult-labeled posts entirely when the NSFW preference is hidden");
 requirePattern(/\[\.\.\.labels, \.\.\.\(post\.author\.labels \?\? \[\]\)\]\.filter\(isSensitiveLabel\)/, "media gating should consider account-level (author) labels, not just post labels");
 requirePattern(/const ShowNsfwContext = createContext<boolean>\(false\)/, "the NSFW preference should default to hidden for everyone");
 requirePattern(/localStorage\.getItem\(showNsfwStorageKey\) === "true"/, "showing NSFW media should require an explicit stored opt-in");

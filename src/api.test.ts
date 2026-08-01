@@ -8,7 +8,7 @@
 // persists across tests within this file.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, getRecordEmbed, resolveHandle } from "./api";
+import { ApiError, getActorFeeds, getActorLists, getRecordEmbed, resolveHandle } from "./api";
 
 const NOW = new Date("2026-06-27T12:00:00.000Z").getTime();
 const TTL_MS = 5 * 60 * 1000;
@@ -214,5 +214,40 @@ describe("getRecordEmbed", () => {
     expect(getRecordEmbed(null)).toBeNull();
     expect(getRecordEmbed({})).toBeNull();
     expect(getRecordEmbed(wrap({ notAUri: true }))).toBeNull();
+  });
+});
+
+describe("paged profile surface readers", () => {
+  function emptyFeeds() {
+    return { ok: true, json: async () => ({ feeds: [], cursor: undefined }) } as unknown as Response;
+  }
+
+  function emptyLists() {
+    return { ok: true, json: async () => ({ lists: [], cursor: undefined }) } as unknown as Response;
+  }
+
+  it("getActorFeeds forwards an optional cursor param to the XRPC query", async () => {
+    fetchMock.mockResolvedValueOnce(emptyFeeds());
+    await getActorFeeds("a.test", 50, undefined, "cursor-1");
+    const url = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(url.pathname).toMatch(/app\.bsky\.feed\.getActorFeeds$/);
+    expect(url.searchParams.get("cursor")).toBe("cursor-1");
+    expect(url.searchParams.get("limit")).toBe("50");
+  });
+
+  it("getActorFeeds omits the cursor param when none is provided", async () => {
+    fetchMock.mockResolvedValueOnce(emptyFeeds());
+    await getActorFeeds("a.test", 50);
+    const url = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(url.searchParams.has("cursor")).toBe(false);
+  });
+
+  it("getActorLists forwards an optional cursor param to the XRPC query", async () => {
+    fetchMock.mockResolvedValueOnce(emptyLists());
+    await getActorLists("a.test", 50, undefined, "cursor-2");
+    const url = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(url.pathname).toMatch(/app\.bsky\.graph\.getLists$/);
+    expect(url.searchParams.get("cursor")).toBe("cursor-2");
+    expect(url.searchParams.get("limit")).toBe("50");
   });
 });

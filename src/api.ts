@@ -304,10 +304,10 @@ export function getQuotes(uri: string, limit = 30, signal?: AbortSignal, cursor?
   return getJson<QuotesResponse>("app.bsky.feed.getQuotes", { uri, limit: String(limit), ...(cursor ? { cursor } : {}) }, signal);
 }
 
-export function getActorLists(actor: string, limit = 30, signal?: AbortSignal) {
+export function getActorLists(actor: string, limit = 30, signal?: AbortSignal, cursor?: string) {
   return getJson<ActorListsResponse>(
     "app.bsky.graph.getLists",
-    { actor, limit: String(limit) },
+    { actor, limit: String(limit), ...(cursor ? { cursor } : {}) },
     signal,
   );
 }
@@ -340,10 +340,10 @@ export function getList(list: string, signal?: AbortSignal) {
   );
 }
 
-export function getActorFeeds(actor: string, limit = 30, signal?: AbortSignal) {
+export function getActorFeeds(actor: string, limit = 30, signal?: AbortSignal, cursor?: string) {
   return getJson<PopularFeedsResponse>(
     "app.bsky.feed.getActorFeeds",
-    { actor, limit: String(limit) },
+    { actor, limit: String(limit), ...(cursor ? { cursor } : {}) },
     signal,
   );
 }
