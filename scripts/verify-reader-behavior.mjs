@@ -66,12 +66,18 @@ requirePattern(/const knownIds = new Set\(\[\.\.\.feedSources\.map\(\(source\) =
 requirePattern(/setPinnedFeedMeta\(\(current\) => \{[\s\S]*safeLocalStorageSet\(pinnedFeedMetaStorageKey/s, "toggling a discovered Feed pin should sync its local metadata store");
 
 requirePattern(/function ExploreTrendingTopics\([\s\S]*getTrendingTopics\([\s\S]*onOpenSearchQuery\(topic\.topic\)/s, "Explore trending topics should load live topics and open them as in-app searches");
-requirePattern(/function TrendingPanel\([\s\S]*getTrendingTopics\(10, controller\.signal\)[\s\S]*fallback\.length > 0/s, "the right-rail Trending panel should load live trending topics with a loaded-post fallback");
+// The right-rail Trending panel (TrendingPanel) moved to
+// src/features/rightRail/TrendingPanel.tsx (slice 13 of #18) with a behavioral
+// RTL suite (TrendingPanel.test.tsx covering live-topic rendering with a
+// loaded-post fallback); the old App.tsx definition regex was retired per #19.
 requirePattern(/} else if \(searchTab === "feeds"\) \{[\s\S]*loadFeedSearch\(route\.query, controller\.signal\)/s, "the Feeds search tab should run a live public Feed search only after explicit search navigation");
 requirePattern(/const loadFeedSearch = useCallback\([\s\S]*getPopularFeedGenerators\(20, signal, query\)/s, "live Feed search should query the public popular-feed-generators endpoint");
 requirePattern(/className="discover-feeds-search"[\s\S]*setActiveQuery\(draftQuery\.trim\(\)\)/s, "Explore Discover New Feeds should only refetch on explicit search submit");
 requirePattern(/getPopularFeedGenerators\(18, controller\.signal, activeQuery\)[\s\S]*\}, \[activeQuery\]\)/s, "Explore Discover New Feeds should refetch when the committed query changes");
-requirePattern(/const profileTabs = \["posts", "replies", "media", "videos", "feeds"/, "public profiles should expose a Feeds tab");
+// The profileTabs constant + ProfileTab type moved to
+// src/features/profile/ProfileDetailHeader.tsx (slice 13 of #18) and are covered
+// by the ProfileDetailHeader.test.tsx RTL suite (tabs render, incl. Feeds and
+// Lists); the old App.tsx source regexes were retired per #19.
 requirePattern(/function ProfileFeedsTab\([\s\S]*getActorFeeds\(actor, 50, signal, cursor\)/s, "the profile Feeds tab should load the actor's published Feeds from the public endpoint");
 requirePattern(/function ProfileFeedsTab\([\s\S]*const loadPage = useCallback\([\s\S]*response\.feeds, cursor: response\.cursor/s, "the profile Feeds tab should paginate published Feeds via the response cursor");
 requirePattern(/function ProfileFeedsTab\([\s\S]*const loadMore = useCallback\([\s\S]*loadPage\(state\.cursor, controller\.signal\)[\s\S]*feeds: \[\.\.\.current\.feeds, \.\.\.feeds\],[\s\S]*\bcursor,/s, "the profile Feeds tab should append later pages and advance the cursor");
@@ -79,7 +85,6 @@ requirePattern(/profileTab === "feeds" \? \(\s*<ProfileFeedsTab/s, "the profile 
 if (!/export function getActorFeeds\(/.test(api)) {
   failures.push("api should expose a public getActorFeeds reader");
 }
-requirePattern(/const profileTabs = \["posts", "replies", "media", "videos", "feeds", "lists"\]/, "public profiles should expose a Lists tab");
 requirePattern(/function ProfileListsTab\([\s\S]*getActorLists\(actor, 50, signal, cursor\)/s, "the profile Lists tab should load the actor's published Lists from the public endpoint");
 requirePattern(/function ProfileListsTab\([\s\S]*const loadPage = useCallback\([\s\S]*response\.lists, cursor: response\.cursor/s, "the profile Lists tab should paginate published Lists via the response cursor");
 requirePattern(/function ProfileListsTab\([\s\S]*const loadMore = useCallback\([\s\S]*loadPage\(state\.cursor, controller\.signal\)[\s\S]*lists: \[\.\.\.current\.lists, \.\.\.lists\],[\s\S]*\bcursor,/s, "the profile Lists tab should append later pages and advance the cursor");
