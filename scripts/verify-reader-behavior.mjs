@@ -65,35 +65,23 @@ requirePattern(/function readPinnedFeedMeta\(\)[\s\S]*isPinnedFeedMeta/s, "disco
 requirePattern(/const knownIds = new Set\(\[\.\.\.feedSources\.map\(\(source\) => source\.id\), \.\.\.metaSources\.map\(\(source\) => source\.id\)\]\)/, "pinned Feed ids should resolve against both static and discovered Feed sources");
 requirePattern(/setPinnedFeedMeta\(\(current\) => \{[\s\S]*safeLocalStorageSet\(pinnedFeedMetaStorageKey/s, "toggling a discovered Feed pin should sync its local metadata store");
 
-requirePattern(/function ExploreTrendingTopics\([\s\S]*getTrendingTopics\([\s\S]*onOpenSearchQuery\(topic\.topic\)/s, "Explore trending topics should load live topics and open them as in-app searches");
-// The right-rail Trending panel (TrendingPanel) moved to
-// src/features/rightRail/TrendingPanel.tsx (slice 13 of #18) with a behavioral
-// RTL suite (TrendingPanel.test.tsx covering live-topic rendering with a
-// loaded-post fallback); the old App.tsx definition regex was retired per #19.
-requirePattern(/} else if \(searchTab === "feeds"\) \{[\s\S]*loadFeedSearch\(route\.query, controller\.signal\)/s, "the Feeds search tab should run a live public Feed search only after explicit search navigation");
-requirePattern(/const loadFeedSearch = useCallback\([\s\S]*getPopularFeedGenerators\(20, signal, query\)/s, "live Feed search should query the public popular-feed-generators endpoint");
-requirePattern(/className="discover-feeds-search"[\s\S]*setActiveQuery\(draftQuery\.trim\(\)\)/s, "Explore Discover New Feeds should only refetch on explicit search submit");
-requirePattern(/getPopularFeedGenerators\(18, controller\.signal, activeQuery\)[\s\S]*\}, \[activeQuery\]\)/s, "Explore Discover New Feeds should refetch when the committed query changes");
-// The profileTabs constant + ProfileTab type moved to
-// src/features/profile/ProfileDetailHeader.tsx (slice 13 of #18) and are covered
-// by the ProfileDetailHeader.test.tsx RTL suite (tabs render, incl. Feeds and
-// Lists); the old App.tsx source regexes were retired per #19.
-requirePattern(/function ProfileFeedsTab\([\s\S]*getActorFeeds\(actor, 50, signal, cursor\)/s, "the profile Feeds tab should load the actor's published Feeds from the public endpoint");
-requirePattern(/function ProfileFeedsTab\([\s\S]*const loadPage = useCallback\([\s\S]*response\.feeds, cursor: response\.cursor/s, "the profile Feeds tab should paginate published Feeds via the response cursor");
-requirePattern(/function ProfileFeedsTab\([\s\S]*const loadMore = useCallback\([\s\S]*loadPage\(state\.cursor, controller\.signal\)[\s\S]*feeds: \[\.\.\.current\.feeds, \.\.\.feeds\],[\s\S]*\bcursor,/s, "the profile Feeds tab should append later pages and advance the cursor");
+// The Explore/profile-tab surface cluster moved to src/features/ (slice 14 of
+// #18): ExploreTrendingTopics + ExploreDiscoverFeeds -> src/features/explore/,
+// ProfileFeedsTab + ProfileListsTab (+ listPurposeLabel) -> src/features/profile/.
+// Their old App.tsx definition regexes were retired per #19 in favor of the
+// co-located RTL suites (ExploreTrendingTopics.test.tsx, ExploreDiscoverFeeds.test.tsx,
+// ProfileFeedsTab.test.tsx, ProfileListsTab.test.tsx). The App call-site pins
+// below (profileTab === "feeds"/"lists" render branches) stay because App still
+// owns the tab switch.
 requirePattern(/profileTab === "feeds" \? \(\s*<ProfileFeedsTab/s, "the profile Feeds tab should render published Feeds instead of the post list");
 if (!/export function getActorFeeds\(/.test(api)) {
   failures.push("api should expose a public getActorFeeds reader");
 }
-requirePattern(/function ProfileListsTab\([\s\S]*getActorLists\(actor, 50, signal, cursor\)/s, "the profile Lists tab should load the actor's published Lists from the public endpoint");
-requirePattern(/function ProfileListsTab\([\s\S]*const loadPage = useCallback\([\s\S]*response\.lists, cursor: response\.cursor/s, "the profile Lists tab should paginate published Lists via the response cursor");
-requirePattern(/function ProfileListsTab\([\s\S]*const loadMore = useCallback\([\s\S]*loadPage\(state\.cursor, controller\.signal\)[\s\S]*lists: \[\.\.\.current\.lists, \.\.\.lists\],[\s\S]*\bcursor,/s, "the profile Lists tab should append later pages and advance the cursor");
 requirePattern(/profileTab === "lists" \? \(\s*<ProfileListsTab/s, "the profile Lists tab should render published Lists instead of the post list");
 if (!/export function getActorLists\(/.test(api)) {
   failures.push("api should expose a public getActorLists reader");
 }
 requirePattern(/isListUri\(source\.uri\)\s*\?\s*await getListFeed\(source\.uri, cursor, signal\)/s, "feed loading should read list timelines via getListFeed for list URIs");
-requirePattern(/isCurateList\s*\?\s*\(\s*<button type="button" className="discover-feed-open" onClick=\{\(\) => onOpenFeed\(source\)\}/s, "curated lists should open their timeline in-app from the profile Lists tab");
 requirePattern(/function BlueskyListCard\([\s\S]*useEffect\(\(\) => \{[\s\S]*setBlockUri\(list\.viewer\?\.blocked\);[\s\S]*setMuted\(\!\!list\.viewer\?\.muted\);[\s\S]*\}, \[list\.uri, list\.viewer\?\.blocked, list\.viewer\?\.muted\]\);/s, "Bluesky list block/mute controls should re-sync from refreshed viewer state");
 if (!/export function getListFeed\(/.test(api) || !/export function getList\(/.test(api) || !/export function isListUri\(/.test(api)) {
   failures.push("api should expose public getListFeed/getList/isListUri helpers");
