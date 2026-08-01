@@ -76,6 +76,7 @@ import {
   parseStringArray,
 } from "./lib/preferences";
 import { postBskyUrl, safeHttpUrl } from "./lib/url";
+import { useCache } from "./lib/cache";
 import { detectPostLanguage, filterFeedByLanguages, postsNeedingDetection } from "./lib/content-language";
 import {
   MOBILE_SCROLL_QUERY,
@@ -1105,15 +1106,15 @@ export function App() {
   const [loadingThreadBranches, setLoadingThreadBranches] = useState<Record<string, boolean>>({});
   const [threadBranchResults, setThreadBranchResults] = useState<Record<string, BranchLoadResult>>({});
   const timelineRef = useRef<HTMLDivElement | null>(null);
-  const feedCacheRef = useRef<Record<string, FeedState>>({});
-  const feedMetadataCacheRef = useRef<Record<string, FeedGeneratorView>>({});
-  const listMetadataCacheRef = useRef<Record<string, ListView>>({});
-  const profileCacheRef = useRef<Record<string, { feed: FeedState; profile: Profile | null }>>({});
-  const searchCacheRef = useRef<Record<string, SearchState>>({});
-  const actorSearchCacheRef = useRef<Record<string, ActorSearchState>>({});
-  const feedSearchCacheRef = useRef<Record<string, FeedSearchState>>({});
-  const threadCacheRef = useRef<Record<string, ThreadNode>>({});
-  const threadBranchCacheRef = useRef<Record<string, ThreadNode>>({});
+  const feedCache = useCache<FeedState>();
+  const feedMetadataCache = useCache<FeedGeneratorView>();
+  const listMetadataCache = useCache<ListView>();
+  const profileCache = useCache<{ feed: FeedState; profile: Profile | null }>();
+  const searchCache = useCache<SearchState>();
+  const actorSearchCache = useCache<ActorSearchState>();
+  const feedSearchCache = useCache<FeedSearchState>();
+  const threadCache = useCache<ThreadNode>();
+  const threadBranchCache = useCache<ThreadNode>();
   // Tracks the in-flight full-thread load (initial fetch or post-reply reload) so
   // a stale response can't overwrite the thread after navigating to another post.
   const threadLoadControllerRef = useRef<AbortController | null>(null);
@@ -1442,15 +1443,15 @@ export function App() {
       authCacheMountRef.current = true;
       return;
     }
-    feedCacheRef.current = {};
-    feedMetadataCacheRef.current = {};
-    listMetadataCacheRef.current = {};
-    profileCacheRef.current = {};
-    searchCacheRef.current = {};
-    actorSearchCacheRef.current = {};
-    feedSearchCacheRef.current = {};
-    threadCacheRef.current = {};
-    threadBranchCacheRef.current = {};
+    feedCache.clear();
+    feedMetadataCache.clear();
+    listMetadataCache.clear();
+    profileCache.clear();
+    searchCache.clear();
+    actorSearchCache.clear();
+    feedSearchCache.clear();
+    threadCache.clear();
+    threadBranchCache.clear();
     setLikeOverrides({});
     setBookmarkOverrides({});
     setBlockOverrides({});
@@ -1909,7 +1910,7 @@ export function App() {
   const loadFeed = useCallback(async (source: FeedSource, cursor?: string, signal?: AbortSignal) => {
     const cacheKey = `feed:${source.id}`;
     if (!cursor) {
-      const cached = feedCacheRef.current[cacheKey];
+      const cached = feedCache.get(cacheKey);
       if (cached?.status === "ready") {
         setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
         setFeedState(cached);
@@ -1978,7 +1979,7 @@ export function App() {
           cursor: response.cursor,
           status: "ready" as const,
         };
-        feedCacheRef.current[cacheKey] = next;
+        feedCache.set(cacheKey, next);
         return next;
       });
       if (!cursor) {
@@ -1998,7 +1999,7 @@ export function App() {
   const loadProfileFeed = useCallback(async (actor: string, cursor?: string, signal?: AbortSignal, filter: ProfileFeedFilter = "posts_with_replies") => {
     const cacheKey = `profile:${actor}:${filter}`;
     if (!cursor) {
-      const cached = profileCacheRef.current[cacheKey];
+      const cached = profileCache.get(cacheKey);
       if (cached?.feed.status === "ready") {
         setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
         setProfile(cached.profile);
@@ -2057,7 +2058,7 @@ export function App() {
           cursor: feedResponse.cursor,
           status: "ready" as const,
         };
-        profileCacheRef.current[cacheKey] = { feed: next, profile: profileResponse ?? profileCacheRef.current[cacheKey]?.profile ?? null };
+        profileCache.set(cacheKey, { feed: next, profile: profileResponse ?? profileCache.get(cacheKey)?.profile ?? null });
         return next;
       });
       if (!cursor) {
@@ -2073,10 +2074,10 @@ export function App() {
       // Cache the profile even when the feed is unavailable so re-entry keeps the
       // header (and its Unblock button) without another round-trip.
       if (profileResponse && !cursor) {
-        profileCacheRef.current[cacheKey] = {
-          feed: profileCacheRef.current[cacheKey]?.feed ?? { items: [], status: "ready" },
+        profileCache.set(cacheKey, {
+          feed: profileCache.get(cacheKey)?.feed ?? { items: [], status: "ready" },
           profile: profileResponse,
-        };
+        });
       }
     }
   }, []);
@@ -2084,7 +2085,7 @@ export function App() {
   const loadSearch = useCallback(async (query: string, sort: "top" | "latest", lang: string, cursor?: string, signal?: AbortSignal) => {
     const cacheKey = `search:${sort}:${lang || "any"}:${query}`;
     if (!cursor) {
-      const cached = searchCacheRef.current[cacheKey];
+      const cached = searchCache.get(cacheKey);
       if (cached?.status === "ready") {
         setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
         setSearchState(cached);
@@ -2110,7 +2111,7 @@ export function App() {
           cursor: response.cursor,
           status: "ready" as const,
         };
-        searchCacheRef.current[cacheKey] = next;
+        searchCache.set(cacheKey, next);
         return next;
       });
     } catch (error) {
@@ -2127,7 +2128,7 @@ export function App() {
   const loadActorSearch = useCallback(async (query: string, cursor?: string, signal?: AbortSignal) => {
     const cacheKey = `actors:${query}`;
     if (!cursor) {
-      const cached = actorSearchCacheRef.current[cacheKey];
+      const cached = actorSearchCache.get(cacheKey);
       if (cached?.status === "ready") {
         setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
         setActorSearchState(cached);
@@ -2153,7 +2154,7 @@ export function App() {
           cursor: response.cursor,
           status: "ready" as const,
         };
-        actorSearchCacheRef.current[cacheKey] = next;
+        actorSearchCache.set(cacheKey, next);
         return next;
       });
     } catch (error) {
@@ -2169,7 +2170,7 @@ export function App() {
 
   const loadFeedSearch = useCallback(async (query: string, signal?: AbortSignal) => {
     const cacheKey = `feeds:${query.trim().toLowerCase()}`;
-    const cached = feedSearchCacheRef.current[cacheKey];
+    const cached = feedSearchCache.get(cacheKey);
     if (cached?.status === "ready") {
       setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
       setFeedSearchState(cached);
@@ -2184,7 +2185,7 @@ export function App() {
         return;
       }
       const next: FeedSearchState = { feeds: response.feeds, status: "ready" };
-      feedSearchCacheRef.current[cacheKey] = next;
+      feedSearchCache.set(cacheKey, next);
       setFeedSearchState(next);
     } catch (error) {
       if (!signal?.aborted) {
@@ -2282,7 +2283,7 @@ export function App() {
 
     if (isListUri(activeSource.uri)) {
       setFeedMetadata(null);
-      const cachedList = listMetadataCacheRef.current[activeSource.uri];
+      const cachedList = listMetadataCache.get(activeSource.uri);
       if (cachedList) {
         setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
         setListMetadata(cachedList);
@@ -2291,7 +2292,7 @@ export function App() {
       setListMetadata(null);
       getList(activeSource.uri, controller.signal)
         .then((response) => {
-          listMetadataCacheRef.current[activeSource.uri] = response.list;
+          listMetadataCache.set(activeSource.uri, response.list);
           setListMetadata(response.list);
         })
         .catch(() => {
@@ -2303,7 +2304,7 @@ export function App() {
     }
 
     setListMetadata(null);
-    const cached = feedMetadataCacheRef.current[activeSource.uri];
+    const cached = feedMetadataCache.get(activeSource.uri);
     if (cached) {
       setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
       setFeedMetadata(cached);
@@ -2313,7 +2314,7 @@ export function App() {
     setFeedMetadata(null);
     getFeedGenerator(activeSource.uri, controller.signal)
       .then((response) => {
-        feedMetadataCacheRef.current[activeSource.uri] = response.view;
+        feedMetadataCache.set(activeSource.uri, response.view);
         setFeedMetadata(response.view);
       })
       .catch(() => {
@@ -2425,7 +2426,7 @@ export function App() {
         if (controller.signal.aborted) {
           return;
         }
-        threadCacheRef.current[cacheKey] = thread;
+        threadCache.set(cacheKey, thread);
         setThread({ status: "ready", node: thread });
       })
       .catch((error) => {
@@ -2447,7 +2448,7 @@ export function App() {
       return;
     }
 
-    const cached = threadCacheRef.current[`${route.actor}:${route.rkey}`];
+    const cached = threadCache.get(`${route.actor}:${route.rkey}`);
     if (cached) {
       setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
       // Mirror startThreadLoad's controller bookkeeping even on a cache hit: a
@@ -2472,7 +2473,7 @@ export function App() {
     if (route.kind !== "post") {
       return;
     }
-    delete threadCacheRef.current[`${route.actor}:${route.rkey}`];
+    threadCache.delete(`${route.actor}:${route.rkey}`);
     startThreadLoad(route.actor, route.rkey);
   }, [route, startThreadLoad]);
 
@@ -2500,13 +2501,13 @@ export function App() {
 
         const nextNode = replaceThreadBranch(current.node, uri, branch);
         if (route.kind === "post") {
-          threadCacheRef.current[`${route.actor}:${route.rkey}`] = nextNode;
+          threadCache.set(`${route.actor}:${route.rkey}`, nextNode);
         }
         return { ...current, node: nextNode };
       });
     };
 
-    const cachedBranch = threadBranchCacheRef.current[uri];
+    const cachedBranch = threadBranchCache.get(uri);
     if (cachedBranch) {
       setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
       applyBranch(cachedBranch);
@@ -2526,7 +2527,7 @@ export function App() {
         if (signal?.aborted) {
           return;
         }
-        threadBranchCacheRef.current[uri] = response.thread;
+        threadBranchCache.set(uri, response.thread);
         applyBranch(response.thread);
       })
       .catch((error) => {
@@ -2686,15 +2687,15 @@ export function App() {
     setPinnedProfiles([]);
     setPinnedNotificationIds([]);
     setCollapsedFeedGroups({});
-    feedCacheRef.current = {};
-    feedMetadataCacheRef.current = {};
-    listMetadataCacheRef.current = {};
-    profileCacheRef.current = {};
-    searchCacheRef.current = {};
-    actorSearchCacheRef.current = {};
-    feedSearchCacheRef.current = {};
-    threadCacheRef.current = {};
-    threadBranchCacheRef.current = {};
+    feedCache.clear();
+    feedMetadataCache.clear();
+    listMetadataCache.clear();
+    profileCache.clear();
+    searchCache.clear();
+    actorSearchCache.clear();
+    feedSearchCache.clear();
+    threadCache.clear();
+    threadBranchCache.clear();
     scrollCacheRef.current = {};
     scrollAnchorCacheRef.current = {};
     setPendingScrollAnchor(null);
@@ -2807,11 +2808,11 @@ export function App() {
     const withoutPost = (items: FeedItem[]) => items.filter((item) => item.post.uri !== uri);
     setFeedState((current) => ({ ...current, items: withoutPost(current.items) }));
     setSearchState((current) => ({ ...current, posts: current.posts.filter((post) => post.uri !== uri) }));
-    feedCacheRef.current = {};
-    profileCacheRef.current = {};
-    searchCacheRef.current = {};
-    threadCacheRef.current = {};
-    threadBranchCacheRef.current = {};
+    feedCache.clear();
+    profileCache.clear();
+    searchCache.clear();
+    threadCache.clear();
+    threadBranchCache.clear();
     // The post is gone from every surface, so drop any bookmark override for it
     // rather than leaving a stale `false` shadowing the real viewer state
     // indefinitely (a latent wrong-state/leak if the same URI reappears).
@@ -3383,7 +3384,7 @@ export function App() {
       return;
     }
     const filter = profileFeedFilterForTab(profileTab);
-    delete profileCacheRef.current[`profile:${route.actor}:${filter}`];
+    profileCache.delete(`profile:${route.actor}:${filter}`);
     reloadProfileControllerRef.current?.abort();
     const controller = new AbortController();
     reloadProfileControllerRef.current = controller;
@@ -3397,12 +3398,12 @@ export function App() {
   // consistent. Other users' feeds aren't touched — read-after-write only
   // applies to the requesting user's own records.
   const invalidateOwnContentCaches = useCallback(() => {
-    delete feedCacheRef.current["feed:following"];
+    feedCache.delete("feed:following");
     const selfIds = [signedInDid, authState.session?.handle].filter(Boolean) as string[];
     if (selfIds.length > 0) {
-      for (const key of Object.keys(profileCacheRef.current)) {
+      for (const key of profileCache.keys()) {
         if (selfIds.some((id) => key.startsWith(`profile:${id}:`))) {
-          delete profileCacheRef.current[key];
+          profileCache.delete(key);
         }
       }
     }
