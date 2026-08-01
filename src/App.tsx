@@ -201,6 +201,20 @@ function useResetTimeout(): (callback: () => void, delayMs: number) => void {
   }, []);
 }
 
+// Transient, self-dismissing status messages (e.g. a failed follow/unfollow
+// write). Consumed via useToast() from any surface; the host renders as a
+// fixed overlay owned by App. There is deliberately no toast primitive anywhere
+// else in the app, so this is the single place to add new ones.
+type ToastKind = "error" | "info" | "success";
+
+interface ToastMessage {
+  id: number;
+  kind: ToastKind;
+  message: string;
+}
+
+const ToastContext = createContext<(message: string, kind?: ToastKind) => void>(() => {});
+
 // Lets deeply-nested post cards open an in-app hashtag search without threading
 // a callback through every PostCard/VirtualPostList call site.
 const TagSearchContext = createContext<((tag: string) => void) | null>(null);
@@ -1171,6 +1185,8 @@ export function App() {
   const [subscribedFeeds, setSubscribedFeeds] = useState<FeedSource[]>([]);
   const [feedOrder, setFeedOrder] = useState<string[]>(() => readFeedOrder());
   const [followBusyUri, setFollowBusyUri] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const toastIdRef = useRef(0);
   const [virtualRenderedRows, setVirtualRenderedRows] = useState(0);
   const [thread, setThread] = useState<{ status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string }>({
     status: "idle",
@@ -1594,6 +1610,20 @@ export function App() {
 
   const followedFeedUris = useMemo(() => new Set(subscribedFeeds.map((source) => source.uri)), [subscribedFeeds]);
 
+  // Transient toast messages. Kept capped so a burst of failures can't pile up
+  // the overlay; each auto-dismisses after a few seconds.
+  const pushToast = useCallback((message: string, kind: ToastKind = "info") => {
+    const id = ++toastIdRef.current;
+    setToasts((current) => [...current.slice(-3), { id, kind, message }]);
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, 6000);
+  }, []);
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts((current) => current.filter((toast) => toast.id !== id));
+  }, []);
+
   // Follow/unfollow a feed generator against the signed-in account (real
   // AT Protocol write to the user's saved feeds). Optimistically updates the
   // local subscribed list so the button and "My Feeds" group reflect it; a
@@ -1618,6 +1648,12 @@ export function App() {
       }
     } catch (error) {
       console.error("Failed to update feed subscription", error);
+      pushToast(
+        wasFollowing
+          ? "Couldn't unfollow this Feed. Please try again."
+          : "Couldn't follow this Feed. Please try again.",
+        "error",
+      );
     } finally {
       setFollowBusyUri(null);
     }
@@ -3511,6 +3547,7 @@ export function App() {
     (profile?.did === signedInDid || route.actor === authState.session.handle || route.actor === signedInDid);
 
   return (
+    <ToastContext.Provider value={pushToast}>
     <TagSearchContext.Provider value={openTag}>
       <ShowNsfwContext.Provider value={showNsfw}>
       <ShowMediaContext.Provider value={effectiveShowMedia}>
@@ -3966,6 +4003,7 @@ export function App() {
       </aside>
 
       {imageViewer && <ImageViewer image={imageViewer} onChange={setImageViewer} onClose={closeImageViewer} />}
+      <ToastHost toasts={toasts} onDismiss={dismissToast} />
       </div>
       </DeletePostContext.Provider>
       </BlockContext.Provider>
@@ -3975,6 +4013,7 @@ export function App() {
       </ShowMediaContext.Provider>
       </ShowNsfwContext.Provider>
     </TagSearchContext.Provider>
+    </ToastContext.Provider>
   );
 }
 
@@ -11169,6 +11208,9 @@ function TrendingPanel({
   return (
     <section className="context-panel trending-panel">
       <h2>Trending</h2>
+      {state.status === "error" && (
+        <p className="trending-note">Live trending is unavailable right now — showing saved defaults.</p>
+      )}
       {live ? (
         state.topics.map((topic) => (
           <button key={`${topic.topic}:${topic.link}`} type="button" onClick={() => onOpenTopic(topic.topic)}>
@@ -11367,6 +11409,26 @@ function ErrorState({ message }: { message: string }) {
     <div className="state error">
       <strong>Unable to load</strong>
       <span>{message}</span>
+    </div>
+  );
+}
+
+// Fixed overlay listing active toasts. Errors use role="alert" so assistive
+// tech announces them immediately; informational toasts use role="status".
+function ToastHost({ toasts, onDismiss }: { toasts: ToastMessage[]; onDismiss: (id: number) => void }) {
+  if (toasts.length === 0) {
+    return null;
+  }
+  return (
+    <div className="toast-host" aria-label="Notifications">
+      {toasts.map((toast) => (
+        <div key={toast.id} className={`toast toast-${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"}>
+          <span>{toast.message}</span>
+          <button type="button" className="toast-dismiss" onClick={() => onDismiss(toast.id)} aria-label="Dismiss notification">
+            <X size={14} />
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

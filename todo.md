@@ -681,11 +681,15 @@ them.
     later left discover rendering exactly its own content (8413 px, same first
     post as a clean load) with **zero** appended rows from the previous feed and
     no console errors. Dev server stopped afterward.
-- [ ] **M14. src/App.tsx:1608-1631 — toggleFollowFeed swallows follow/unfollow
-  failures (console.error only, no user feedback).** The catch only logs; the
-  button gives no error state, so a failed follow/unfollow silently does nothing
-  visible. Fix: surface the error (banner or button error state) like the list
-  subscribe path already does (subError in BlueskyListCard).
+- [x] **M14. src/App.tsx — toggleFollowFeed swallows follow/unfollow
+  failures (console.error only, no user feedback). (DONE 2026-07-31.)** Added a
+  small shared toast system (`ToastContext`/`useToast`, a `ToastHost` fixed
+  overlay owned by `App`, and `.toast-host`/`.toast-*` styles) — the first
+  toast/banner primitive in `src/`. `toggleFollowFeed` now surfaces the failure
+  with an actionable error toast ("Couldn't follow/unfollow this Feed. Please
+  try again."). The toast host is reusable for other silent-failure paths (L14,
+  future writes); a per-button `FollowFeedStateContext` was considered but the
+  shared toast wins for breadth.
   - Note (2026-07-27): there is **no toast/banner primitive anywhere in `src/`**
     (grepped: no toast/Toast/statusMessage/global banner), and `followBusyUri` is
     already prop-threaded to three separate subtrees (the feed header at
@@ -695,7 +699,7 @@ them.
     `{ busyUri, errorUri, errorMessage }` so each button can render its own
     inline error without more prop drilling, or (b) a small shared toast/banner
     component that other silent-failure paths (L14, future writes) can reuse.
-    Decide which before implementing.
+    Decide which before implementing. → Resolved: (b), shared toast.
 
 ### LOW
 
@@ -745,11 +749,13 @@ them.
   desktop, where the container (not the window) scrolls, the button now becomes
   visible even when the scroll container mounts after the button. `tsc -b` +
   vitest + `npm run build` green.
-- [ ] **L14. src/App.tsx:11068-11078 — TrendingPanel swallows network errors;
-  user always sees the static fallback with no indication.** Every non-"ready"
-  status (loading/error/empty) renders the hardcoded fallback list; users can't
-  tell "trending API is down" from "these are real trends." Fix: surface a
-  subtle "showing defaults" note or an error state.
+- [x] **L14. src/App.tsx — TrendingPanel swallows network errors; user always
+  sees the static fallback with no indication. (DONE 2026-07-31.)** The panel
+  now renders a subtle `.trending-note` under its heading ("Live trending is
+  unavailable right now — showing saved defaults.") when the live
+  `getTrendingTopics` fetch errors, so users can distinguish a real API outage
+  from genuine default trends. Uses the new shared toast infra's styling
+  vocabulary; no behavior change to the fallback ordering.
 - [ ] **L17. src/main.tsx:11 + public/sw.js — service worker uses hardcoded
   root paths; dev install can cache the dev shell under the prod cache key.**
   register("/sw.js") and sw.js's SHELL_URLS = ["/","/index.html"] /
@@ -793,10 +799,9 @@ them.
   from any CWD instead of throwing ENOENT under a "verification failed" framing.
   Verified by running both from `C:\` — both pass; `npm run build` (which runs
   them from repo root) still green.
-- [ ] **L21. tsconfig.json:6,21 — scripts/audit-build.mjs is in include but
-  allowJs: false, so it's silently not type-checked.** Misleading: implies
-  coverage that doesn't happen; the other .mjs scripts aren't included at all.
-  Fix: drop the entry (no-op) or add a separate tsconfig.scripts.json.
+- [x] **L21. tsconfig.json — scripts/audit-build.mjs in include but allowJs:
+  false, so silently not type-checked. (DONE 2026-07-31.)** Dropped the entry
+  (it was a no-op; `.mjs` files are not type-checked with `allowJs: false`).
 
 ### Verified correct / dropped (checked, not bugs)
 
