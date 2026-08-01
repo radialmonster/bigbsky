@@ -97,7 +97,6 @@ import {
   releaseScrollRestoreGuard,
   restoreOrResetScroll,
   restoreScrollOffset,
-  scrollFeedToTop,
   scrollOffsetTo,
   shouldSuppressScrollSave,
   type ScrollAnchor,
@@ -127,6 +126,10 @@ import {
   utf8ByteLength,
 } from "./lib/threads";
 import type { ThreadPart, ThreadedFeedItem } from "./lib/threads";
+import { EmptyState, EndOfFeedCard, RateLimitState } from "./features/common/State";
+import { ToastHost, type ToastKind, type ToastMessage } from "./features/common/ToastHost";
+import { BackToTopButton } from "./features/feed/BackToTopButton";
+import { ProfileContextPanel } from "./features/rightRail/ProfileContextPanel";
 import {
   type AuthSnapshot,
   type ListMember,
@@ -216,14 +219,6 @@ function useResetTimeout(): (callback: () => void, delayMs: number) => void {
 // write). Consumed via useToast() from any surface; the host renders as a
 // fixed overlay owned by App. There is deliberately no toast primitive anywhere
 // else in the app, so this is the single place to add new ones.
-type ToastKind = "error" | "info" | "success";
-
-interface ToastMessage {
-  id: number;
-  kind: ToastKind;
-  message: string;
-}
-
 const ToastContext = createContext<(message: string, kind?: ToastKind) => void>(() => {});
 
 // Lets deeply-nested post cards open an in-app hashtag search without threading
@@ -11591,141 +11586,5 @@ function PinnedProfilesPanel({
         </div>
       ))}
     </section>
-  );
-}
-
-function ProfileContextPanel({ actor, profile }: { actor: string; profile: Profile | null }) {
-  return (
-    <section className="profile-panel">
-      <Avatar profile={profile ?? undefined} />
-      <h2>{displayName(profile ?? undefined)}</h2>
-      <p>@{profile?.handle || actor}</p>
-      {profile?.description && <p className="profile-description">{profile.description}</p>}
-      <dl>
-        <div>
-          <dt>Followers</dt>
-          <dd>{profile?.followersCount?.toLocaleString() ?? "-"}</dd>
-        </div>
-        <div>
-          <dt>Posts</dt>
-          <dd>{profile?.postsCount?.toLocaleString() ?? "-"}</dd>
-        </div>
-      </dl>
-    </section>
-  );
-}
-
-// "Back to top" affordance for the wide endless-scroll reader. Appears after the
-// active timeline is scrolled past a threshold and returns to the top without a
-// route change. watchKey re-attaches the scroll listener when the mounted
-// timeline element changes (feed <-> profile, or active source).
-function BackToTopButton({ containerRef, watchKey }: { containerRef: RefObject<HTMLDivElement | null>; watchKey: string }) {
-  const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    let el = containerRef.current;
-    let rafId: number | null = null;
-    // On mobile the document scrolls (el.scrollTop stays ~0), so read the
-    // active offset and listen on window too; on desktop el is the scroller.
-    const onScroll = () => setVisible(readScrollOffset(el) > 600);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    const attachEl = (node: HTMLDivElement) => {
-      el = node;
-      node.addEventListener("scroll", onScroll, { passive: true });
-      onScroll();
-    };
-    if (el) {
-      attachEl(el);
-    } else {
-      // The scroll container may not be mounted yet (feed still loading). Poll a
-      // bounded number of frames so the desktop container's scroll is observed
-      // once it appears — otherwise the button only reacts to window scroll and
-      // never shows on desktop (where the container, not the window, scrolls).
-      let frames = 0;
-      const wait = () => {
-        const node = containerRef.current;
-        if (node) {
-          attachEl(node);
-        } else if (frames++ < 120) {
-          rafId = requestAnimationFrame(wait);
-        }
-      };
-      rafId = requestAnimationFrame(wait);
-    }
-    return () => {
-      if (rafId != null) {
-        cancelAnimationFrame(rafId);
-      }
-      window.removeEventListener("scroll", onScroll);
-      el?.removeEventListener("scroll", onScroll);
-    };
-  }, [containerRef, watchKey]);
-  if (!visible) {
-    return null;
-  }
-  return (
-    <button
-      type="button"
-      className="back-to-top"
-      onClick={() => {
-        scrollFeedToTop(containerRef.current);
-        setVisible(false);
-      }}
-      aria-label="Scroll to top of feed"
-      title="Back to top"
-    >
-      <ChevronUp size={18} />
-      <span>Top</span>
-    </button>
-  );
-}
-
-// Fixed overlay listing active toasts. Errors use role="alert" so assistive
-// tech announces them immediately; informational toasts use role="status".
-function ToastHost({ toasts, onDismiss }: { toasts: ToastMessage[]; onDismiss: (id: number) => void }) {
-  if (toasts.length === 0) {
-    return null;
-  }
-  return (
-    <div className="toast-host" aria-label="Notifications">
-      {toasts.map((toast) => (
-        <div key={toast.id} className={`toast toast-${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"}>
-          <span>{toast.message}</span>
-          <button type="button" className="toast-dismiss" onClick={() => onDismiss(toast.id)} aria-label="Dismiss notification">
-            <X size={14} />
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function RateLimitState({ message }: { message?: string }) {
-  return (
-    <div className="state error">
-      <strong>Rate limit reached</strong>
-      <span>{message || "Bluesky is throttling this public API request. Wait a bit, then try again."}</span>
-    </div>
-  );
-}
-
-function EmptyState({ title, message }: { title: string; message: string }) {
-  return (
-    <div className="state empty">
-      <strong>{title}</strong>
-      <span>{message}</span>
-    </div>
-  );
-}
-
-function EndOfFeedCard({ kind = "posts" }: { kind?: "posts" | "media" }) {
-  return (
-    <div className="end-of-feed" role="status">
-      <strong>End of Feed</strong>
-      <span>
-        {kind === "media"
-          ? "No more media posts can be returned for this feed right now."
-          : "No more posts can be returned for this feed right now."}
-      </span>
-    </div>
   );
 }

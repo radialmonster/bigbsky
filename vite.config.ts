@@ -8,8 +8,10 @@ export default defineConfig({
     // jsdom is the default test environment so DOM-touching helpers (scroll
     // math, components) work; pure-node tests are unaffected by it. Individual
     // files can opt into a different environment with a `@vitest-environment`
-    // docblock if needed.
+    // docblock if needed. `globals` lets @testing-library/react register its
+    // afterEach cleanup so rendered DOM does not leak between tests in a file.
     environment: "jsdom",
+    globals: true,
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
   },
   build: {
