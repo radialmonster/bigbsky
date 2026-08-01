@@ -123,6 +123,12 @@ export type AuthSnapshot = {
   restoredFromCallback?: boolean;
 };
 
+export type AuthState = {
+  status: "checking" | "signed-out" | "signing-in" | "signing-out" | "signed-in" | "callback" | "error";
+  session: AuthSnapshot | null;
+  message?: string;
+};
+
 export type AuthInitResult = {
   session: AuthSnapshot | null;
   status: "signed-out" | "restored" | "callback" | "error";

@@ -40,3 +40,20 @@ export function postSortTime(post: FeedPost) {
   const sortAt = parseTimestamp(postSortAt(post));
   return Number.isNaN(sortAt) ? 0 : sortAt;
 }
+
+// Human-readable local time for a post/notification timestamp. Falls back to
+// the raw value if it is not parseable instead of throwing.
+export function formatPostTime(value?: string) {
+  if (!value) {
+    return "Unknown time";
+  }
+
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
+}
