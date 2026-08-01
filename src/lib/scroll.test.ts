@@ -4,7 +4,9 @@ import {
   MOBILE_SCROLL_QUERY,
   __resetScrollRestoreStateForTests,
   armScrollRestore,
+  clampScrollTarget,
   readScrollOffset,
+  readTopVisibleAnchor,
   resetScrollToTop,
   restoreOrResetScroll,
   restoreScrollOffset,
@@ -298,5 +300,93 @@ describe("scrollFeedToTop", () => {
 describe("MOBILE_SCROLL_QUERY", () => {
   it("matches the 720px mobile breakpoint", () => {
     expect(MOBILE_SCROLL_QUERY).toBe("(max-width: 720px)");
+  });
+});
+
+describe("clampScrollTarget", () => {
+  it("keeps a desired offset within the live scrollable range", () => {
+    expect(clampScrollTarget(500, 2000, 800)).toBe(500);
+  });
+
+  it("clamps a target beyond the bottom of the measured content", () => {
+    // totalHeight 1500, viewport 720 → max scroll 780. A stale saved offset
+    // (e.g. 2698 from before rows measured shorter) must not be re-asserted.
+    expect(clampScrollTarget(2698, 1500, 720)).toBe(780);
+  });
+
+  it("clamps a negative target to 0", () => {
+    expect(clampScrollTarget(-50, 2000, 800)).toBe(0);
+  });
+
+  it("returns 0 when content is shorter than the viewport", () => {
+    expect(clampScrollTarget(100, 400, 720)).toBe(0);
+  });
+});
+
+describe("readTopVisibleAnchor", () => {
+  // jsdom getBoundingClientRect is all zeros, so stub the geometry on a real
+  // container + rows to exercise the real querySelectorAll/attribute logic.
+  function stubRect(el: Element, rect: { top: number; height: number }) {
+    Object.defineProperty(el, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ ...rect, left: 0, right: 100, bottom: rect.top + rect.height, width: 100, x: 0, y: rect.top, toJSON: () => ({}) }),
+    });
+  }
+
+  it("returns null when the container has no rows", () => {
+    const container = document.createElement("div");
+    container.setAttribute("data-testid", "empty");
+    stubRect(container, { top: 0, height: 800 });
+    expect(readTopVisibleAnchor(container)).toBeNull();
+  });
+
+  it("picks the first row whose bottom crosses the container top edge and reports intra", () => {
+    const container = document.createElement("div");
+    stubRect(container, { top: 0, height: 800 });
+    const rowA = document.createElement("div");
+    rowA.setAttribute("data-post-uri", "at://a/post");
+    stubRect(rowA, { top: -120, height: 200 }); // scrolled 120px into this row
+    const rowB = document.createElement("div");
+    rowB.setAttribute("data-post-uri", "at://b/post");
+    stubRect(rowB, { top: 200, height: 300 });
+    container.append(rowA, rowB);
+
+    const anchor = readTopVisibleAnchor(container);
+    expect(anchor).toEqual({ uri: "at://a/post", intra: 120 });
+  });
+
+  it("reports intra 0 when the top row starts exactly at the container top edge", () => {
+    const container = document.createElement("div");
+    stubRect(container, { top: 0, height: 800 });
+    const rowA = document.createElement("div");
+    rowA.setAttribute("data-post-uri", "at://a/post");
+    stubRect(rowA, { top: 0, height: 200 });
+    container.append(rowA);
+    expect(readTopVisibleAnchor(container)).toEqual({ uri: "at://a/post", intra: 0 });
+  });
+
+  it("skips hidden rows and rows fully above the container top edge", () => {
+    const container = document.createElement("div");
+    stubRect(container, { top: 100, height: 800 });
+    const hidden = document.createElement("div");
+    hidden.setAttribute("data-post-uri", "at://hidden/post");
+    stubRect(hidden, { top: -500, height: 0 }); // height 0 → skipped
+    const above = document.createElement("div");
+    above.setAttribute("data-post-uri", "at://above/post");
+    stubRect(above, { top: 0, height: 50 }); // bottom 50 <= container top 100 → skipped
+    const visible = document.createElement("div");
+    visible.setAttribute("data-post-uri", "at://visible/post");
+    stubRect(visible, { top: 60, height: 200 }); // bottom 260 > 100 → the top-visible row
+    container.append(hidden, above, visible);
+    expect(readTopVisibleAnchor(container)).toEqual({ uri: "at://visible/post", intra: 40 });
+  });
+
+  it("ignores rows without a data-post-uri attribute", () => {
+    const container = document.createElement("div");
+    stubRect(container, { top: 0, height: 800 });
+    const plain = document.createElement("div");
+    stubRect(plain, { top: 0, height: 200 });
+    container.append(plain);
+    expect(readTopVisibleAnchor(container)).toBeNull();
   });
 });

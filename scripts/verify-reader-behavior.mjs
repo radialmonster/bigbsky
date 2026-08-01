@@ -42,7 +42,8 @@ requirePattern(/shouldSuppressScrollSave\(offset\)/, "save-on-scroll should be s
 // loop's suppression/supersede behavior), so their source-regex guardrails were
 // retired here per the test-migration plan in todo.md.
 requirePattern(/`profile:\$\{route\.actor\}:\$\{profileFeedFilterForTab\(profileTab\)\}`/, "profile timeline scroll keys should match the per-tab author-feed cache key");
-requirePattern(/restoreOrResetScroll\(timelineRef, scrollCacheRef\.current\[cacheKey\] \|\| 0\)/, "cached feed/profile loads should restore cached scroll offset (or reset the reused container to top when none)");
+requirePattern(/const restoreScrollFor = useCallback\([\s\S]*restoreOrResetScroll\(timelineRef, target\)/, "cached feed/profile loads should restore cached scroll offset (or reset the reused container to top when none) via the anchor-aware helper");
+requirePattern(/restoreScrollFor\(cacheKey\)/, "feed/profile load sites should route scroll restoration through the content-anchor-aware helper");
 requirePattern(/const timelineScrollStorageKey = "bigbsky:timeline-scroll"/, "timeline scroll offsets should use a browser-local session cache key");
 requirePattern(/sessionStorage\.setItem\(timelineScrollStorageKey, JSON\.stringify\(cache\)\)/, "timeline scroll offsets should persist across browser reloads");
 requirePattern(/window\.addEventListener\("pagehide", persistScroll\)/, "timeline scroll offsets should flush before browser reloads");

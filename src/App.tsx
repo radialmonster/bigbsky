@@ -92,11 +92,16 @@ import { detectPostLanguage, filterFeedByLanguages, postsNeedingDetection } from
 import {
   MOBILE_SCROLL_QUERY,
   armScrollRestore,
+  clampScrollTarget,
   readScrollOffset,
+  readTopVisibleAnchor,
+  releaseScrollRestoreGuard,
   restoreOrResetScroll,
   restoreScrollOffset,
   scrollFeedToTop,
+  scrollOffsetTo,
   shouldSuppressScrollSave,
+  type ScrollAnchor,
 } from "./lib/scroll";
 import {
   POST_BYTE_LIMIT,
@@ -465,6 +470,14 @@ const pinnedProfilesStorageKey = "bigbsky:pinned-profiles";
 const pinnedNotificationsStorageKey = "bigbsky:pinned-notifications";
 const collapsedFeedGroupsStorageKey = "bigbsky:collapsed-feed-groups";
 const timelineScrollStorageKey = "bigbsky:timeline-scroll";
+const timelineAnchorStorageKey = "bigbsky:timeline-anchor";
+// Frame budgets for the content-anchored restore loop in VirtualPostList. Like
+// the pixel restore (restoreScrollOffset), the loop re-asserts the target across
+// a few frames; the difference is the target is recomputed each frame from the
+// live measured row layout and clamped against the live totalHeight, so it
+// converges instead of fighting the measurement shrink (issue #8).
+const SCROLL_ANCHOR_MAX_FRAMES = 60;
+const SCROLL_ANCHOR_STABLE_FRAMES = 3;
 const replyDraftPrefix = "bigbsky:reply-draft:";
 const reauthDismissKey = "bigbsky:reauth-dismissed";
 const emptyFeedState: FeedState = { items: [], status: "idle" };
@@ -605,6 +618,23 @@ function readTimelineScrollCache() {
   return parseFiniteNumberRecord(safeSessionStorageGet(timelineScrollStorageKey));
 }
 
+function readTimelineAnchorCache(): Record<string, ScrollAnchor> {
+  const parsed = parseObjectMap<unknown>(safeSessionStorageGet(timelineAnchorStorageKey));
+  const out: Record<string, ScrollAnchor> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (
+      value &&
+      typeof value === "object" &&
+      typeof (value as { uri?: unknown }).uri === "string" &&
+      typeof (value as { intra?: unknown }).intra === "number" &&
+      Number.isFinite((value as { intra?: number }).intra)
+    ) {
+      out[key] = { uri: (value as { uri: string }).uri, intra: (value as { intra: number }).intra };
+    }
+  }
+  return out;
+}
+
 function profileFeedFilterForTab(tab: ProfileTab): ProfileFeedFilter {
   if (tab === "posts") {
     return "posts_no_replies";
@@ -621,6 +651,14 @@ function profileFeedFilterForTab(tab: ProfileTab): ProfileFeedFilter {
 function writeTimelineScrollCache(cache: Record<string, number>) {
   try {
     sessionStorage.setItem(timelineScrollStorageKey, JSON.stringify(cache));
+  } catch {
+    // Scroll restoration is best-effort browser state.
+  }
+}
+
+function writeTimelineAnchorCache(cache: Record<string, ScrollAnchor>) {
+  try {
+    sessionStorage.setItem(timelineAnchorStorageKey, JSON.stringify(cache));
   } catch {
     // Scroll restoration is best-effort browser state.
   }
@@ -1208,6 +1246,32 @@ export function App() {
   // a stale response can't overwrite the thread after navigating to another post.
   const threadLoadControllerRef = useRef<AbortController | null>(null);
   const scrollCacheRef = useRef<Record<string, number>>(readTimelineScrollCache());
+  const scrollAnchorCacheRef = useRef<Record<string, ScrollAnchor>>(readTimelineAnchorCache());
+  // The content-anchored restore target for the *current* surface, consumed by
+  // the mounted VirtualPostList. Kept as state so the anchored-restore effect
+  // re-runs when it changes; cleared (onAnchorRestored) once the anchor row has
+  // been scrolled into view and measured. Distinct from scrollAnchorCacheRef,
+  // which is the persistent cache of the last-saved anchor for a key.
+  const [pendingScrollAnchor, setPendingScrollAnchor] = useState<{ key: string; anchor: ScrollAnchor } | null>(null);
+  const clearPendingAnchor = useCallback(() => setPendingScrollAnchor(null), []);
+
+  // Restore a saved scroll position for a key, preferring the content anchor
+  // (saved top-visible post URI + intra offset) over the raw pixel offset. The
+  // pixel path (restoreOrResetScroll) re-asserts a fixed offset that fights the
+  // virtualization measurement shrink (issue #8) — see the anchored-restore
+  // effect in VirtualPostList. When an anchor exists, hand it to the mounted
+  // VirtualPostList instead, which derives the target from the measured row
+  // layout and clamps against the live totalHeight, so it converges.
+  const restoreScrollFor = useCallback((key: string) => {
+    const target = scrollCacheRef.current[key] || 0;
+    const anchor = scrollAnchorCacheRef.current[key];
+    if (anchor && target > 0) {
+      armScrollRestore(target);
+      setPendingScrollAnchor((current) => (current?.key === key && current.anchor.uri === anchor.uri ? current : { key, anchor }));
+    } else {
+      restoreOrResetScroll(timelineRef, target);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1977,7 +2041,7 @@ export function App() {
       if (cached?.status === "ready") {
         setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
         setFeedState(cached);
-        restoreOrResetScroll(timelineRef, scrollCacheRef.current[cacheKey] || 0);
+        restoreScrollFor(cacheKey);
         return;
       }
     }
@@ -2067,7 +2131,7 @@ export function App() {
         setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
         setProfile(cached.profile);
         setFeedState(cached.feed);
-        restoreOrResetScroll(timelineRef, scrollCacheRef.current[cacheKey] || 0);
+        restoreScrollFor(cacheKey);
         return;
       }
     }
@@ -2125,7 +2189,7 @@ export function App() {
         return next;
       });
       if (!cursor) {
-        restoreOrResetScroll(timelineRef, scrollCacheRef.current[cacheKey] || 0);
+        restoreScrollFor(cacheKey);
       }
     } else {
       const error = feedResult.reason;
@@ -2760,6 +2824,8 @@ export function App() {
     threadCacheRef.current = {};
     threadBranchCacheRef.current = {};
     scrollCacheRef.current = {};
+    scrollAnchorCacheRef.current = {};
+    setPendingScrollAnchor(null);
     setDevMetrics((current) => ({ ...current, cacheHits: 0 }));
     setAuthState({ status: "signed-out", session: null });
   }
@@ -3204,6 +3270,12 @@ export function App() {
         : route.kind === "surface" && (route.name === "bookmarks" || route.name === "lists")
           ? `surface:${route.name}`
           : "";
+  // The content anchor pending for the current surface, if any (set by
+  // restoreScrollFor). VirtualPostList consumes it and clears it via
+  // onAnchorRestored once the anchored row has rendered + measured.
+  const activeScrollAnchor =
+    pendingScrollAnchor && pendingScrollAnchor.key === activeScrollKey ? pendingScrollAnchor.anchor : null;
+  const activeScrollFallback = activeScrollKey ? scrollCacheRef.current[activeScrollKey] || 0 : 0;
   const renderedRows =
     route.kind === "post"
       ? countThreadRows(thread.node)
@@ -3283,10 +3355,26 @@ export function App() {
         return;
       }
       scrollCacheRef.current[activeScrollKey] = offset;
+      // Capture the content anchor (top-visible post URI + intra-row offset) so
+      // a later restore can scroll *content into view* instead of re-asserting a
+      // raw pixel offset. Raw pixels fight the virtualization measurement shrink
+      // (issue #8): re-asserting the stale offset re-mounts rows at the too-tall
+      // default estimate, they measure shorter, totalHeight shrinks, and scrollTop
+      // clamps back — so the restore never converges. The anchor is only captured
+      // once the timeline has rendered post rows (readTopVisibleAnchor scans
+      // [data-post-uri]); before that it returns null and the pixel cache stays
+      // the fallback.
+      const anchor = readTopVisibleAnchor(timeline);
+      if (anchor) {
+        scrollAnchorCacheRef.current[activeScrollKey] = anchor;
+      } else {
+        delete scrollAnchorCacheRef.current[activeScrollKey];
+      }
     };
     const persistScroll = () => {
       rememberScroll();
       writeTimelineScrollCache(scrollCacheRef.current);
+      writeTimelineAnchorCache(scrollAnchorCacheRef.current);
     };
     // On mobile the document scrolls (timeline stays at 0), so also listen on
     // window; on desktop the timeline element is the scroller.
@@ -3302,11 +3390,23 @@ export function App() {
       // element has detached, and a detached element reports scrollTop 0, which
       // would clobber the saved offset and break restoration on return.
       writeTimelineScrollCache(scrollCacheRef.current);
+      writeTimelineAnchorCache(scrollAnchorCacheRef.current);
     };
   }, [activeScrollKey]);
 
   useEffect(() => {
     if (!activeScrollKey.startsWith("surface:")) {
+      return undefined;
+    }
+
+    // Prefer the content-anchored restore (issue #8): the pixel restore re-asserts
+    // a fixed offset that fights the virtualization measurement shrink on async
+    // surfaces. When a saved anchor exists, hand it to VirtualPostList, whose
+    // anchored-restore effect re-runs as rows mount/measure and converges. Skip
+    // the pixel restore + MutationObserver entirely in that case.
+    const savedAnchor = scrollAnchorCacheRef.current[activeScrollKey];
+    if (savedAnchor && (scrollCacheRef.current[activeScrollKey] || 0) > 0) {
+      restoreScrollFor(activeScrollKey);
       return undefined;
     }
 
@@ -3760,6 +3860,9 @@ export function App() {
             onOpenProfile={openProfile}
             localLists={localLists}
             onToggleListPost={togglePostInLocalList}
+            scrollAnchor={activeScrollAnchor}
+            scrollFallbackTarget={activeScrollFallback}
+            onAnchorRestored={clearPendingAnchor}
           />
         ) : route.kind === "surface" ? (
           <SurfaceView
@@ -3912,6 +4015,9 @@ export function App() {
                     localLists={localLists}
                     onToggleListPost={togglePostInLocalList}
                     onRenderedRowsChange={setVirtualRenderedRows}
+                    scrollAnchor={activeScrollAnchor}
+                    scrollFallbackTarget={activeScrollFallback}
+                    onAnchorRestored={clearPendingAnchor}
                   >
                     {feedState.cursor && (
                       <AutoLoadMoreButton label="Load more profile posts" onLoadMore={loadMore} error={feedState.loadMoreError} />
@@ -3943,6 +4049,9 @@ export function App() {
                 localLists={localLists}
                 onToggleListPost={togglePostInLocalList}
                 onRenderedRowsChange={setVirtualRenderedRows}
+                scrollAnchor={activeScrollAnchor}
+                scrollFallbackTarget={activeScrollFallback}
+                onAnchorRestored={clearPendingAnchor}
               >
                 {feedState.cursor && (
                   <AutoLoadMoreButton label="Load more feed posts" onLoadMore={loadMore} error={feedState.loadMoreError} />
@@ -4037,6 +4146,9 @@ function VirtualPostList({
   onOpenProfile,
   onToggleListPost,
   onRenderedRowsChange,
+  scrollAnchor,
+  scrollFallbackTarget = 0,
+  onAnchorRestored,
 }: {
   children?: React.ReactNode;
   containerRef: RefObject<HTMLDivElement | null>;
@@ -4050,6 +4162,9 @@ function VirtualPostList({
   onOpenProfile: (profile: Profile) => void;
   onToggleListPost: (listId: string, post: FeedPost) => void;
   onRenderedRowsChange: (count: number) => void;
+  scrollAnchor?: ScrollAnchor | null;
+  scrollFallbackTarget?: number;
+  onAnchorRestored?: () => void;
 }) {
   // When the NSFW preference is hidden, drop adult/graphic-labeled posts from
   // the feed entirely (not just gate their media), so they never appear.
@@ -4151,6 +4266,98 @@ function VirtualPostList({
   useEffect(() => {
     onRenderedRowsChange(visibleItems.length);
   }, [onRenderedRowsChange, visibleItems.length]);
+
+  // Content-anchored scroll restore (issue #8). The raw-pixel restore re-asserts
+  // a fixed offset that fights the virtualization measurement shrink: each
+  // re-assertion re-mounts rows near the target at the too-tall default estimate,
+  // they measure shorter, totalHeight shrinks, and scrollTop clamps back — so it
+  // never converges. Instead, anchor to the saved top-visible post URI: once that
+  // row is present and measured, target = its live row offset + intra-row offset,
+  // clamped against the live totalHeight. The target is recomputed from the live
+  // measured layout every frame (via refs, so the loop always sees the latest
+  // measurements), so the restore converges to the real content position rather
+  // than fighting it. Once the offset holds at the (recomputed) target for a few
+  // frames, or the frame budget runs out, clear the pending anchor.
+  const anchoredRowsRef = useRef(rows);
+  anchoredRowsRef.current = rows;
+  const anchoredRowOffsetsRef = useRef(rowOffsets);
+  anchoredRowOffsetsRef.current = rowOffsets;
+  const anchoredTotalHeightRef = useRef(totalHeight);
+  anchoredTotalHeightRef.current = totalHeight;
+  const anchoredViewportHeightRef = useRef(viewportHeight);
+  anchoredViewportHeightRef.current = viewportHeight;
+  const anchoredRestoreTokenRef = useRef(0);
+
+  useEffect(() => {
+    if (!scrollAnchor) {
+      return undefined;
+    }
+    const container = containerRef.current;
+    if (!container) {
+      return undefined;
+    }
+    const token = ++anchoredRestoreTokenRef.current;
+    let frames = 0;
+    let stable = 0;
+    let cancelled = false;
+    const apply = () => {
+      if (cancelled || token !== anchoredRestoreTokenRef.current) {
+        return;
+      }
+      const liveRows = anchoredRowsRef.current;
+      const liveOffsets = anchoredRowOffsetsRef.current;
+      const liveTotal = anchoredTotalHeightRef.current;
+      const liveViewport = anchoredViewportHeightRef.current;
+      const anchorIndex = liveRows.findIndex((row) => feedRowPost(row).uri === scrollAnchor.uri);
+      frames += 1;
+      if (anchorIndex < 0) {
+        // Anchor post not in the loaded rows yet (async surface load). Wait for
+        // rows to include it — the effect restarts with a fresh budget whenever
+        // rows change (rows is a dep), so a slow load resumes automatically. If
+        // rows exist but the anchor is genuinely gone (content changed), fall
+        // back to the saved pixel offset so the restore still happens.
+        if (liveRows.length > 0 && frames > 4) {
+          const fallback = clampScrollTarget(scrollFallbackTarget, liveTotal, liveViewport);
+          if (Math.abs(readScrollOffset(container) - fallback) > 1) {
+            scrollOffsetTo(container, fallback);
+            stable = 0;
+          } else {
+            stable += 1;
+          }
+          if (stable >= SCROLL_ANCHOR_STABLE_FRAMES || frames >= SCROLL_ANCHOR_MAX_FRAMES) {
+            releaseScrollRestoreGuard();
+            onAnchorRestored?.();
+            return;
+          }
+        }
+        // Rows still empty: keep waiting within a generous cap, but do NOT clear
+        // the anchor on cap exhaustion — the rows-change restart (or unmount)
+        // owns that. The cap only bounds the rAF loop itself.
+        if (frames < 300) {
+          requestAnimationFrame(apply);
+        }
+        return;
+      }
+      const target = clampScrollTarget((liveOffsets[anchorIndex] ?? 0) + scrollAnchor.intra, liveTotal, liveViewport);
+      armScrollRestore(target);
+      if (Math.abs(readScrollOffset(container) - target) > 1) {
+        scrollOffsetTo(container, target);
+        stable = 0;
+      } else {
+        stable += 1;
+      }
+      if (frames >= SCROLL_ANCHOR_MAX_FRAMES || stable >= SCROLL_ANCHOR_STABLE_FRAMES) {
+        releaseScrollRestoreGuard();
+        onAnchorRestored?.();
+        return;
+      }
+      requestAnimationFrame(apply);
+    };
+    requestAnimationFrame(apply);
+    return () => {
+      cancelled = true;
+    };
+  }, [scrollAnchor, scrollFallbackTarget, onAnchorRestored, rows]);
 
   return (
     <div
@@ -4327,7 +4534,7 @@ function MeasuredPostRow({
   }, [post.uri, onMeasured]);
 
   return (
-    <div className="virtual-row" ref={rowRef}>
+    <div className="virtual-row" data-post-uri={post.uri} ref={rowRef}>
       {/* Per-row boundary (H1): one malformed record degrades a single row to a
           compact fallback instead of unmounting the whole feed. The boundary
           adds no wrapper DOM in the happy path, so row measurement is unchanged. */}
@@ -7943,6 +8150,9 @@ function BookmarksView({
   onOpenPost,
   onOpenProfile,
   onToggleListPost,
+  scrollAnchor,
+  scrollFallbackTarget,
+  onAnchorRestored,
 }: {
   containerRef: RefObject<HTMLDivElement | null>;
   currentDid?: string;
@@ -7952,6 +8162,9 @@ function BookmarksView({
   onOpenPost: (post: FeedPost) => void;
   onOpenProfile: (profile: Profile) => void;
   onToggleListPost: (listId: string, post: FeedPost) => void;
+  scrollAnchor?: ScrollAnchor | null;
+  scrollFallbackTarget?: number;
+  onAnchorRestored?: () => void;
 }) {
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [items, setItems] = useState<FeedItem[]>([]);
@@ -8057,6 +8270,9 @@ function BookmarksView({
           onOpenProfile={onOpenProfile}
           onToggleListPost={onToggleListPost}
           onRenderedRowsChange={() => undefined}
+          scrollAnchor={scrollAnchor}
+          scrollFallbackTarget={scrollFallbackTarget}
+          onAnchorRestored={onAnchorRestored}
         >
           {cursor && <AutoLoadMoreButton label="Load more bookmarks" onLoadMore={loadMore} error={loadMoreError} />}
           {!cursor && !loadMoreError && <EndOfFeedCard />}

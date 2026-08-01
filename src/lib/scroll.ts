@@ -190,6 +190,60 @@ export function restoreOrResetScroll(timelineRef: { readonly current: HTMLElemen
   }
 }
 
+// Content-anchor for scroll restoration. Restoration by raw pixel offset fights
+// the virtualization measurement compensation (issue #8): re-asserting a stale
+// pixel re-mounts rows near it at the too-tall default estimate, they measure
+// shorter, totalHeight shrinks, and the browser clamps scrollTop back — so the
+// restore never converges. Anchoring to the top-visible post URI (+ intra-row
+// offset) instead lets the restored position derive from the *measured* row
+// layout, which converges once rows settle.
+export type ScrollAnchor = { uri: string; intra: number };
+
+// Find the post row currently at the top edge of the scroll container. This is
+// geometry-only (no scroll arithmetic), so it works whether the desktop
+// `.timeline` element is the scroller or the document/body scrolls on mobile:
+// the "top-visible" row is the first mounted `[data-post-uri]` row whose bottom
+// edge crosses the container's on-screen top edge, and `intra` is how far the
+// container's top edge has scrolled into that row (0 = the row starts exactly at
+// the edge). The intra offset is viewport-local, so it is identical in both
+// breakpoints; the restored scroll target derives from it against the live
+// measured row layout.
+export function readTopVisibleAnchor(container: HTMLElement | null): ScrollAnchor | null {
+  if (!container) {
+    return null;
+  }
+  const containerTop = container.getBoundingClientRect().top;
+  for (const row of container.querySelectorAll<HTMLElement>("[data-post-uri]")) {
+    const rect = row.getBoundingClientRect();
+    if (rect.height <= 0 || rect.bottom <= containerTop) {
+      // Hidden (display:none) or fully above the container's top edge.
+      continue;
+    }
+    const uri = row.getAttribute("data-post-uri");
+    if (uri) {
+      return { uri, intra: Math.max(0, containerTop - rect.top) };
+    }
+  }
+  return null;
+}
+
+// Clamp a desired content position to the live scrollable range of a virtualized
+// list. Restoration must never target past the bottom of the measured content:
+// the browser would clamp it anyway, and the measurement compensation would then
+// fight the re-assertion (the root cause of #8).
+export function clampScrollTarget(desired: number, totalHeight: number, viewportHeight: number): number {
+  return Math.max(0, Math.min(desired, Math.max(0, totalHeight - viewportHeight)));
+}
+
+// Release the save-suppression guard held by a running restore. The anchored
+// restore loop (in VirtualPostList) keeps suppression armed while it drives the
+// container so transient near-zero offsets during the drive don't clobber the
+// saved anchor; once the loop settles (or gives up), it calls this to let real
+// user scrolls be saved again.
+export function releaseScrollRestoreGuard() {
+  scrollRestoreGuard = null;
+}
+
 // Test-only: reset the module-level restore state so each test starts clean.
 export function __resetScrollRestoreStateForTests() {
   scrollRestoreGuard = null;
