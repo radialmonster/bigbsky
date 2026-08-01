@@ -1227,13 +1227,13 @@ with the operator's normal Chrome windows:
   --remote-debugging-port=9222 `
   --user-data-dir=$env:TEMP\chrome-debug-profile `
   --auto-open-devtools-for-tabs `
-  http://127.0.0.1:5174/
+  http://127.0.0.1:5173/
 ```
 
 Verify the CDP endpoint is up: `http://127.0.0.1:9222/json/version` returns JSON.
 (`--auto-open-devtools-for-tabs` creates an extra `devtools://` page target; the
 helper below filters those out and selects the real `http://` app tab, preferring
-the one on `127.0.0.1:5174`.)
+the one on `127.0.0.1:5173`.)
 
 ### Helper: `scripts/cdp.mjs`
 
@@ -1264,7 +1264,7 @@ OAuth only works on the deployed origin (`https://bigbsky.com`), not the
 localhost Vite preview — see the OAuth-testing memory. So any feature gated on
 sign-in (Block/unblock, Like/Follow writes, authed viewer-state, the composer
 writes) must be verified against the live site after the Cloudflare build, not
-against `localhost:5174`.
+against `localhost:5173`.
 
 Workflow:
 
