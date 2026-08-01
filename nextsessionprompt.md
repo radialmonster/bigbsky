@@ -8,6 +8,12 @@ ISSUE CLAIMING (always):
 - Remove the `claimed` label when you finish (task done/closed, or you stop working on it): `gh issue edit <N> --repo radialmonster/bigbsky --remove-label claimed`
 - Claim one issue at a time; if you delegate to sub-agents, each sub-agent must claim its issue the same way so parallel sessions never collide.
 
+SHIPPING (when an issue's fix is verified):
+- Do NOT open a PR. Commit to main and push directly — that's the deploy path.
+- Pushing to main is what deploys: Cloudflare Pages auto-builds/deploys from the main branch. So after `git push origin main`, the fix goes live on the deployed origin automatically.
+- Finish flow per issue: remove the `claimed` label, close the issue (`gh issue close <N> --repo radialmonster/bigbsky`), then commit + push to main.
+- Verify a build/test/`check` gate is green before pushing (never push a known-red state; a broken main auto-deploys a broken site).
+
 WHAT TO WORK ON THIS SESSION (forward-looking; use your judgement, keep rotating areas, batch small fixes):
 - Pick from the open GitHub issues (currently #1–#22). Skip any that already carry the `claimed` label. Highlights:
   - Bookmarks scroll-restore (#8) — hard; anchor to content (top-visible post URI), not raw pixel offset. Full root-cause + CDP repro in the issue. A time-budget widening was tried and reverted; don't re-try that.
@@ -120,7 +126,9 @@ at this session end update nextsessionprompt.md with any corrections about how t
 
 ## General session-end rule: commit and push (shared baseline)
 
-This is the shared baseline for all projects; where the project-specific instructions above are more detailed (branch/PR workflow, multi-repo, worktree isolation, GitHub-native issue tracking), follow those specifics on top of this.
+This is the shared baseline for all projects; where the project-specific instructions above are more detailed (branch/PR workflow, multi-repo, worktree isolation, GitHub-native issue tracking, deploy path), follow those specifics on top of this.
+
+**BigBsky override (project-specific):** there is NO PR/branch workflow — commit to `main` and push directly. Pushing to `main` is what deploys: Cloudflare Pages auto-builds/deploys from `main`, so a pushed fix goes live automatically. Because of that, pushing is the expected/required end of every completed task (not just "when safe"), and the verification gate MUST be green first — a red push auto-deploys a broken site. This override applies to the "only when safe and expected" language in step 4 below: here it is always expected (the deploy), so treat step 4 as "push the green commit to main; only hold if the gate is red or secrets are involved."
 
 At the end of every session, before wrapping up:
 
