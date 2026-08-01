@@ -12,6 +12,7 @@ import {
 import { safeLocalStorageGet, safeLocalStorageRemove, safeLocalStorageSet } from "../../lib/storage";
 import { displayName } from "../../sources";
 import { Avatar } from "../common/Avatar";
+import { useDismissMenu } from "../common/useDismissMenu";
 
 // A post reference (uri+cid) used as the reply `root`/`parent` and for opening
 // thread views; shared with App (replyRootRefForPost + thread components).
@@ -173,29 +174,10 @@ function PostLanguagePicker({
   const [showAll, setShowAll] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    function onDocPointer(event: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setOpen(false);
-        setShowAll(false);
-      }
-    }
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-        setShowAll(false);
-      }
-    }
-    document.addEventListener("mousedown", onDocPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDocPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  useDismissMenu(rootRef, open, () => {
+    setOpen(false);
+    setShowAll(false);
+  });
 
   // Recent languages to show first: the current value, then history, padded with
   // English so the short list is never empty.
@@ -328,27 +310,7 @@ function EmojiPicker({ onSelect, disabled }: { onSelect: (emoji: string) => void
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    function onDocPointer(event: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onDocPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDocPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  useDismissMenu(rootRef, open, () => setOpen(false));
 
   function choose(emoji: string) {
     onSelect(emoji);

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Search } from "lucide-react";
+import { useDismissMenu } from "../common/useDismissMenu";
 
 export type HomeOption = { id: string; label: string; needsAuth: boolean; group: "Following" | "Feeds" | "Lists" };
 
@@ -46,19 +47,9 @@ export function HomeSourcePicker({
       .filter((entry) => entry.items.length > 0);
   }, [filtered]);
 
-  // Close on outside click.
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const onPointerDown = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [open]);
+  // Close on outside click (Escape is handled inline in onKeyDown, which also
+  // clears the filter query).
+  useDismissMenu(containerRef, open, () => setOpen(false));
 
   // When opening (or as the filter changes), focus the input and point the
   // active highlight at the current selection, clamping into range.
