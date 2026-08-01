@@ -8,7 +8,7 @@
 // persists across tests within this file.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, getActorFeeds, getActorLists, getRecordEmbed, resolveHandle } from "./api";
+import { ApiError, getActorFeeds, getActorLists, getRecordEmbed, isRateLimit, isUpstreamFailure, rateLimitMessage, resolveHandle } from "./api";
 
 const NOW = new Date("2026-06-27T12:00:00.000Z").getTime();
 const TTL_MS = 5 * 60 * 1000;
@@ -249,5 +249,28 @@ describe("paged profile surface readers", () => {
     expect(url.pathname).toMatch(/app\.bsky\.graph\.getLists$/);
     expect(url.searchParams.get("cursor")).toBe("cursor-2");
     expect(url.searchParams.get("limit")).toBe("50");
+  });
+});
+
+describe("error classification helpers", () => {
+  it("isRateLimit matches a 429 ApiError and a 429-shaped XRPCError", () => {
+    expect(isRateLimit(new ApiError(429, "Too Many Requests"))).toBe(true);
+    expect(isRateLimit({ status: 429 })).toBe(true);
+    expect(isRateLimit(new ApiError(500, "Internal"))).toBe(false);
+    expect(isRateLimit(new Error("boom"))).toBe(false);
+  });
+
+  it("isUpstreamFailure matches 502/503/504 and upstream-failure message text", () => {
+    expect(isUpstreamFailure(new ApiError(503, "Service Unavailable"))).toBe(true);
+    expect(isUpstreamFailure({ status: 504 })).toBe(true);
+    expect(isUpstreamFailure(new Error("feed unavailable"))).toBe(true);
+    expect(isUpstreamFailure(new ApiError(429, "Too Many Requests"))).toBe(false);
+  });
+
+  it("rateLimitMessage picks a rate-limit copy for 429, an upstream copy for 5xx feeds, and the raw error otherwise", () => {
+    expect(rateLimitMessage(new ApiError(429, "Too Many Requests"))).toContain("rate limit");
+    expect(rateLimitMessage({ status: 503 })).toContain("provider isn't responding");
+    expect(rateLimitMessage(new Error("custom failure"))).toBe("custom failure");
+    expect(rateLimitMessage({ status: 401 })).toBe("Something went wrong loading this.");
   });
 });

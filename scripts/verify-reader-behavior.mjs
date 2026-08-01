@@ -98,14 +98,17 @@ requirePattern(/function BlueskyListCard\([\s\S]*useEffect\(\(\) => \{[\s\S]*set
 if (!/export function getListFeed\(/.test(api) || !/export function getList\(/.test(api) || !/export function isListUri\(/.test(api)) {
   failures.push("api should expose public getListFeed/getList/isListUri helpers");
 }
-requirePattern(/function ThreadEngagementPanel\([\s\S]*kind === "likes"[\s\S]*getLikes\(uri[\s\S]*getRepostedBy\(uri[\s\S]*getQuotes\(uri/s, "the thread engagement panel should load likes, reposts, and quotes on demand");
 requirePattern(/setEngagement\(\(current\) => \(current === stat\.key \? null : stat\.key\)\)/, "thread reposts/quotes/likes counts should toggle an on-demand engagement panel");
 if (!/export function getLikes\(/.test(api) || !/export function getRepostedBy\(/.test(api) || !/export function getQuotes\(/.test(api)) {
   failures.push("api should expose public getLikes/getRepostedBy/getQuotes readers");
 }
-requirePattern(/function ThreadEngagementPanel\([\s\S]*const loadPage = useCallback\([\s\S]*response\.likes\.map\(\(like\) => like\.actor\)[\s\S]*response\.repostedBy[\s\S]*response\.posts[\s\S]*response\.cursor/s, "the engagement panel should paginate likes, reposts, and quotes via the response cursor");
-requirePattern(/const loadMore = useCallback\([\s\S]*loadPage\(state\.cursor, controller\.signal\)[\s\S]*setState\(\(current\) => \([\s\S]*\bcursor,/s, "the engagement panel should append later pages and advance the cursor");
-requirePattern(/state\.status === "ready" && state\.cursor && \(\s*<AutoLoadMoreButton\s+label=\{`Load more/, "the engagement panel should offer load-more while a cursor remains");
+// The thread engagement panel (ThreadEngagementPanel) moved to
+// src/features/post/ThreadEngagementPanel.tsx (slice 14 of #18) with a
+// behavioral RTL suite covering on-demand likes/reposts/quotes loading, empty
+// states, rate-limit surfacing, load-more pagination + error retention, profile
+// navigation, and close (ThreadEngagementPanel.test.tsx); the old App.tsx
+// definition / loadMore regexes (on-demand loadPage, cursor pagination, and the
+// load-more button) were retired per #19.
 requirePattern(/<ErrorBoundary label=\{`post-row:\$\{post\.uri\}`\} fallback=\{\(\) => <PostRowFallback \/>\}>\s*\{children\}\s*<\/ErrorBoundary>/, "each virtualized row should be wrapped in a per-row error boundary so one bad record degrades a single row");
 if (!/import\.meta\.env\.PROD[\s\S]*import\.meta\.env\.BASE_URL\}sw\.js/.test(main)) {
   failures.push("service-worker registration should be gated behind PROD and derive its path from BASE_URL");

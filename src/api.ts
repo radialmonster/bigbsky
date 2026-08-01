@@ -10,6 +10,56 @@ export class ApiError extends Error {
   }
 }
 
+export function isRateLimit(error: unknown) {
+  // getJson throws our ApiError; the authed atproto agent (notifications,
+  // bookmarks, writes) throws an XRPCError that also carries a numeric `status`.
+  // Match both so a 429 reads as a rate limit regardless of the call path.
+  if (error instanceof ApiError) {
+    return error.status === 429;
+  }
+  return (error as { status?: number } | null)?.status === 429;
+}
+
+export function isNetworkError(error: unknown) {
+  // fetch() rejects with a TypeError ("Failed to fetch") on network/CORS failures,
+  // which also covers rate-limited responses returned without CORS headers. The
+  // atproto agent rewraps that rejection, so also match the message text (its
+  // XRPCError is not a TypeError instance).
+  if (error instanceof TypeError) {
+    return true;
+  }
+  const message = (error instanceof Error ? error.message : "").toLowerCase();
+  return message.includes("failed to fetch") || message.includes("networkerror") || message.includes("network request failed");
+}
+
+// A feed generator (or other upstream service) being down, as opposed to our
+// app or the viewer's network. The AppView returns 502/503/504 UpstreamFailure
+// with "feed unavailable"; the authed agent surfaces the same message text.
+export function isUpstreamFailure(error: unknown) {
+  const status = error instanceof ApiError ? error.status : (error as { status?: number } | null)?.status;
+  const message = (error instanceof Error ? error.message : "").toLowerCase();
+  return (
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    message.includes("feed unavailable") ||
+    message.includes("upstreamfailure")
+  );
+}
+
+export function rateLimitMessage(error: unknown) {
+  if (isRateLimit(error)) {
+    return "Bluesky rate limit reached. Pause a moment, then try again.";
+  }
+  if (isUpstreamFailure(error)) {
+    return "This feed's provider isn't responding right now — the feed may be down or removed. Try again later, or pick another feed.";
+  }
+  if (isNetworkError(error)) {
+    return "Network request failed — Bluesky may be rate-limiting or briefly unreachable. Try again.";
+  }
+  return error instanceof Error ? error.message : "Something went wrong loading this.";
+}
+
 export type Profile = {
   did: string;
   handle: string;
