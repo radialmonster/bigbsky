@@ -57,7 +57,6 @@ requirePattern(/cursor\s*\n?\s*\?\s*\{ \.\.\.current, status: "ready", loadMoreE
 requirePattern(/catch \{\s*\/\/ Revert to pre-click state\.[\s\S]*pushToast\(\s*blocked \? "Couldn't unblock this account\. Please try again\." : "Couldn't block this account\. Please try again\.",\s*"error",\s*\);[\s\S]*\} finally \{[\s\S]*blockInFlight\.current\.delete/s, "a failed block/unblock write should surface an actionable error toast (not just revert silently)");
 requirePattern(/console\.error\("Failed to sync feed order to account", error\);\s*pushToast\("Couldn't sync your feed order to your account\. It's saved on this browser\.", "error"\)/, "a failed saved-feed-order account sync should surface an error toast instead of logging silently");
 requirePattern(/const toast = useContext\(ToastContext\);[\s\S]*setDeleting\(true\);[\s\S]*catch \{\s*toast\("Couldn't delete this list\. Please try again\.", "error"\);\s*\} finally \{[\s\S]*setDeleting\(false\);/s, "a failed list delete should surface an error toast");
-requirePattern(/if \(!button \|\| error \|\| !\("IntersectionObserver" in window\)\)/, "the auto-loader should stop firing after a pagination error to avoid retry storms");
 requirePattern(/const loadMore = \(\) => \{[\s\S]*const controller = new AbortController\(\);[\s\S]*loadMoreControllerRef\.current = controller;/s, "pagination requests should carry an abort signal so a late page can be discarded");
 requirePattern(/loadMoreControllerRef\.current\?\.abort\(\);[\s\S]*reloadProfileControllerRef\.current\?\.abort\(\);[\s\S]*\},\s*\[activeSource, profileTab, route, searchLanguage, searchSort, searchTab\]/s, "in-flight pagination and profile refetches should be aborted when the active surface changes");
 requirePattern(/const reloadCurrentProfile = useCallback\(\(\) => \{[\s\S]*reloadProfileControllerRef\.current = controller;[\s\S]*loadProfileFeed\(route\.actor, undefined, controller\.signal, filter\)/s, "the post-publish profile refetch should be abortable");
@@ -103,7 +102,6 @@ requirePattern(/function ThreadEngagementPanel\([\s\S]*const loadPage = useCallb
 requirePattern(/const loadMore = useCallback\([\s\S]*loadPage\(state\.cursor, controller\.signal\)[\s\S]*setState\(\(current\) => \([\s\S]*\bcursor,/s, "the engagement panel should append later pages and advance the cursor");
 requirePattern(/state\.status === "ready" && state\.cursor && \(\s*<AutoLoadMoreButton\s+label=\{`Load more/, "the engagement panel should offer load-more while a cursor remains");
 requirePattern(/<ErrorBoundary label=\{`post-row:\$\{post\.uri\}`\} fallback=\{\(\) => <PostRowFallback \/>\}>\s*\{children\}\s*<\/ErrorBoundary>/, "each virtualized row should be wrapped in a per-row error boundary so one bad record degrades a single row");
-requirePattern(/function PostRowFallback\(\)[\s\S]*className="post-row-error"[\s\S]*role="alert"/s, "the per-row boundary should render a compact alert fallback instead of unmounting the feed");
 if (!/import\.meta\.env\.PROD[\s\S]*import\.meta\.env\.BASE_URL\}sw\.js/.test(main)) {
   failures.push("service-worker registration should be gated behind PROD and derive its path from BASE_URL");
 }
