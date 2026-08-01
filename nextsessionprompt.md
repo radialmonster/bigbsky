@@ -1,17 +1,17 @@
 
 
-read todo.md and proceed to work on a task and implement.  add   any follow ups to todo.md as new tasks any issue you see that can be improved or fixed also.  if your task is fully complete, you may remove it from todo completely. make a commit to main when done.  you have browser access and may have oauth already.  kill any running servers you started for testing or verification.
+read the open GitHub issues (gh issue list --repo radialmonster/bigbsky) and proceed to work on a task and implement.  add any follow ups as new GitHub issues for any issue you see that can be improved or fixed also.  if your task is fully complete, you may close its issue. make a commit to main when done.  you have browser access and may have oauth already.  kill any running servers you started for testing or verification.
 
 WHAT TO WORK ON THIS SESSION (forward-looking; use your judgement, keep rotating areas, batch small fixes):
-- Concrete in-repo items (see todo.md for full details):
-  - Bookmarks scroll-restore — hard; anchor to content (top-visible post URI), not raw pixel offset. Full root-cause + CDP repro in todo.md ("Integrate scroll restoration with the VirtualPostList measurement pass"). A time-budget widening was tried and reverted; don't re-try that.
-  - Load-more pagination for the remaining paged surfaces: profile Feeds/Lists tabs (getActorFeeds/getActorLists) + the in-app list timeline (getListFeed). Cursors exist. The engagement panels (getLikes/getRepostedBy/getQuotes) got this pattern on 2026-08-01 — mirror it (append-and-advance, single-in-flight, AutoLoadMoreButton + loadMoreError, abort on uri/kind change). Mind the nested-loader pitfall (tab-level loader vs. the feed's own AutoLoadMoreButton).
-  - Search results / standalone-thread / quoted-post NSFW filtering parity (feed/profile timelines already drop isAdultPost rows when the NSFW toggle is hidden; these surfaces only gate media behind the reveal warning today).
-  - Continue the App.tsx decomposition (component/CSS co-location into src/features/**; cache layer with the loaders). All pure `read*`/`safe*`/scroll/feed-order helpers are already extracted to src/lib with vitest suites — the remaining work is components + the mega-stylesheet.
-  - Reuse the shared toast primitive (ToastContext + ToastHost in src/App.tsx) for other console.error-only catch paths (e.g. toggleBlock, list ops) instead of adding per-button error props.
-- NEW this session (2026-08-01) — verify the shipped hardening on the deployed origin once Cloudflare rebuilds: (a) the new Content-Security-Policy header from public/_headers is actually served and the live site still works (app boots, feed/trending render, engagement panels load, no CSP violations in the console — I validated locally by serving the production bundle under the exact CSP, but the live origin is the real gate); (b) the service worker now derives paths from its registration scope and registration is gated behind PROD (dev no longer registers one — if a dev server seems to have no SW, that's expected now); (c) the boot failure-detector now lives in public/boot-error.js (external, defer) instead of an inline script.
+- Pick from the open GitHub issues (currently #1–#22). Highlights:
+  - Bookmarks scroll-restore (#8) — hard; anchor to content (top-visible post URI), not raw pixel offset. Full root-cause + CDP repro in the issue. A time-budget widening was tried and reverted; don't re-try that.
+  - App.tsx decomposition (#18) — component/CSS co-location into src/features/**; cache layer with the loaders. All pure `read*`/`safe*`/scroll/feed-order helpers are already extracted to src/lib with vitest suites — the remaining work is components + the mega-stylesheet.
+  - Replace regex source-text tests (#19), CSS dead-selector sweep (#20), and the CSS-token investigation (#7) are good low-risk batching with the decomposition.
+  - Composer GIFs/quote/video (#10), saved-feed-order cross-client confirm (#16), report/security-posture doc (#15), and the oEmbed/Firehose/Service-Auth scoping writeups (#11/#12/#14) are investigate-and-decide items.
+  - #5/#6/#22 are open-ended improvement/triage items.
+- NEW on the deployed origin once Cloudflare rebuilds — verify the shipped hardening: (a) the Content-Security-Policy header from public/_headers is actually served and the live site still works (app boots, feed/trending render, engagement panels load, no CSP violations in the console — validated locally by serving the production bundle under the exact CSP, but the live origin is the real gate); (b) the service worker derives paths from its registration scope and registration is gated behind PROD (dev no longer registers one — expected now); (c) the boot failure-detector lives in public/boot-error.js (external, defer) instead of an inline script.
 - Anything on the deployed origin that needs auth (OAuth writes, moderation, composer) still requires commit + push + operator sign-in; never promise local auth verification.
-- Leave the worktree with no unrelated revert; keep changes scoped; add a follow-up item to todo.md for anything you notice but defer.
+- Leave the worktree with no unrelated revert; keep changes scoped; file a follow-up GitHub issue for anything you notice but defer.
 
 
 
@@ -28,6 +28,7 @@ Required startup reads:
 1. Get-Content -LiteralPath docs\PLAN.md
 2. git status --short --branch
 3. rg --files
+4. gh issue list --repo radialmonster/bigbsky --state open
 
 
 
@@ -63,7 +64,7 @@ Do not diagnose this as a repo path, PowerShell, npm, or git problem unless Powe
 
 After reading:
 
-\- Use todo.md and docs\PLAN.md as the source of truth for what has been done and what is next; there is no separate memory.md file.
+\- Use the open GitHub issues and docs\PLAN.md as the source of truth for what has been done and what is next; there is no separate memory.md file.
 
 \- Inspect docs\PLAN.md for the next unfinished item that is feasible in the static SPA.
 
@@ -97,7 +98,7 @@ Implementation rules:
 
 Before finishing:
 
-\- Record the run in the project's tracking files (todo.md / docs\PLAN.md status lines) with what changed, what was verified, commit hash if one was created, whether push succeeded, current run time, and useful notes for the next run.
+\- Record the run in the project's tracking files (GitHub issues / docs\PLAN.md status lines) with what changed, what was verified, commit hash if one was created, whether push succeeded, current run time, and useful notes for the next run.
 
 \- Return a short summary with files changed, verification result, and commit/push status.
 
@@ -105,7 +106,7 @@ powershell can take some time to start so check again in 10 seconds. if it doesn
 
 
 
-If the session did not direct you what to work on, then check for open issues on github, or in todo.md or whatever tracking process this project uses and work on some issues.  If there are no open issues, then take this opportunity to perform a code review, pick a random function in our project and deep dive it to find bugs, issues, deduplication, simplification, enhance security, etc, and create an issue or task for each thing found to do that in a future session.
+If the session did not direct you what to work on, then check for open issues on github (gh issue list --repo radialmonster/bigbsky --state open) and work on some issues.  If there are no open issues, then take this opportunity to perform a code review, pick a random function in our project and deep dive it to find bugs, issues, deduplication, simplification, enhance security, etc, and create an issue for each thing found to do that in a future session.
 
 You are encouraged to delegate tasks to agents to work on individual tasks, this will save tokens on this main session. Your job would be to coordinate those agents, verify their work, you can also send their returned work out to another agent and instruct that agent to 'roast' and code review what the other agent did.  Your goal is to manage these tasks and keep this project moving forward.  Minimize (eliminate if possible) blockers requiring a human to answer a question or make a decision.  You are the ai coder, there will be no human ai coder to check anything behind you, you are encouraged to check yourself depending on what this particular project is about, for example by opening the site, spin up a dev server and check there. you can use Node to open chrome in debug mode and remote control it for example.  If during this session you do start a server or process or something, and it was just temporary, ensure you terminate that process at session end. ensure temporary working folders or files you created are removed. 
 
@@ -121,7 +122,7 @@ At the end of every session, before wrapping up:
 2. **Verify before committing.** Run this project's verification gate (its build/test/lint/`check` command) and only commit when it passes. Do not commit a known-red state.
 3. **Keep commits clean and scoped.** Use a concise message describing what and why ("fix:", "feat:", "docs:"). One logical unit per commit; don't bundle unrelated work. Never force-push, amend shared history, or skip hooks.
 4. **Push to GitHub only when it is safe and expected.** If this repo has an `origin` remote and the project normally shares work there, push the verified commit — but only when safe: no secrets staged, no force-push required, the branch isn't diverged in a way that would clobber others, and the work is at a coherent, complete checkpoint. If anything is ambiguous or risky, commit locally and say in your summary that you did not push and why.
-5. **Record the run.** Update the project's handoff file (todo.md / docs/PLAN.md status lines, docs/notes.md, automation memory, etc.) with what changed, what was verified, the commit hash, push status, and current run time. (Do not recreate memory.md — it was removed to save startup tokens; keep handoff notes in the project's existing tracking files.)
+5. **Record the run.** Update the project's handoff file (GitHub issues / docs/PLAN.md status lines, docs/notes.md, automation memory, etc.) with what changed, what was verified, the commit hash, push status, and current run time. (Do not recreate memory.md — it was removed to save startup tokens; keep handoff notes in the project's existing tracking files.)
 6. **Refresh nextsessionprompt.md** with any durable lesson and a forward-looking hint for the next session — not a changelog of what you did.
 7. **Clean up.** Terminate any servers, dev processes, or verification browsers you started, and remove temporary folders/files you created. Confirm with `git status` that no strays were left.
 

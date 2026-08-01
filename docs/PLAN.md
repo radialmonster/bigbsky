@@ -2,13 +2,16 @@
 
 ## TODO (open tasks)
 
-**Open work now lives in `todo.md` — the single source of truth.** This file
-keeps BigBsky's design context and the historical changelog of completed passes
-(below), plus the reference cautions on OAuth scope maintenance; it no longer
-tracks open tasks. See `todo.md` for the current list. (Reconciled 2026-07-02:
-the previously-open items here were either done — "User-sortable feed order" — or
+**Open work now lives in GitHub Issues on `radialmonster/bigbsky` (the single
+source of truth).** This file keeps BigBsky's design context and the historical
+changelog of completed passes (below), plus the reference cautions on OAuth
+scope maintenance; it no longer tracks open tasks. List: `gh issue list
+--repo radialmonster/bigbsky --state open`. (Reconciled 2026-07-02: the
+previously-open items here were either done — "User-sortable feed order" — or
 migrated to `todo.md` — the upstream-blocked "Consent UX", the 2026-06-10
-runtime-verify note, and the CSS dead-selector sweep.)
+runtime-verify note, and the CSS dead-selector sweep. **2026-08-01:** all open
+items were migrated from `todo.md` to GitHub issues; `todo.md` is now a pointer
+stub keeping only the working rules.)
 
 The scope-maintenance cautions below remain relevant reference material for any
 future authenticated AppView method.

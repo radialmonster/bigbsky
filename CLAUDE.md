@@ -1,12 +1,12 @@
 # Project Notes
 
-- `todo.md` contains the current list of tasks to be done and working rules for future sessions.
+- Open work is tracked as GitHub issues on `radialmonster/bigbsky` (list: `gh issue list --repo radialmonster/bigbsky --state open`). `todo.md` is now a pointer stub with only the working rules.
 - Before adding new CSS, first look for an existing component pattern, grouped selector, or reusable style in `src/styles.css`. Prefer reusing or modestly extending existing styles over adding near-duplicate rules; add new CSS only when the design need is genuinely distinct.
 
 ## Docs & references
 
 Local project docs:
-- `todo.md` — current tasks and working rules.
+- `todo.md` — pointer stub; open tasks live in GitHub issues, working rules only.
 - `docs/plan.md` — project plan.
 - `docs/cloudflare-pages-setup.md` — hosting/deploy setup.
 

@@ -1,3 +1,3 @@
 # Agent Notes
 
-- See `CLAUDE.md` for project notes and the pointer to `todo.md`.
+- See `CLAUDE.md` for project notes; open work is tracked as GitHub issues on `radialmonster/bigbsky`.
