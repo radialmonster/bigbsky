@@ -173,8 +173,8 @@ import { UnsupportedEmbedNotice } from "./features/post/UnsupportedEmbedNotice";
 import { useReplyGate } from "./features/post/useReplyGate";
 import { ThreadEngagementPanel } from "./features/post/ThreadEngagementPanel";
 import { ImageViewer, type ImageViewerImage, type ImageViewerState } from "./features/post/ImageViewer";
+import { useSharePost } from "./features/common/useSharePost";
 import { isSensitiveLabel, moderationLabelText, sensitiveMediaValues } from "./lib/moderation";
-import { useResetTimeout } from "./features/common/useResetTimeout";
 import { RecentPanel, type RecentItem } from "./features/rightRail/RecentPanel";
 import { FeedContextPanel, type EntityCache } from "./features/rightRail/FeedContextPanel";
 import { TrendingPanel } from "./features/rightRail/TrendingPanel";
@@ -5101,10 +5101,9 @@ function ThreadedPostCard({
   const onOpenTag = useContext(TagSearchContext);
   const likeCtx = useContext(LikeContext);
   const bookmarkCtx = useContext(BookmarkContext);
-  const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
-  const scheduleReset = useResetTimeout();
   const posts = [thread.root.post, ...thread.replies.map((item) => item.post)];
   const rootPost = thread.root.post;
+  const { shareState, handleShare } = useSharePost(rootPost, posts);
   const likeView = likeCtx?.getState(rootPost);
   const bookmarkView = bookmarkCtx?.getState(rootPost);
   const postTimeLabel = formatPostTime(postSortAt(rootPost));
@@ -5129,36 +5128,6 @@ function ThreadedPostCard({
   const liveLikeCount = likeCount - (rootPost.likeCount ?? 0) + (likeView ? likeView.count : rootPost.likeCount ?? 0);
   const hideThreadMarkers = canHideCombinedThreadMarkers(posts);
   const { showReplyLimited, handleReplyClick } = useReplyGate(rootPost, onReply);
-  const handleShare = async () => {
-    const url = postBskyUrl(rootPost);
-    const title = `${displayName(rootPost.author)} on Bluesky`;
-    const text = posts
-      .map((post) => post.record.text?.trim())
-      .filter(Boolean)
-      .join("\n\n");
-
-    try {
-      if (navigator.share) {
-        await navigator.share({ title, text: text || title, url });
-        setShareState("shared");
-      } else {
-        await navigator.clipboard?.writeText(url);
-        setShareState("copied");
-      }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        return;
-      }
-      try {
-        await navigator.clipboard?.writeText(url);
-        setShareState("copied");
-      } catch {
-        setShareState("error");
-      }
-    }
-
-    scheduleReset(() => setShareState("idle"), 1800);
-  };
 
   return (
     <article className="post-card thread-combined-card text-only">
@@ -5684,8 +5653,7 @@ function PostActionBar({
   const blockCtx = useContext(BlockContext);
   const blockView = blockCtx?.getState(post.author);
   const deletePostCtx = useContext(DeletePostContext);
-  const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
-  const scheduleReset = useResetTimeout();
+  const { shareState, handleShare } = useSharePost(post, [post]);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const moreMenuRef = useRef<HTMLDetailsElement | null>(null);
   const { showReplyLimited, handleReplyClick } = useReplyGate(post, onReply);
@@ -5717,34 +5685,6 @@ function PostActionBar({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [moreMenuOpen]);
-
-  const handleShare = async () => {
-    const url = postBskyUrl(post);
-    const title = `${displayName(post.author)} on Bluesky`;
-    const text = post.record.text?.trim() || "";
-
-    try {
-      if (navigator.share) {
-        await navigator.share({ title, text: text || title, url });
-        setShareState("shared");
-      } else {
-        await navigator.clipboard?.writeText(url);
-        setShareState("copied");
-      }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        return;
-      }
-      try {
-        await navigator.clipboard?.writeText(url);
-        setShareState("copied");
-      } catch {
-        setShareState("error");
-      }
-    }
-
-    scheduleReset(() => setShareState("idle"), 1800);
-  };
 
   return (
     <>
@@ -5906,10 +5846,9 @@ function CombinedThreadViewCard({
   const onOpenTag = useContext(TagSearchContext);
   const likeCtx = useContext(LikeContext);
   const bookmarkCtx = useContext(BookmarkContext);
-  const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "error">("idle");
-  const scheduleReset = useResetTimeout();
   const rootPost = parts[0].node.post;
   const posts = parts.map((part) => part.node.post);
+  const { shareState, handleShare } = useSharePost(rootPost, posts);
   const likeView = likeCtx?.getState(rootPost);
   const bookmarkView = bookmarkCtx?.getState(rootPost);
   const postTimeLabel = formatPostTime(postSortAt(rootPost));
@@ -5927,37 +5866,6 @@ function CombinedThreadViewCard({
   const liveLikeCount = likeCount - (rootPost.likeCount ?? 0) + (likeView ? likeView.count : rootPost.likeCount ?? 0);
   const hideThreadMarkers = canHideCombinedThreadMarkers(posts);
   const { showReplyLimited, handleReplyClick } = useReplyGate(rootPost, onOpenReply);
-
-  const handleShare = async () => {
-    const url = postBskyUrl(rootPost);
-    const title = `${displayName(rootPost.author)} on Bluesky`;
-    const text = posts
-      .map((post) => post.record.text?.trim())
-      .filter(Boolean)
-      .join("\n\n");
-
-    try {
-      if (navigator.share) {
-        await navigator.share({ title, text: text || title, url });
-        setShareState("shared");
-      } else {
-        await navigator.clipboard?.writeText(url);
-        setShareState("copied");
-      }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        return;
-      }
-      try {
-        await navigator.clipboard?.writeText(url);
-        setShareState("copied");
-      } catch {
-        setShareState("error");
-      }
-    }
-
-    scheduleReset(() => setShareState("idle"), 1800);
-  };
 
   return (
     <article className="post-card combined-thread-view-card text-only">
