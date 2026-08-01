@@ -10,8 +10,9 @@ scope maintenance; it no longer tracks open tasks. List: `gh issue list
 previously-open items here were either done — "User-sortable feed order" — or
 migrated to `todo.md` — the upstream-blocked "Consent UX", the 2026-06-10
 runtime-verify note, and the CSS dead-selector sweep. **2026-08-01:** all open
-items were migrated from `todo.md` to GitHub issues; `todo.md` is now a pointer
-stub keeping only the working rules.)
+items were migrated from `todo.md` to GitHub issues, and `todo.md` was then
+deleted — session workflow (issue claiming, shipping/deploy flow, dev tooling)
+now lives in `nextsessionprompt.md`.)
 
 The scope-maintenance cautions below remain relevant reference material for any
 future authenticated AppView method.

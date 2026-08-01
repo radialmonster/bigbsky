@@ -8,6 +8,13 @@ ISSUE CLAIMING (always):
 - Remove the `claimed` label when you finish (task done/closed, or you stop working on it): `gh issue edit <N> --repo radialmonster/bigbsky --remove-label claimed`
 - Claim one issue at a time; if you delegate to sub-agents, each sub-agent must claim its issue the same way so parallel sessions never collide.
 
+ISSUE STRUCTURE (GitHub-native, honor it): BigBsky issues use GitHub's native task/sub-issue and dependency features. Use them to organize work; honor them when picking and working:
+- **Sub-issues / tasks:** a parent issue can have sub-issues (its task breakdown; parent shows a progress tracker). E.g. #18 (App.tsx decomposition) has #7, #19, #20 as sub-issues. When work naturally decomposes into a parent + pieces, create the parent and attach sub-issues: `echo '{"sub_issue_id": <numeric id>}' | gh api --method POST repos/radialmonster/bigbsky/issues/<PARENT>/sub_issues --input -` (numeric id, NOT the #number — get it via `gh api repos/radialmonster/bigbsky/issues/<N> --jq .id`). List them: `gh api repos/radialmonster/bigbsky/issues/<N>/sub_issues`.
+- **Dependencies (blocked by / blocking):** an issue can be formally blocked by another (e.g. #18 is blocked by #19). Record real ordering constraints instead of prose notes: `echo '{"issue_id": <numeric id>}' | gh api --method POST repos/radialmonster/bigbsky/issues/<N>/dependencies/blocked_by --input -`. View: `gh issue view <N> --json blockedBy,blocking`.
+- **Picking work — honor the structure:** prefer issues that are NOT blocked (no unresolved `blockedBy`) and whose parent is claimed/started over ones that depend on unstarted work. Do not start a parent issue as if its sub-issues don't exist — a parent with sub-issues is a tracking/task-list issue, so work its sub-issues instead (claim + finish each), and only close the parent when all sub-issues are closed.
+- **Working — honor the structure:** when you finish an issue that blocks others (or is a sub-issue), update its dependents/parent: remove now-satisfied `blocked_by` links (`DELETE /repos/{owner}/{repo}/issues/<N>/dependencies/blocked_by/<blockingId>`) and re-check whether the parent can be closed. When an issue turns out to be bigger than a single task, create sub-issues under it rather than leaving it sprawled.
+- Task-list checkboxes in an issue body (`- [ ]`) are also fine for lightweight intra-issue tracking; keep them checked as you go.
+
 SHIPPING (when an issue's fix is verified):
 - Do NOT open a PR. Commit to main and push directly — that's the deploy path.
 - Pushing to main is what deploys: Cloudflare Pages auto-builds/deploys from the main branch. So after `git push origin main`, the fix goes live on the deployed origin automatically.
@@ -148,6 +155,12 @@ On Windows, `npm` is a `.cmd` shim, not a real executable. `Start-Process -FileP
 - or `& npm.cmd run dev`
 
 The same applies to `npx` (use `npx.cmd`) and any other `.cmd`-shimmed CLI when launching via `Start-Process`/CreateProcess.
+
+## Local browser + dev-server tooling
+
+- To start the local BigBsky dev server, run `npm run dev` (or `npm.cmd run dev`) from the repo root. Vite serves it at `http://127.0.0.1:5173/` by default.
+- For browser checks, first see whether Chrome dev mode is already running on port 9222. Check processes for `chrome.exe` with `--remote-debugging-port=9222`, then verify `http://127.0.0.1:9222/json/version`. If it is running, use that browser instead of starting another one. If it is not running, start Chrome with:
+  `Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" -ArgumentList "--remote-debugging-port=9222 --user-data-dir=$env:LOCALAPPDATA\Codex\ChromeProfiles\fb-tools-test --start-maximized --auto-open-devtools-for-tabs --disable-first-run-ui --no-first-run about:blank" -WindowStyle Hidden`
 
 ## Watchdog loop note (shared)
 
