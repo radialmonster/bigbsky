@@ -611,6 +611,40 @@ function hasPostVideo(post: FeedPost) {
   return !!getVideoEmbed(post.embed);
 }
 
+function postHasEmbeds(post: FeedPost): boolean {
+  return (
+    getEmbedImages(post.embed).length > 0 ||
+    !!getVideoEmbed(post.embed) ||
+    !!getExternalEmbed(post.embed) ||
+    !!getRecordEmbed(post.embed) ||
+    extractFacetLinks(post.record.facets).length > 0
+  );
+}
+
+function combinedThreadStats(posts: FeedPost[], rootPost: FeedPost, likeView?: LikeView) {
+  // Each continuation part is itself a reply to the previous part, so it is
+  // counted in that part's replyCount. Subtract the n-1 linear continuation hops
+  // so the chip approximates external replies to the thread, not its own
+  // continuations. Caveat (todo Bug 4): this only removes the *linear* chain hops.
+  // If the author forked their self-thread (replied to one part more than once),
+  // the extra fork(s) stay counted, so the number can read slightly high. A
+  // precise count isn't computable here: a ThreadedFeedItem carries only each
+  // post's aggregate replyCount integer, not the reply trees needed to tell a
+  // fork from an external reply. The error is bounded by the fork count (rare)
+  // and always in the safe direction - we never over-subtract and hide real
+  // replies, since every hop we subtract is a continuation that genuinely exists.
+  const replyCount = Math.max(0, posts.reduce((total, post) => total + (post.replyCount ?? 0), 0) - (posts.length - 1));
+  const repostCount = posts.reduce((total, post) => total + (post.repostCount ?? 0), 0);
+  const quoteCount = posts.reduce((total, post) => total + (post.quoteCount ?? 0), 0);
+  const likeCount = posts.reduce((total, post) => total + (post.likeCount ?? 0), 0);
+  // Only the first (root) post can be liked here, so swap its static server count
+  // for the optimistic live count; otherwise the heart fills on like but the
+  // number never moves, reading as "the like didn't register".
+  const liveLikeCount = likeCount - (rootPost.likeCount ?? 0) + (likeView ? likeView.count : rootPost.likeCount ?? 0);
+  const hideThreadMarkers = canHideCombinedThreadMarkers(posts);
+  return { replyCount, repostCount, quoteCount, likeCount, liveLikeCount, hideThreadMarkers };
+}
+
 function extractHashtags(text?: string) {
   if (!text) {
     return [];
@@ -5088,26 +5122,7 @@ function ThreadedPostCard({
   const likeView = likeCtx?.getState(rootPost);
   const bookmarkView = bookmarkCtx?.getState(rootPost);
   const postTimeLabel = formatPostTime(postSortAt(rootPost));
-  // Each continuation part is itself a reply to the previous part, so it is
-  // counted in that part's replyCount. Subtract the n-1 linear continuation hops
-  // so the chip approximates external replies to the thread, not its own
-  // continuations. Caveat (todo Bug 4): this only removes the *linear* chain hops.
-  // If the author forked their self-thread (replied to one part more than once),
-  // the extra fork(s) stay counted, so the number can read slightly high. A
-  // precise count isn't computable here: a ThreadedFeedItem carries only each
-  // post's aggregate replyCount integer, not the reply trees needed to tell a
-  // fork from an external reply. The error is bounded by the fork count (rare)
-  // and always in the safe direction — we never over-subtract and hide real
-  // replies, since every hop we subtract is a continuation that genuinely exists.
-  const replyCount = Math.max(0, posts.reduce((total, post) => total + (post.replyCount ?? 0), 0) - (posts.length - 1));
-  const repostCount = posts.reduce((total, post) => total + (post.repostCount ?? 0), 0);
-  const quoteCount = posts.reduce((total, post) => total + (post.quoteCount ?? 0), 0);
-  const likeCount = posts.reduce((total, post) => total + (post.likeCount ?? 0), 0);
-  // Only the first (root) post can be liked here, so swap its static server count
-  // for the optimistic live count; otherwise the heart fills on like but the
-  // number never moves, reading as "the like didn't register".
-  const liveLikeCount = likeCount - (rootPost.likeCount ?? 0) + (likeView ? likeView.count : rootPost.likeCount ?? 0);
-  const hideThreadMarkers = canHideCombinedThreadMarkers(posts);
+  const { replyCount, repostCount, quoteCount, liveLikeCount, hideThreadMarkers } = combinedThreadStats(posts, rootPost, likeView);
   const { showReplyLimited, handleReplyClick } = useReplyGate(rootPost, onReply);
 
   return (
@@ -5148,12 +5163,7 @@ function ThreadedPostCard({
           // set (link cards, quotes, unsupported-embed notices), not just media,
           // so a self-thread part carrying a link card or quote isn't silently
           // dropped from the feed. Skip a part that has neither text nor embeds.
-          const hasEmbeds =
-            getEmbedImages(post.embed).length > 0 ||
-            !!getVideoEmbed(post.embed) ||
-            !!getExternalEmbed(post.embed) ||
-            !!getRecordEmbed(post.embed) ||
-            extractFacetLinks(post.record.facets).length > 0;
+          const hasEmbeds = postHasEmbeds(post);
           if (!segment.text && !hasEmbeds) {
             return null;
           }
@@ -5802,19 +5812,7 @@ function CombinedThreadViewCard({
   const likeView = likeCtx?.getState(rootPost);
   const bookmarkView = bookmarkCtx?.getState(rootPost);
   const postTimeLabel = formatPostTime(postSortAt(rootPost));
-  // Subtract the n-1 linear continuation hops so the chip approximates external
-  // replies. Same approximation + fork caveat as CombinedThreadCard above (todo
-  // Bug 4): forked self-replies stay counted (no reply trees here to tell a fork
-  // from an external reply), bounded + safe-direction.
-  const replyCount = Math.max(0, posts.reduce((total, post) => total + (post.replyCount ?? 0), 0) - (posts.length - 1));
-  const repostCount = posts.reduce((total, post) => total + (post.repostCount ?? 0), 0);
-  const quoteCount = posts.reduce((total, post) => total + (post.quoteCount ?? 0), 0);
-  const likeCount = posts.reduce((total, post) => total + (post.likeCount ?? 0), 0);
-  // Only the first (root) post can be liked here, so swap its static server count
-  // for the optimistic live count; otherwise the heart fills on like but the
-  // number never moves, reading as "the like didn't register".
-  const liveLikeCount = likeCount - (rootPost.likeCount ?? 0) + (likeView ? likeView.count : rootPost.likeCount ?? 0);
-  const hideThreadMarkers = canHideCombinedThreadMarkers(posts);
+  const { replyCount, repostCount, quoteCount, liveLikeCount, hideThreadMarkers } = combinedThreadStats(posts, rootPost, likeView);
   const { showReplyLimited, handleReplyClick } = useReplyGate(rootPost, onOpenReply);
 
   return (
@@ -5848,12 +5846,7 @@ function CombinedThreadViewCard({
         {parts.map((part, index) => {
           const post = part.node.post;
           const segment = combinedThreadSegment(post, hideThreadMarkers);
-          const hasEmbeds =
-            getEmbedImages(post.embed).length > 0 ||
-            !!getVideoEmbed(post.embed) ||
-            !!getExternalEmbed(post.embed) ||
-            !!getRecordEmbed(post.embed) ||
-            extractFacetLinks(post.record.facets).length > 0;
+          const hasEmbeds = postHasEmbeds(post);
           if (!segment.text && !hasEmbeds) {
             return null;
           }
