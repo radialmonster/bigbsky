@@ -16,7 +16,35 @@
 //   - `group` must be one of the persisted discovered groups. "Project" is the
 //     legacy alias for "Discovered", kept so older pins still validate.
 
+import { feedSources } from "../sources";
 import type { FeedSource } from "../sources";
+import { safeLocalStorageGet, safeLocalStorageSet } from "./storage";
+
+export const pinnedFeedMetaStorageKey = "bigbsky:pinned-feed-meta";
+export const pinnedFeedsStorageKey = "bigbsky:pinned-feeds";
+
+export function readPinnedFeedMeta(): FeedSource[] {
+  try {
+    const stored = JSON.parse(safeLocalStorageGet(pinnedFeedMetaStorageKey) || "[]") as unknown;
+    return Array.isArray(stored) ? stored.filter(isPinnedFeedMeta).slice(0, 12) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function writePinnedFeedMeta(next: FeedSource[]) {
+  safeLocalStorageSet(pinnedFeedMetaStorageKey, JSON.stringify(next));
+}
+
+export function readPinnedFeedIds(metaSources: FeedSource[] = readPinnedFeedMeta()) {
+  try {
+    const stored = JSON.parse(safeLocalStorageGet(pinnedFeedsStorageKey) || "[]") as string[];
+    const knownIds = new Set([...feedSources.map((source) => source.id), ...metaSources.map((source) => source.id)]);
+    return Array.isArray(stored) ? stored.filter((id) => knownIds.has(id)).slice(0, 12) : [];
+  } catch {
+    return [];
+  }
+}
 
 export function isPinnedFeedMeta(value: unknown): value is FeedSource {
   if (!value || typeof value !== "object") {

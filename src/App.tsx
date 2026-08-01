@@ -48,7 +48,7 @@ import {
 } from "./api";
 import { formatPostTime, postSortAt } from "./lib/time";
 import { orderBySavedOrder } from "./lib/feed-order";
-import { isPinnedFeedMeta } from "./lib/feed-meta";
+import { pinnedFeedsStorageKey, readPinnedFeedIds, readPinnedFeedMeta, writePinnedFeedMeta } from "./lib/feed-meta";
 import {
   safeLocalStorageGet,
   safeLocalStorageRemove,
@@ -366,9 +366,7 @@ const showNsfwStorageKey = "bigbsky:show-nsfw";
 const showMediaStorageKey = "bigbsky:show-media";
 const showMediaByFeedStorageKey = "bigbsky:show-media-by-feed";
 const contentLanguagesStorageKey = "bigbsky:content-languages";
-const pinnedFeedsStorageKey = "bigbsky:pinned-feeds";
 const feedOrderStorageKey = "bigbsky:feed-order";
-const pinnedFeedMetaStorageKey = "bigbsky:pinned-feed-meta";
 const pinnedSearchesStorageKey = "bigbsky:pinned-searches";
 const pinnedProfilesStorageKey = "bigbsky:pinned-profiles";
 const pinnedNotificationsStorageKey = "bigbsky:pinned-notifications";
@@ -451,25 +449,6 @@ function readColumnPreferences(): ColumnVisibility {
     return { feeds: true, right: true };
   } catch {
     return { feeds: true, right: true };
-  }
-}
-
-function readPinnedFeedMeta(): FeedSource[] {
-  try {
-    const stored = JSON.parse(localStorage.getItem(pinnedFeedMetaStorageKey) || "[]") as unknown;
-    return Array.isArray(stored) ? stored.filter(isPinnedFeedMeta).slice(0, 12) : [];
-  } catch {
-    return [];
-  }
-}
-
-function readPinnedFeedIds(metaSources: FeedSource[] = readPinnedFeedMeta()) {
-  try {
-    const stored = JSON.parse(localStorage.getItem(pinnedFeedsStorageKey) || "[]") as string[];
-    const knownIds = new Set([...feedSources.map((source) => source.id), ...metaSources.map((source) => source.id)]);
-    return Array.isArray(stored) ? stored.filter((id) => knownIds.has(id)).slice(0, 12) : [];
-  } catch {
-    return [];
   }
 }
 
@@ -2328,7 +2307,7 @@ export function App() {
       setPinnedFeedMeta((current) => {
         const withoutSource = current.filter((item) => item.id !== source.id);
         const next = willPin ? [{ ...source }, ...withoutSource].slice(0, 12) : withoutSource;
-        safeLocalStorageSet(pinnedFeedMetaStorageKey, JSON.stringify(next));
+        writePinnedFeedMeta(next);
         return next;
       });
     }

@@ -70,10 +70,13 @@ requirePattern(/console\.error\("Failed to sync feed order to account", error\);
 requirePattern(/const loadMore = \(\) => \{[\s\S]*const controller = new AbortController\(\);[\s\S]*loadMoreControllerRef\.current = controller;/s, "pagination requests should carry an abort signal so a late page can be discarded");
 requirePattern(/loadMoreControllerRef\.current\?\.abort\(\);[\s\S]*reloadProfileControllerRef\.current\?\.abort\(\);[\s\S]*\},\s*\[activeSource, profileTab, route, searchLanguage, searchSort, searchTab\]/s, "in-flight pagination and profile refetches should be aborted when the active surface changes");
 requirePattern(/const reloadCurrentProfile = useCallback\(\(\) => \{[\s\S]*reloadProfileControllerRef\.current = controller;[\s\S]*loadProfileFeed\(route\.actor, undefined, controller\.signal, filter\)/s, "the post-publish profile refetch should be abortable");
-requirePattern(/const pinnedFeedMetaStorageKey = "bigbsky:pinned-feed-meta"/, "discovered Feed pins should persist their metadata in a browser-local store");
-requirePattern(/function readPinnedFeedMeta\(\)[\s\S]*isPinnedFeedMeta/s, "discovered Feed pin metadata should be read and validated from local storage");
-requirePattern(/const knownIds = new Set\(\[\.\.\.feedSources\.map\(\(source\) => source\.id\), \.\.\.metaSources\.map\(\(source\) => source\.id\)\]\)/, "pinned Feed ids should resolve against both static and discovered Feed sources");
-requirePattern(/setPinnedFeedMeta\(\(current\) => \{[\s\S]*safeLocalStorageSet\(pinnedFeedMetaStorageKey/s, "toggling a discovered Feed pin should sync its local metadata store");
+// The pinned-feed-meta cluster (pinnedFeedMetaStorageKey, readPinnedFeedMeta,
+// readPinnedFeedIds, writePinnedFeedMeta + the pinnedFeedsStorageKey write path)
+// moved to src/lib/feed-meta.ts (co-located with its isPinnedFeedMeta validator,
+// per #19). Its read/validate/cap/resolution behavior is covered behaviorally by
+// the expanded src/lib/feed-meta.test.ts suite (read round-trip, malformed-entry
+// filtering, non-JSON fallback, 12-entry cap, knownIds resolution against static
+// + meta sources). The old App.tsx source pins were retired per #19.
 
 // The Explore/profile-tab surface cluster moved to src/features/ (slice 14 of
 // #18): ExploreTrendingTopics + ExploreDiscoverFeeds -> src/features/explore/,
