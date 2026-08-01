@@ -159,9 +159,25 @@ async function getClientId() {
   return `${loopbackClientId}&scope=${encodeURIComponent(OAUTH_SCOPE)}`;
 }
 
+// True when the current URL is an OAuth authorization callback: it carries
+// `state` + (`code` | `error`) AND the app is on a redirect-URI path. BigBsky
+// uses the atproto SDK's default "fragment" response mode (neither the hosted
+// oauth-client-metadata.json nor the loopback client id sets response_mode, so
+// callback params land in location.hash), which is why we read the hash — a
+// search-only restriction (#4) would break real callbacks. The path gate
+// mirrors the SDK's findRedirectUrl(): production redirects to /oauth/callback
+// (the metadata redirect_uris) and the loopback client id (buildLoopbackClientId
+// with pathname "/") redirects to "/", so a stray #state=…&error=… fragment on
+// any other route can't falsely trip the callback view.
 export function looksLikeOAuthCallback() {
-  const params = new URLSearchParams(window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.search);
-  return params.has("state") && (params.has("code") || params.has("error"));
+  const params = new URLSearchParams(
+    window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.search,
+  );
+  if (!(params.has("state") && (params.has("code") || params.has("error")))) {
+    return false;
+  }
+  const path = window.location.pathname;
+  return path === "/oauth/callback" || (isLoopbackOrigin() && path === "/");
 }
 
 // Tries identity resolvers in order, falling through on failure so a blocked

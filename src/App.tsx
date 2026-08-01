@@ -1437,12 +1437,12 @@ export function App() {
   // own — a stale-identity cache entry can be read before the wipe. Prefer
   // adding a `<did>:` prefix to the cache keys over reordering if that ever
   // becomes hard to guarantee.
-  const authCacheMountRef = useRef(false);
-  useEffect(() => {
-    if (!authCacheMountRef.current) {
-      authCacheMountRef.current = true;
-      return;
-    }
+  // All nine loader caches, cleared together. The cache instances are stable
+  // (useCache keeps them in a ref), so this can be called from any effect or
+  // callback. Kept declared ABOVE the loader effects so the wipe ordering
+  // contract above (run before any loader refetches on identity change) holds
+  // at every call site.
+  const clearAllDataCaches = useCallback(() => {
     feedCache.clear();
     feedMetadataCache.clear();
     listMetadataCache.clear();
@@ -1452,6 +1452,14 @@ export function App() {
     feedSearchCache.clear();
     threadCache.clear();
     threadBranchCache.clear();
+  }, []);
+  const authCacheMountRef = useRef(false);
+  useEffect(() => {
+    if (!authCacheMountRef.current) {
+      authCacheMountRef.current = true;
+      return;
+    }
+    clearAllDataCaches();
     setLikeOverrides({});
     setBookmarkOverrides({});
     setBlockOverrides({});
@@ -2687,15 +2695,7 @@ export function App() {
     setPinnedProfiles([]);
     setPinnedNotificationIds([]);
     setCollapsedFeedGroups({});
-    feedCache.clear();
-    feedMetadataCache.clear();
-    listMetadataCache.clear();
-    profileCache.clear();
-    searchCache.clear();
-    actorSearchCache.clear();
-    feedSearchCache.clear();
-    threadCache.clear();
-    threadBranchCache.clear();
+    clearAllDataCaches();
     scrollCacheRef.current = {};
     scrollAnchorCacheRef.current = {};
     setPendingScrollAnchor(null);
@@ -2808,11 +2808,7 @@ export function App() {
     const withoutPost = (items: FeedItem[]) => items.filter((item) => item.post.uri !== uri);
     setFeedState((current) => ({ ...current, items: withoutPost(current.items) }));
     setSearchState((current) => ({ ...current, posts: current.posts.filter((post) => post.uri !== uri) }));
-    feedCache.clear();
-    profileCache.clear();
-    searchCache.clear();
-    threadCache.clear();
-    threadBranchCache.clear();
+    clearAllDataCaches();
     // The post is gone from every surface, so drop any bookmark override for it
     // rather than leaving a stale `false` shadowing the real viewer state
     // indefinitely (a latent wrong-state/leak if the same URI reappears).
