@@ -1,5 +1,12 @@
-const CACHE_NAME = "bigbsky-shell-v5";
-const SHELL_URLS = ["/", "/index.html"];
+// The service worker's registration scope is import.meta.env.BASE_URL (the
+// registration URL resolves to BASE_URL + "sw.js"), so derive every path from
+// it instead of hardcoding "/" — a future base/subdirectory deploy keeps
+// offline caching correct automatically. The scope always ends with "/".
+const baseUrl = new URL(self.registration.scope);
+const basePath = baseUrl.pathname;
+const CACHE_NAME = "bigbsky-shell-v6";
+const SHELL_URLS = [basePath, `${basePath}index.html`];
+const ASSET_PREFIX = `${basePath}assets/`;
 
 // Cache-first hashed build assets (/assets/*-<hash>.{js,css}) accumulate one set
 // per deploy. Because sw.js is byte-identical across deploys unless CACHE_NAME is
@@ -16,11 +23,11 @@ async function cacheShellResponse(request) {
   try {
     const response = await fetch(request);
     if (response.ok) {
-      await cache.put("/index.html", response.clone());
+      await cache.put(`${basePath}index.html`, response.clone());
     }
     return response;
   } catch {
-    return cache.match("/index.html");
+    return cache.match(`${basePath}index.html`);
   }
 }
 
@@ -28,7 +35,7 @@ async function cacheShellResponse(request) {
 // entries in insertion order, so the front is the least-recently added.
 async function trimAssetCache(cache) {
   const keys = await cache.keys();
-  const assetKeys = keys.filter((request) => new URL(request.url).pathname.startsWith("/assets/"));
+  const assetKeys = keys.filter((request) => new URL(request.url).pathname.startsWith(ASSET_PREFIX));
   const excess = assetKeys.length - MAX_ASSET_ENTRIES;
   for (let i = 0; i < excess; i += 1) {
     await cache.delete(assetKeys[i]);
@@ -69,7 +76,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (url.pathname.startsWith("/assets/")) {
+  if (url.pathname.startsWith(ASSET_PREFIX)) {
     event.respondWith(
       caches.open(CACHE_NAME).then(async (cache) => {
         const cached = await cache.match(request);

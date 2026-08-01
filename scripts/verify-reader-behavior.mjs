@@ -7,6 +7,7 @@ import { dirname, resolve } from "node:path";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const app = readFileSync(resolve(repoRoot, "src/App.tsx"), "utf8");
 const api = readFileSync(resolve(repoRoot, "src/api.ts"), "utf8");
+const main = readFileSync(resolve(repoRoot, "src/main.tsx"), "utf8");
 const infoPage = readFileSync(resolve(repoRoot, "src/InfoPage.tsx"), "utf8");
 const failures = [];
 
@@ -89,6 +90,14 @@ requirePattern(/function ThreadEngagementPanel\([\s\S]*kind === "likes"[\s\S]*ge
 requirePattern(/setEngagement\(\(current\) => \(current === stat\.key \? null : stat\.key\)\)/, "thread reposts/quotes/likes counts should toggle an on-demand engagement panel");
 if (!/export function getLikes\(/.test(api) || !/export function getRepostedBy\(/.test(api) || !/export function getQuotes\(/.test(api)) {
   failures.push("api should expose public getLikes/getRepostedBy/getQuotes readers");
+}
+requirePattern(/function ThreadEngagementPanel\([\s\S]*const loadPage = useCallback\([\s\S]*response\.likes\.map\(\(like\) => like\.actor\)[\s\S]*response\.repostedBy[\s\S]*response\.posts[\s\S]*response\.cursor/s, "the engagement panel should paginate likes, reposts, and quotes via the response cursor");
+requirePattern(/const loadMore = useCallback\([\s\S]*loadPage\(state\.cursor, controller\.signal\)[\s\S]*setState\(\(current\) => \([\s\S]*\bcursor,/s, "the engagement panel should append later pages and advance the cursor");
+requirePattern(/state\.status === "ready" && state\.cursor && \(\s*<AutoLoadMoreButton\s+label=\{`Load more/, "the engagement panel should offer load-more while a cursor remains");
+requirePattern(/<ErrorBoundary label=\{`post-row:\$\{post\.uri\}`\} fallback=\{\(\) => <PostRowFallback \/>\}>\s*\{children\}\s*<\/ErrorBoundary>/, "each virtualized row should be wrapped in a per-row error boundary so one bad record degrades a single row");
+requirePattern(/function PostRowFallback\(\)[\s\S]*className="post-row-error"[\s\S]*role="alert"/s, "the per-row boundary should render a compact alert fallback instead of unmounting the feed");
+if (!/import\.meta\.env\.PROD[\s\S]*import\.meta\.env\.BASE_URL\}sw\.js/.test(main)) {
+  failures.push("service-worker registration should be gated behind PROD and derive its path from BASE_URL");
 }
 requirePattern(/import \{ segmentRichText \} from "\.\/richtext"/, "rich-text facet segmentation should come from the pure src/richtext.ts helper");
 requirePattern(/function renderRichText\([\s\S]*segmentRichText\(text, facets\)[\s\S]*segment\.kind === "link"[\s\S]*segment\.kind === "mention"[\s\S]*segment\.kind === "tag"/s, "post text should render link, mention, and tag facet segments from Bluesky rich text");

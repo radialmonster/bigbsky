@@ -176,6 +176,7 @@ import {
 } from "./auth";
 import { getRouteState, type RouteState } from "./router";
 import { displayName, feedSources, navigationItems, type FeedSource } from "./sources";
+import { ErrorBoundary } from "./ErrorBoundary";
 
 const navIcons = [Home, Hash, List, Bookmark, Search, Compass, User, Settings];
 const InfoPage = lazy(() => import("./InfoPage"));
@@ -4321,7 +4322,20 @@ function MeasuredPostRow({
 
   return (
     <div className="virtual-row" ref={rowRef}>
-      {children}
+      {/* Per-row boundary (H1): one malformed record degrades a single row to a
+          compact fallback instead of unmounting the whole feed. The boundary
+          adds no wrapper DOM in the happy path, so row measurement is unchanged. */}
+      <ErrorBoundary label={`post-row:${post.uri}`} fallback={() => <PostRowFallback />}>
+        {children}
+      </ErrorBoundary>
+    </div>
+  );
+}
+
+function PostRowFallback() {
+  return (
+    <div className="post-row-error" role="alert">
+      <p>This post couldn&apos;t be rendered.</p>
     </div>
   );
 }
@@ -9792,22 +9806,47 @@ function ThreadEngagementPanel({
     status: "loading" | "ready" | "error" | "rate-limit";
     actors: Profile[];
     posts: FeedPost[];
+    cursor?: string;
     error?: string;
+    loadMoreError?: string;
   }>({ status: "loading", actors: [], posts: [] });
+  const loadMoreBusyRef = useRef(false);
+  const loadMoreControllerRef = useRef<AbortController | null>(null);
+
+  const loadPage = useCallback(
+    (cursor: string | undefined, signal?: AbortSignal) => {
+      if (kind === "likes") {
+        return getLikes(uri, 50, signal, cursor).then((response) => ({
+          actors: response.likes.map((like) => like.actor),
+          posts: [] as FeedPost[],
+          cursor: response.cursor,
+        }));
+      }
+      if (kind === "reposts") {
+        return getRepostedBy(uri, 50, signal, cursor).then((response) => ({
+          actors: response.repostedBy,
+          posts: [] as FeedPost[],
+          cursor: response.cursor,
+        }));
+      }
+      return getQuotes(uri, 30, signal, cursor).then((response) => ({
+        actors: [] as Profile[],
+        posts: response.posts,
+        cursor: response.cursor,
+      }));
+    },
+    [kind, uri],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
+    loadMoreBusyRef.current = false;
+    loadMoreControllerRef.current?.abort();
+    loadMoreControllerRef.current = null;
     setState({ status: "loading", actors: [], posts: [] });
 
-    const request =
-      kind === "likes"
-        ? getLikes(uri, 50, controller.signal).then((response) => ({ actors: response.likes.map((like) => like.actor), posts: [] }))
-        : kind === "reposts"
-          ? getRepostedBy(uri, 50, controller.signal).then((response) => ({ actors: response.repostedBy, posts: [] }))
-          : getQuotes(uri, 30, controller.signal).then((response) => ({ actors: [], posts: response.posts }));
-
-    request
-      .then(({ actors, posts }) => setState({ status: "ready", actors, posts }))
+    loadPage(undefined, controller.signal)
+      .then(({ actors, posts, cursor }) => setState({ status: "ready", actors, posts, cursor }))
       .catch((error) => {
         if (!controller.signal.aborted) {
           setState({
@@ -9818,9 +9857,48 @@ function ThreadEngagementPanel({
           });
         }
       });
+    return () => {
+      controller.abort();
+      loadMoreControllerRef.current?.abort();
+      loadMoreControllerRef.current = null;
+    };
+  }, [loadPage]);
 
-    return () => controller.abort();
-  }, [uri, kind]);
+  const loadMore = useCallback(() => {
+    if (state.status !== "ready" || !state.cursor || loadMoreBusyRef.current) {
+      return;
+    }
+    loadMoreBusyRef.current = true;
+    const controller = new AbortController();
+    loadMoreControllerRef.current = controller;
+    loadPage(state.cursor, controller.signal)
+      .then(({ actors, posts, cursor }) => {
+        loadMoreBusyRef.current = false;
+        if (loadMoreControllerRef.current === controller) {
+          loadMoreControllerRef.current = null;
+        }
+        setState((current) => ({
+          ...current,
+          actors: [...current.actors, ...actors],
+          posts: [...current.posts, ...posts],
+          cursor,
+          loadMoreError: undefined,
+        }));
+      })
+      .catch((error) => {
+        loadMoreBusyRef.current = false;
+        if (loadMoreControllerRef.current === controller) {
+          loadMoreControllerRef.current = null;
+        }
+        // Keep the already-loaded results and the cursor so the user can retry;
+        // surface the failure on the load-more control (which also stops the
+        // auto-fire so we don't hammer a rate-limited endpoint).
+        setState((current) => ({
+          ...current,
+          loadMoreError: isRateLimit(error) ? rateLimitMessage(error) : "Couldn't load more right now.",
+        }));
+      });
+  }, [loadPage, state.cursor, state.status]);
 
   const heading = kind === "likes" ? "Liked by" : kind === "reposts" ? "Reposted by" : "Quotes";
 
@@ -9868,6 +9946,13 @@ function ThreadEngagementPanel({
             </button>
           ))}
         </div>
+      )}
+      {state.status === "ready" && state.cursor && (
+        <AutoLoadMoreButton
+          label={`Load more ${heading.toLowerCase()}`}
+          onLoadMore={loadMore}
+          error={state.loadMoreError}
+        />
       )}
     </section>
   );

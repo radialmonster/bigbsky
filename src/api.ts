@@ -292,16 +292,16 @@ export type QuotesResponse = {
   posts: FeedPost[];
 };
 
-export function getLikes(uri: string, limit = 30, signal?: AbortSignal) {
-  return getJson<LikesResponse>("app.bsky.feed.getLikes", { uri, limit: String(limit) }, signal);
+export function getLikes(uri: string, limit = 30, signal?: AbortSignal, cursor?: string) {
+  return getJson<LikesResponse>("app.bsky.feed.getLikes", { uri, limit: String(limit), ...(cursor ? { cursor } : {}) }, signal);
 }
 
-export function getRepostedBy(uri: string, limit = 30, signal?: AbortSignal) {
-  return getJson<RepostedByResponse>("app.bsky.feed.getRepostedBy", { uri, limit: String(limit) }, signal);
+export function getRepostedBy(uri: string, limit = 30, signal?: AbortSignal, cursor?: string) {
+  return getJson<RepostedByResponse>("app.bsky.feed.getRepostedBy", { uri, limit: String(limit), ...(cursor ? { cursor } : {}) }, signal);
 }
 
-export function getQuotes(uri: string, limit = 30, signal?: AbortSignal) {
-  return getJson<QuotesResponse>("app.bsky.feed.getQuotes", { uri, limit: String(limit) }, signal);
+export function getQuotes(uri: string, limit = 30, signal?: AbortSignal, cursor?: string) {
+  return getJson<QuotesResponse>("app.bsky.feed.getQuotes", { uri, limit: String(limit), ...(cursor ? { cursor } : {}) }, signal);
 }
 
 export function getActorLists(actor: string, limit = 30, signal?: AbortSignal) {

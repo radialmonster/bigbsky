@@ -11,9 +11,14 @@ createRoot(document.getElementById("root")!).render(
   </ErrorBoundary>,
 );
 
-if ("serviceWorker" in navigator) {
+// Gate SW registration behind production: in dev the service worker would
+// otherwise cache the dev HTML (with /src/main.tsx) under the production
+// cache key, and a dev->prod switch would then serve the stale dev shell until
+// the cache name was bumped. Derive the script path from BASE_URL so a future
+// base/subdirectory deploy registers (and scopes) the SW correctly.
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch((error: unknown) => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch((error: unknown) => {
       console.warn("BigBsky service worker registration failed.", error);
     });
   });

@@ -130,29 +130,15 @@
         </p>
       </div>
     </noscript>
+    <!--
+      The boot failure detector lives in /boot-error.js (external, defer) so it
+      stays allowed under the site's Content-Security-Policy (see public/_headers)
+      without a hash or nonce: an inline script or inline onclick handler would be
+      blocked once script-src 'self' is enforced, which is exactly the failure it
+      is meant to catch. It runs even when the app bundle fails to load, because it
+      is a separate static file.
+    -->
+    <script src="/boot-error.js" defer></script>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      // If the app entry never mounts (bundle fails to load, a syntax/CSP error,
-      // or a broken deploy), replace the loading spinner with an actionable error
-      // instead of leaving the reader on a blank page forever. React removes
-      // #app-loading when it renders into #root, so its continued presence after
-      // the timeout means the app did not boot.
-      (function () {
-        var TIMEOUT_MS = 15000;
-        window.setTimeout(function () {
-          var loading = document.getElementById("app-loading");
-          if (!loading) return; // React mounted and replaced it — all good.
-          loading.setAttribute("role", "alert");
-          loading.innerHTML =
-            '<p class="app-boot-title">BigBsky failed to load</p>' +
-            '<p class="app-boot-text">The app could not start. This is usually a' +
-            " network hiccup or a stale cache. Reloading often fixes it.</p>" +
-            '<div class="app-boot-actions">' +
-            '<button type="button" class="app-boot-btn" onclick="location.reload()">Reload</button>' +
-            '<a class="app-boot-btn secondary" href="/">Go to home</a>' +
-            "</div>";
-        }, TIMEOUT_MS);
-      })();
-    </script>
   </body>
 </html>

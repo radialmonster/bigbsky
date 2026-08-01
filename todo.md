@@ -576,18 +576,20 @@ them.
 
 ### HIGH
 
-- [ ] **H1 follow-up (top-level boundary DONE 2026-07-03; narrower subtree
-  boundary still open).** Shipped `src/ErrorBoundary.tsx` (class component,
+- [x] **H1 follow-up (top-level boundary DONE 2026-07-03; per-row subtree
+  boundary DONE 2026-08-01).** Shipped `src/ErrorBoundary.tsx` (class component,
   getDerivedStateFromError + componentDidCatch, self-contained inline-styled
   fallback with Reload + Try-again, optional `label`/`fallback` props) and
   wrapped `<App />` in it in `src/main.tsx` — a render error now shows the
   fallback instead of whitescreening #root. Verified: tsc/vitest/build green;
   reloaded the signed-in dev app via CDP — 6 posts render, no `[role=alert]`
-  fallback, no console errors. Remaining (optional, lower value now the
-  whitescreen is handled): add a *narrower* boundary around the timeline/
-  post-rendering subtree (or per-PostCard) so one malformed record degrades a
-  single row instead of the feed. The ErrorBoundary already renders children
-  with no wrapper DOM in the happy path, so wrapping rows is measurement-safe.
+  fallback, no console errors. **Narrower boundary DONE 2026-08-01:** each
+  virtualized row in `VirtualPostList`/`MeasuredPostRow` is now wrapped in an
+  `ErrorBoundary` (`label={`post-row:${post.uri}`}`, compact `.post-row-error`
+  fallback) so one malformed record degrades a single row to a subtle
+  card-sized placeholder instead of unmounting the feed. The boundary adds no
+  wrapper DOM in the happy path, so `MeasuredPostRow`'s height measurement is
+  unchanged; the reader verifier guards the wrap + fallback.
 
 ### MEDIUM
 
@@ -599,17 +601,20 @@ them.
   a raw SyntaxError. Added a behavioral test in `src/api.test.ts` (a 2xx whose
   `json()` throws → `resolveHandle` rejects with an `ApiError` and caches nothing,
   so a retry re-fetches). `tsc -b`, vitest (201), and `npm run build` all green.
-- [ ] **M4. src/auth.ts:1496-1502 — clearOAuthSessionStorage resolves success
-  after onblocked, contradicting its own warning comment.** The 3s fallback
-  setTimeout(done) fires when deleteDatabase is blocked, even though the
-  preceding comment explicitly says resolving here "would report success while a
-  signed-out OAuth session lingers on disk, letting a later init() resurrect
-  it." signOut then nulls clientPromise, so the next getClient() can re-open and
-  re-read the same DB before the pending delete completes — a real (if rare)
-  resurrection race. The fallback exists to avoid a hang, but it should not look
-  like clean success. Fix: resolve with a distinct "blocked/timed-out" outcome
-  (or reject with a typed error) so callers can warn the user / retry instead of
-  reporting a clean sign-out.
+- [x] **M4. src/auth.ts:1496-1502 — clearOAuthSessionStorage resolves success
+  after onblocked, contradicting its own warning comment. (DONE 2026-08-01.)**
+  `clearOAuthSessionStorage` now returns a distinct outcome —
+  `{ outcome: "cleared" } | { outcome: "blocked" }` — instead of a bare
+  `void`. `onerror`/the 3s `onblocked` timeout resolve `"blocked"` (the DB may
+  still be on disk), and only `onsuccess` resolves `"cleared"` (no-indexedDB is
+  `"cleared"` — nothing can linger). `signOut` now folds a `"blocked"` clear
+  into its returned warning ("…another tab or window is still holding the
+  browser storage open. Close other tabs and sign out again…"), so
+  `handleSignOut` shows the existing "Signed out locally. Remote revocation was
+  not confirmed: …" error state instead of reporting a clean sign-out while a
+  signed-out session lingers for a later init() to resurrect.
+  `clearOAuthLocalSession` returns the outcome too (callers that ignore it are
+  unchanged). tsc/vitest/build green.
 - [x] **M5. src/auth.ts:257 — initAuthSession uses raw localStorage.getItem
   while the rest of the module uses safeLocalStorageGet. (DONE 2026-07-06.)**
   Swapped the raw `localStorage.getItem(activeDidKey)` for the throw-safe
@@ -617,13 +622,15 @@ them.
   module), so a private-mode / storage-disabled context now falls through to the
   signed-out view instead of the "error" view with a SecurityError message.
   `tsc -b` + vitest + build green.
-- [ ] **M6. src/auth.ts:400-403 — disposeCachedClient returns silently when
-  Symbol.asyncDispose is missing.** If the symbol isn't polyfilled at runtime
-  (core-js import tree-shaken or a future build change), the client's IndexedDB
-  handle stays open, so the subsequent deleteDatabase hits the onblocked path
-  from M4. Currently believed-polyfilled by the library's core-js import, but
-  nothing observes the early-return. Fix: at minimum log when the early return
-  is taken so this is observable; ideally fall back to an explicit close.
+- [x] **M6. src/auth.ts:400-403 — disposeCachedClient returns silently when
+  Symbol.asyncDispose is missing. (DONE 2026-08-01.)** The early return now logs
+  a `console.warn` explaining the consequence (the client's IndexedDB handle
+  stays open, so the subsequent deleteDatabase hits the M4 `onblocked` path and
+  a signed-out session can linger for a later init() to resurrect). Currently
+  believed-polyfilled by the library's core-js import, but the failure mode is
+  now observable instead of a silent no-op. (A real close fallback is still only
+  warranted if a future SDK bump drops the polyfill — the `auth.dispose.test.ts`
+  guard pins the SDK version whose async disposer we verified.)
 - [x] **M7. src/App.tsx:5871-5891 — AuthedNotifications.load has no abort /
   generation guard (retry race). (DONE 2026-07-06.)** `getNotifications` takes no
   abort signal (it builds an atproto `Agent` internally), so rather than widen the
@@ -756,22 +763,40 @@ them.
   `getTrendingTopics` fetch errors, so users can distinguish a real API outage
   from genuine default trends. Uses the new shared toast infra's styling
   vocabulary; no behavior change to the fallback ordering.
-- [ ] **L17. src/main.tsx:11 + public/sw.js — service worker uses hardcoded
-  root paths; dev install can cache the dev shell under the prod cache key.**
-  register("/sw.js") and sw.js's SHELL_URLS = ["/","/index.html"] /
-  url.pathname.startsWith("/assets/") are root-anchored, so any future
-  base/subdirectory deploy breaks offline caching invisibly. Separately, in
-  local dev the SW can cache the dev HTML (with /src/main.tsx) under
-  bigbsky-shell-v5 and a dev->prod switch then serves the stale dev shell until
-  CACHE_NAME is bumped. Fix: derive paths from import.meta.env.BASE_URL and gate
-  SW registration behind import.meta.env.PROD (or bump CACHE_NAME per
-  environment).
-- [ ] **L18. No CSP anywhere (index.html / public/_headers).** _headers sets
-  X-Content-Type-Options / Referrer-Policy / Permissions-Policy but no
-  Content-Security-Policy. For a static SPA that renders third-party rich-text,
-  mentions, links, and media, a CSP would meaningfully reduce XSS blast radius.
-  Hardening gap, not a strict bug. Fix: add a CSP via _headers (allow atproto/CDN
-  image hosts, connect-src to the PDS/AppView/PLC/handle resolvers).
+- [x] **L17. src/main.tsx:11 + public/sw.js — service worker uses hardcoded
+  root paths; dev install can cache the dev shell under the prod cache key.
+  (DONE 2026-08-01.)** `src/main.tsx` now gates SW registration behind
+  `import.meta.env.PROD` (dev no longer registers an SW, so the dev HTML with
+  /src/main.tsx can't be cached under the production cache key) and registers
+  `${import.meta.env.BASE_URL}sw.js`. `public/sw.js` now derives every path
+  from the SW's own registration scope (`new URL(self.registration.scope)`
+  → base path, `SHELL_URLS = [base, base + "index.html"]`,
+  `ASSET_PREFIX = base + "assets/"`), so a future base/subdirectory deploy keeps
+  offline caching correct with no hardcoded "/". Cache bumped to
+  `bigbsky-shell-v6` so the base-derived version replaces the old shell cleanly
+  (activate evicts v5). Verified: SW registers/activates and caches
+  `["/", "/index.html", …]` under v6 on a live production-bundle check; build +
+  reader verifier green (verifier now reads main.tsx for the PROD/BASE_URL gate).
+- [x] **L18. No CSP anywhere (index.html / public/_headers). (DONE 2026-08-01.)**
+  Added a `Content-Security-Policy` header to `public/_headers` (applies to all
+  responses): `default-src 'self'; script-src 'self'; style-src 'self'
+  'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob:
+  https:; font-src 'self' data:; connect-src 'self' https:; worker-src 'self';
+  frame-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self';
+  object-src 'none'`. Enumerated broad-but-functional: the reader renders
+  third-party rich-text/media from arbitrary PDS/CDN hosts and resolves
+  identities against arbitrary handle domains (PLC/DoH/well-known), so
+  `img-src`/`media-src`/`connect-src` allow `https:` (and `data:`/`blob:` for
+  object-URL media); `script-src` stays strict (`'self'`, no `'unsafe-inline'`,
+  no `'unsafe-eval'`). To satisfy it, the L19 boot failure-detector moved out of
+  index.html's inline script (with its inline `onclick` buttons) into an
+  external `public/boot-error.js` (`defer`, no hash/nonce needed), building the
+  Reload/Go-home buttons with `addEventListener` and deriving the base path from
+  its own script URL. Verified live with a production bundle served under the
+  exact CSP: app boots, feed + trending render, engagement panels paginate, SW
+  activates, and the console is clean (no CSP violations). Note: Cloudflare
+  `_headers` CSP only applies on the deployed origin; local Vite dev is
+  unaffected.
 - [x] **L19. index.html — no noscript / no JS-load failure placeholder in
   #root. (DONE 2026-07-21.)** `index.html` now inlines a small boot stylesheet in
   `<head>` (the app stylesheet is bundled into the JS entry, so it only loads once
@@ -788,9 +813,11 @@ them.
   `rgb(11,17,28)`, zero console errors); `npm run build` green (tsc, vite, audit
   initial JS 152 kB gzip, reader + layout + rich-text verifiers); confirmed the
   boot placeholder, noscript message, and failure detector all survive vite's
-  production `dist/index.html` minification. Note for L18 (CSP): the failure-detector
-  is an inline script and its buttons use an inline `onclick` — when a CSP lands it
-  will need a hash/nonce (or refactor to addEventListener).
+  production `dist/index.html` minification. **2026-08-01 (L18):** the failure-detector
+  was moved out of the inline script into an external `public/boot-error.js` (defer)
+  with `addEventListener`-built buttons, so it stays allowed under the new CSP
+  (`script-src 'self'`) without a hash/nonce — the inline-script/onclick note here
+  is now resolved.
 - [x] **L20. scripts/verify-layout-behavior.mjs:3-4 and
   verify-reader-behavior.mjs:3-5 use pathless readFileSync("src/App.tsx", ...)
   — break under non-root CWD. (DONE 2026-07-06.)** Both scripts now derive a
@@ -802,6 +829,47 @@ them.
 - [x] **L21. tsconfig.json — scripts/audit-build.mjs in include but allowJs:
   false, so silently not type-checked. (DONE 2026-07-31.)** Dropped the entry
   (it was a no-op; `.mjs` files are not type-checked with `allowJs: false`).
+
+## Session follow-ups (2026-08-01)
+
+- [x] **Engagement-panel load-more pagination. (DONE 2026-08-01.)**
+  `getLikes`/`getRepostedBy`/`getQuotes` (`src/api.ts`) now accept an optional
+  `cursor` param and forward it as the XRPC cursor; `ThreadEngagementPanel`
+  (`src/App.tsx`) gained a shared `loadPage(cursor, signal)` helper, a
+  `loadMore` callback (append + advance cursor, single-in-flight busy ref,
+  abort controller that the uri/kind effect cleanup cancels), and an
+  `AutoLoadMoreButton` (with `error={loadMoreError}` so a rate-limited retry
+  storm stops) rendered while a cursor remains. Load-more failures keep the
+  already-loaded results and surface a `.load-more-error` retry, mirroring the
+  feed pagination pattern (c5b856e). Verified live under the new CSP: the
+  "Liked by" panel on a 38,916-like post loaded 50 → auto-load → 97 → manual
+  Load more → 189 cards, zero console errors. tsc/vitest(202)/build green;
+  reader verifier guards the pagination + the AutoLoadMoreButton.
+- [ ] **Still open — pagination parity for the remaining paged surfaces:**
+  profile Feeds/Lists tabs (`getActorFeeds`/`getActorLists` cursors) and the
+  in-app list timeline (`getListFeed` cursor) all take a single 50-item page
+  today. Each needs the same append-and-advance pattern as the engagement panel
+  (and should be careful about `AutoLoadMoreButton` nested inside a tab vs. the
+  feed's own loader).
+- [ ] **Search/thread/quoted-post NSFW filtering parity (deferred this session).**
+  Feed/profile timelines already drop `isAdultPost` rows when the NSFW toggle is
+  hidden (`VirtualPostList`), but search results, the standalone-thread render,
+  and quoted-post media only gate the *media* behind the reveal warning — the
+  posts themselves still render. Decide whether to apply the same
+  remove-entirely filter to those surfaces (a malformed/abusive record in search
+  results is the highest-impact gap).
+- [ ] **Bookmarks scroll-restore content-anchoring (still open, hard).** The
+  full root-cause writeup lives in the "Integrate scroll restoration with the
+  VirtualPostList measurement pass" item above (2026-07-03 CDP repro: 2698 → 96
+  on return because the restore fights the row measurement shrink). A
+  time-budget widening was tried and reverted. Real fix is anchoring to the
+  top-visible post URI (+ intra-post offset) or a "measurement settled /
+  totalHeight stable" signal from VirtualPostList — not raw pixel offsets.
+- [ ] **Toast reuse (follow-up).** The shared `ToastContext`/`ToastHost`
+  (b7074b8) is still only wired into `toggleFollowFeed` and the trending-note.
+  Other `console.error`-only catch paths (e.g. `toggleBlock`, list create/
+  delete/member ops) could surface actionable toasts; verify each call site is
+  inside the provider first.
 
 ### Verified correct / dropped (checked, not bugs)
 

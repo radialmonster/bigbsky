@@ -402,6 +402,16 @@ async function disposeCachedClient(): Promise<void> {
   }
   const asyncDispose = (Symbol as { asyncDispose?: symbol }).asyncDispose;
   if (!asyncDispose) {
+    // Observable early-return: without the async disposer the client's
+    // IndexedDB connection stays open, so the subsequent deleteDatabase in
+    // signOut/clearOAuthLocalSession hits the onblocked path (M4) and a
+    // signed-out session can linger for a later init() to resurrect. The
+    // library's core-js import currently polyfills Symbol.asyncDispose at
+    // runtime, but if that ever gets tree-shaken or drops, we want this visible
+    // instead of a silent no-op.
+    console.warn(
+      "BigBsky auth: Symbol.asyncDispose is not available at runtime; the OAuth client's IndexedDB connection cannot be closed via the async disposer. A subsequent deleteDatabase may be blocked (sign-out may need a retry).",
+    );
     return;
   }
   try {
@@ -440,14 +450,23 @@ export async function signOut(did?: string) {
     activeSession = null;
     safeLocalStorageRemove(activeDidKey);
     safeLocalStorageRemove(activeHandleKey);
-    await clearOAuthSessionStorage();
+    const clearResult = await clearOAuthSessionStorage();
+    // A "blocked" clear means a connection kept the OAuth DB on disk past the
+    // timeout — do not report a clean sign-out: a later init() could resurrect
+    // the lingering session. Surface it as a warning so the UI can tell the user
+    // to close other tabs and retry.
+    if (clearResult.outcome === "blocked") {
+      const blockedWarning =
+        "The local sign-in could not be fully cleared because another tab or window is still holding the browser storage open. Close other tabs and sign out again to finish removing it locally.";
+      revokeWarning = revokeWarning ? `${revokeWarning} ${blockedWarning}` : blockedWarning;
+    }
   } finally {
     teardownInProgress = false;
   }
   return revokeWarning;
 }
 
-export async function clearOAuthLocalSession() {
+export async function clearOAuthLocalSession(): Promise<ClearOAuthSessionResult> {
   teardownInProgress = true;
   try {
     activeSession = null;
@@ -459,7 +478,7 @@ export async function clearOAuthLocalSession() {
     clientPromise = null;
     safeLocalStorageRemove(activeDidKey);
     safeLocalStorageRemove(activeHandleKey);
-    await clearOAuthSessionStorage();
+    return await clearOAuthSessionStorage();
   } finally {
     teardownInProgress = false;
   }
@@ -1476,23 +1495,26 @@ export async function markNotificationsSeen(): Promise<void> {
   await agent.app.bsky.notification.updateSeen({ seenAt: new Date().toISOString() });
 }
 
-export async function clearOAuthSessionStorage() {
+export type ClearOAuthSessionResult = { outcome: "cleared" } | { outcome: "blocked" };
+
+export async function clearOAuthSessionStorage(): Promise<ClearOAuthSessionResult> {
   if (!("indexedDB" in window)) {
-    return;
+    // No IndexedDB means no OAuth store to linger on disk.
+    return { outcome: "cleared" };
   }
 
-  await new Promise<void>((resolve) => {
+  return await new Promise<ClearOAuthSessionResult>((resolve) => {
     let settled = false;
-    const done = () => {
+    const done = (outcome: ClearOAuthSessionResult["outcome"]) => {
       if (settled) {
         return;
       }
       settled = true;
-      resolve();
+      resolve({ outcome });
     };
     const request = indexedDB.deleteDatabase(oauthDatabaseName);
-    request.onsuccess = () => done();
-    request.onerror = () => done();
+    request.onsuccess = () => done("cleared");
+    request.onerror = () => done("blocked");
     // Do NOT resolve on `blocked`: the delete is still pending and the database
     // is still present (another connection is holding it open). Resolving here
     // would report success while a signed-out OAuth session lingers on disk,
@@ -1501,7 +1523,7 @@ export async function clearOAuthSessionStorage() {
     // with a timeout fallback so sign-out can't hang forever. In practice
     // callers dispose (close) the client first, so `blocked` should not fire.
     request.onblocked = () => {
-      window.setTimeout(done, 3000);
+      window.setTimeout(() => done("blocked"), 3000);
     };
   });
 }

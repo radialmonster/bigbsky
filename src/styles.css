@@ -1320,6 +1320,23 @@ button {
   margin-bottom: 0;
 }
 
+/* Per-row ErrorBoundary fallback: a malformed record collapses to a subtle
+   card-sized placeholder instead of unmounting the feed. It inherits the card
+   background so it reads as a damaged row, not a page-level error. */
+.post-row-error {
+  border: 1px solid #2c3a4f;
+  border-radius: 12px;
+  background: #111826;
+  padding: 22px;
+  color: #8b9bb2;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.post-row-error p {
+  margin: 0;
+}
+
 .virtual-spacer {
   pointer-events: none;
 }

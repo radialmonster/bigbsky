@@ -4,16 +4,12 @@ read todo.md and proceed to work on a task and implement.  add   any follow ups 
 
 WHAT TO WORK ON THIS SESSION (forward-looking; use your judgement, keep rotating areas, batch small fixes):
 - Concrete in-repo items (see todo.md for full details):
-  - L17: service worker hardcoded root paths — derive from import.meta.env.BASE_URL + gate SW registration behind import.meta.env.PROD. Small, self-contained.
-  - L18: add a Content-Security-Policy via public/_headers. NOTE the boot failure-detector in index.html is an inline script with inline onclick — a CSP needs a hash/nonce or an addEventListener refactor (see todo L19 note).
-  - M4: src/auth.ts clearOAuthSessionStorage resolves success after deleteDatabase onblocked, contradicting its own warning — return a distinct blocked outcome so sign-out can warn/retry.
-  - M6: src/auth.ts disposeCachedClient silent early-return when Symbol.asyncDispose is missing — at minimum log it.
-  - H1 follow-up: add a narrower ErrorBoundary around the timeline/post-rendering subtree so one malformed record degrades one row, not the feed.
-  - Bookmarks scroll-restore (VirtualPostList measurement pass) — hard; anchor to content (top-visible post URI), not raw pixel offset.
-  - Load-more pagination for engagement panels (getLikes/getRepostedBy/getQuotes) + profile feeds/lists tabs + list timeline (cursors exist).
-  - Search results/standalone-thread/quoted-post NSFW filtering parity (feed/profile timelines already filter adult posts when the toggle is hidden).
-  - Continue the App.tsx decomposition (component/CSS co-location into src/features/**; cache layer with the loaders).
-- A shared toast primitive now exists (ToastContext + ToastHost in src/App.tsx) — REUSE it for any new silent-failure path (other console.error-only catch blocks) instead of adding per-button error props or new toast systems. Consider converting other silent failures (e.g. toggleBlock/list ops) to toasts.
+  - Bookmarks scroll-restore — hard; anchor to content (top-visible post URI), not raw pixel offset. Full root-cause + CDP repro in todo.md ("Integrate scroll restoration with the VirtualPostList measurement pass"). A time-budget widening was tried and reverted; don't re-try that.
+  - Load-more pagination for the remaining paged surfaces: profile Feeds/Lists tabs (getActorFeeds/getActorLists) + the in-app list timeline (getListFeed). Cursors exist. The engagement panels (getLikes/getRepostedBy/getQuotes) got this pattern on 2026-08-01 — mirror it (append-and-advance, single-in-flight, AutoLoadMoreButton + loadMoreError, abort on uri/kind change). Mind the nested-loader pitfall (tab-level loader vs. the feed's own AutoLoadMoreButton).
+  - Search results / standalone-thread / quoted-post NSFW filtering parity (feed/profile timelines already drop isAdultPost rows when the NSFW toggle is hidden; these surfaces only gate media behind the reveal warning today).
+  - Continue the App.tsx decomposition (component/CSS co-location into src/features/**; cache layer with the loaders). All pure `read*`/`safe*`/scroll/feed-order helpers are already extracted to src/lib with vitest suites — the remaining work is components + the mega-stylesheet.
+  - Reuse the shared toast primitive (ToastContext + ToastHost in src/App.tsx) for other console.error-only catch paths (e.g. toggleBlock, list ops) instead of adding per-button error props.
+- NEW this session (2026-08-01) — verify the shipped hardening on the deployed origin once Cloudflare rebuilds: (a) the new Content-Security-Policy header from public/_headers is actually served and the live site still works (app boots, feed/trending render, engagement panels load, no CSP violations in the console — I validated locally by serving the production bundle under the exact CSP, but the live origin is the real gate); (b) the service worker now derives paths from its registration scope and registration is gated behind PROD (dev no longer registers one — if a dev server seems to have no SW, that's expected now); (c) the boot failure-detector now lives in public/boot-error.js (external, defer) instead of an inline script.
 - Anything on the deployed origin that needs auth (OAuth writes, moderation, composer) still requires commit + push + operator sign-in; never promise local auth verification.
 - Leave the worktree with no unrelated revert; keep changes scoped; add a follow-up item to todo.md for anything you notice but defer.
 
