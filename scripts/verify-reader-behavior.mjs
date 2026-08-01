@@ -103,7 +103,7 @@ if (!/export function getLikes\(/.test(api) || !/export function getRepostedBy\(
   failures.push("api should expose public getLikes/getRepostedBy/getQuotes readers");
 }
 // The thread engagement panel (ThreadEngagementPanel) moved to
-// src/features/post/ThreadEngagementPanel.tsx (slice 14 of #18) with a
+// src/features/post/ThreadEngagementPanel.tsx (slice 13 of #18) with a
 // behavioral RTL suite covering on-demand likes/reposts/quotes loading, empty
 // states, rate-limit surfacing, load-more pagination + error retention, profile
 // navigation, and close (ThreadEngagementPanel.test.tsx); the old App.tsx
