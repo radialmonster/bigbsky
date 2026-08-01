@@ -3908,44 +3908,6 @@ function SurfaceView({
         { title: "Follow Feeds", detail: "Following a feed saves it to your Bluesky account; the Following control writes through your session.", status: "Active" },
       ],
     },
-    lists: {
-      copy: "Lists are staged as browser-local workspaces now. Authenticated Bluesky list sync and list timelines can attach here later.",
-      cards: [
-        { title: "List Index", detail: "Local list workspaces are visible on this route and clearable from Settings.", status: "Local" },
-        { title: "New List", detail: "Create local list shells without sending anything to BigBsky infrastructure.", status: "Active" },
-        { title: "List Timelines", detail: "Lists should behave like Feed sources once data is available.", status: "Planned" },
-      ],
-    },
-    notifications: {
-      copy: "Notifications has a local inbox now so account state, bookmark activity, and draft state have a stable destination before OAuth reads are added.",
-      cards: [
-        { title: "All", detail: "Local reader/account events render in an inbox-style list.", status: "Local" },
-        { title: "Mentions", detail: "Mention search opens from this surface until authenticated mention reads are available.", status: "Search" },
-        { title: "Settings", detail: "Notification controls remain reserved for signed-in account preferences.", status: "Pending" },
-      ],
-    },
-    profile: {
-      copy: auth.session
-        ? "Your profile is attached to your signed-in identity. Your posts open in the profile reader, and account-level edits open on Bluesky in a new tab."
-        : "Sign in to see your own profile, posts, and account controls.",
-      cards: [
-        { title: "Posts", detail: "Open your public profile feed from this surface, with your like/follow state seeded.", status: auth.session ? "Active" : "Sign in" },
-        { title: "Lists", detail: "Your real Bluesky lists — created and subscribed — load on the Lists route.", status: auth.session ? "Active" : "Sign in" },
-        { title: "Edit Profile", detail: "Profile editing is delegated to Bluesky; the control opens your profile there in a new tab.", status: "On Bluesky" },
-      ],
-    },
-    bookmarks: {
-      copy: "Your Bluesky bookmarks live on the dedicated Bookmarks page; this entry is a fallback only.",
-      cards: [],
-    },
-    settings: {
-      copy: "Settings starts with local preferences, sign-out placement, and account/session controls.",
-      cards: [
-        { title: "Appearance", detail: "Density is stored locally per context and applied before feed paint.", status: "Active" },
-        { title: "Account", detail: "Account identity and sign-out are shown after browser OAuth restore.", status: "Partial" },
-        { title: "Privacy", detail: "No BigBsky backend storage is used for v1 reader data.", status: "Static" },
-      ],
-    },
   };
   const surface = surfaces[name] || {
     copy: "This signed-in destination has a stable static route and is ready for OAuth-backed data.",
@@ -4215,9 +4177,7 @@ function SurfaceView({
     );
   }
 
-  if (name === "notifications") {
-    // Legacy route compatibility: Notifications now lives under Profile.
-  } else if (name === "lists") {
+  if (name === "lists") {
     return (
       <ListsSurface
         containerRef={containerRef}
