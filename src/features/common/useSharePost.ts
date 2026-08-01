@@ -6,6 +6,12 @@ import { useResetTimeout } from "./useResetTimeout";
 
 export type ShareState = "idle" | "copied" | "shared" | "error";
 
+// Button label for a given share state, shared by the three post-card footers
+// that render the Share action (ThreadedPostCard, PostActionBar, CombinedThreadViewCard).
+export function shareButtonLabel(state: ShareState) {
+  return state === "copied" ? "Copied" : state === "shared" ? "Shared" : state === "error" ? "Copy failed" : "Share";
+}
+
 // Shared "Share post" behavior: Web Share API when available, else copy the
 // canonical bsky.app URL to the clipboard. Transient "Copied"/"Shared"/"Copy
 // failed" feedback resets to idle via useResetTimeout. Extracted from the three

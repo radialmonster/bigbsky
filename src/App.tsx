@@ -5,6 +5,7 @@ import {
   Hash,
   Heart,
   Home,
+  Info,
   Link as LinkIcon,
   List,
   Loader2,
@@ -173,7 +174,7 @@ import { UnsupportedEmbedNotice } from "./features/post/UnsupportedEmbedNotice";
 import { useReplyGate } from "./features/post/useReplyGate";
 import { ThreadEngagementPanel } from "./features/post/ThreadEngagementPanel";
 import { ImageViewer, type ImageViewerImage, type ImageViewerState } from "./features/post/ImageViewer";
-import { useSharePost } from "./features/common/useSharePost";
+import { useSharePost, shareButtonLabel } from "./features/common/useSharePost";
 import { useDismissMenu } from "./features/common/useDismissMenu";
 import { isSensitiveLabel, moderationLabelText, sensitiveMediaValues } from "./lib/moderation";
 import { RecentPanel, type RecentItem } from "./features/rightRail/RecentPanel";
@@ -210,7 +211,17 @@ import {
   type PostRefValue,
 } from "./features/composer/PostComposer";
 
-const navIcons = [Home, Hash, List, Bookmark, Search, Compass, User, Settings];
+const navIcons: Record<string, typeof Home> = {
+  Home,
+  Feeds: Hash,
+  Lists: List,
+  Bookmarks: Bookmark,
+  Search,
+  Explore: Compass,
+  Profile: User,
+  Settings,
+  Info,
+};
 const InfoPage = lazy(() => import("./InfoPage"));
 
 // Lets deeply-nested post cards open an in-app hashtag search without threading
@@ -358,10 +369,15 @@ const searchLanguages = [
   { label: "German", value: "de" },
   { label: "French", value: "fr" },
 ];
+function feedSourceMatches(source: FeedSource, query: string) {
+  return `${source.label} ${source.description} ${source.group}`.toLowerCase().includes(query.trim().toLowerCase());
+}
+
 const recentStorageKey = "bigbsky:recent";
 const localListsStorageKey = "bigbsky:local-lists";
 const workspaceWidthStorageKey = "bigbsky:workspace-width";
 const widthByContextStorageKey = "bigbsky:width-by-context";
+const densityByContextStorageKey = "bigbsky:density-by-context";
 const columnsStorageKey = "bigbsky:columns";
 const showNsfwStorageKey = "bigbsky:show-nsfw";
 const showMediaStorageKey = "bigbsky:show-media";
@@ -394,7 +410,7 @@ function countBigBskyLocalKeys() {
 }
 
 function readDensityPreferences() {
-  return parseObjectMap<DensityMode>(safeLocalStorageGet("bigbsky:density-by-context"));
+  return parseObjectMap<DensityMode>(safeLocalStorageGet(densityByContextStorageKey));
 }
 
 function readShowMediaPreferences() {
@@ -1440,9 +1456,7 @@ export function App() {
       return allSources;
     }
 
-    return allSources.filter((source) =>
-      `${source.label} ${source.description} ${source.group}`.toLowerCase().includes(query),
-    );
+    return allSources.filter((source) => feedSourceMatches(source, feedSearch));
   }, [feedSearch, allSources]);
   const pinnedSources = useMemo(() => {
     const lookup = new Map<string, FeedSource>();
@@ -1466,11 +1480,7 @@ export function App() {
 
     if (pinnedSources.length > 0) {
       const query = feedSearch.trim().toLowerCase();
-      const pinnedMatches = query
-        ? pinnedSources.filter((source) =>
-            `${source.label} ${source.description} ${source.group}`.toLowerCase().includes(query),
-          )
-        : pinnedSources;
+      const pinnedMatches = query ? pinnedSources.filter((source) => feedSourceMatches(source, query)) : pinnedSources;
       if (pinnedMatches.length > 0) {
         groups.Pinned = pinnedMatches;
       }
@@ -1951,7 +1961,7 @@ export function App() {
       default: nextDensity,
     };
     setDensityByContext(nextPreferences);
-    safeLocalStorageSet("bigbsky:density-by-context", JSON.stringify(nextPreferences));
+    safeLocalStorageSet(densityByContextStorageKey, JSON.stringify(nextPreferences));
   }
 
   function updateFeedDensityOverride(source: FeedSource, nextDensity: DensityMode | null) {
@@ -1975,7 +1985,7 @@ export function App() {
       }
     }
     setDensityByContext(nextPreferences);
-    safeLocalStorageSet("bigbsky:density-by-context", JSON.stringify(nextPreferences));
+    safeLocalStorageSet(densityByContextStorageKey, JSON.stringify(nextPreferences));
   }
 
   function updateFeedShowMediaOverride(source: FeedSource, nextValue: boolean | null) {
@@ -2440,8 +2450,10 @@ export function App() {
 
     if (item === "Home") {
       // Resolve at click time so the signed-in state (and thus the Following /
-      // custom-feed vs Discover fallback) is current.
-      const source = resolveHomeSource(homeSourceId, !!signedInDid, subscribedFeeds);
+      // custom-feed vs Discover fallback) is current. Mirror the active-source
+      // memo's pending-auth flag so clicking Home during an auth check stays on
+      // the user's chosen Home feed instead of bouncing to the Discover fallback.
+      const source = resolveHomeSource(homeSourceId, !!signedInDid || feedWaitingForAuth, subscribedFeeds);
       setActiveSourceId(source.id);
       navigate({ kind: "feed", uri: source.id }, feedRoutePath(source));
       return;
@@ -2932,8 +2944,8 @@ export function App() {
               <span>New post</span>
             </button>
           )}
-          {navigationItems.map((item, index) => {
-            const Icon = navIcons[index];
+          {navigationItems.map((item) => {
+            const Icon = navIcons[item];
             // The Profile entry opens the account hub. It uses the same line icon
             // as the rest of the rail so it matches; when signed in the tooltip
             // carries the account handle.
@@ -2953,7 +2965,7 @@ export function App() {
                 }
                 onClick={() => openNavigation(item)}
               >
-                {Icon ? <Icon size={20} /> : <i className="plain-info-icon" aria-hidden="true" />}
+                {Icon && <Icon size={20} />}
                 <span>{item}</span>
               </button>
             );
@@ -3615,6 +3627,37 @@ function VirtualPostList({
     };
   }, [scrollAnchor, scrollFallbackTarget, onAnchorRestored, rows]);
 
+  // Stable across scroll frames (only rows/offsets/height changes recreate it),
+  // so MeasuredPostRow's effect (deps: [rowKey, onMeasured]) does not tear
+  // down and re-create a ResizeObserver for every visible row on every scroll.
+  const handleRowMeasured = useCallback(
+    (rowKey: string, height: number) => {
+      const previousHeight = rowHeightsRef.current[rowKey] ?? defaultRowHeight;
+      if (previousHeight === height) {
+        return;
+      }
+
+      // Keep the offset stable when a row above the viewport changes size:
+      // grow/shrink the scroll position by the same delta so the content
+      // under the user's eyes doesn't jump. Done here (not in the updater)
+      // to keep setRowHeights pure.
+      const rowIndex = rows.findIndex((candidate) => feedRowKey(candidate) === rowKey);
+      const rowTop = rowIndex >= 0 ? rowOffsets[rowIndex] ?? 0 : 0;
+      const container = containerRef.current;
+      if (container && rowTop + previousHeight <= container.scrollTop) {
+        container.scrollTop += height - previousHeight;
+      }
+
+      // Forward-sync the ref so a sibling measurement in the same batch
+      // diffs against this height before the state commit lands.
+      rowHeightsRef.current = { ...rowHeightsRef.current, [rowKey]: height };
+      setRowHeights((current) =>
+        (current[rowKey] ?? defaultRowHeight) === height ? current : { ...current, [rowKey]: height },
+      );
+    },
+    [containerRef, defaultRowHeight, rowOffsets, rows],
+  );
+
   return (
     <div
       className="virtual-list"
@@ -3625,32 +3668,9 @@ function VirtualPostList({
       {visibleItems.map((row) => (
         <MeasuredPostRow
           post={feedRowPost(row)}
+          rowKey={feedRowKey(row)}
           key={feedRowKey(row)}
-          onMeasured={(height) => {
-            const rowKey = feedRowKey(row);
-            const previousHeight = rowHeightsRef.current[rowKey] ?? defaultRowHeight;
-            if (previousHeight === height) {
-              return;
-            }
-
-            // Keep the offset stable when a row above the viewport changes size:
-            // grow/shrink the scroll position by the same delta so the content
-            // under the user's eyes doesn't jump. Done here (not in the updater)
-            // to keep setRowHeights pure.
-            const rowIndex = rows.findIndex((candidate) => feedRowKey(candidate) === rowKey);
-            const rowTop = rowIndex >= 0 ? rowOffsets[rowIndex] ?? 0 : 0;
-            const container = containerRef.current;
-            if (container && rowTop + previousHeight <= container.scrollTop) {
-              container.scrollTop += height - previousHeight;
-            }
-
-            // Forward-sync the ref so a sibling measurement in the same batch
-            // diffs against this height before the state commit lands.
-            rowHeightsRef.current = { ...rowHeightsRef.current, [rowKey]: height };
-            setRowHeights((current) =>
-              (current[rowKey] ?? defaultRowHeight) === height ? current : { ...current, [rowKey]: height },
-            );
-          }}
+          onMeasured={handleRowMeasured}
         >
           {(() => {
             const rowPost = feedRowPost(row);
@@ -3709,11 +3729,13 @@ function VirtualPostList({
 function MeasuredPostRow({
   children,
   post,
+  rowKey,
   onMeasured,
 }: {
   children: React.ReactNode;
   post: FeedPost;
-  onMeasured: (height: number) => void;
+  rowKey: string;
+  onMeasured: (rowKey: string, height: number) => void;
 }) {
   const rowRef = useRef<HTMLDivElement | null>(null);
 
@@ -3723,13 +3745,13 @@ function MeasuredPostRow({
       return undefined;
     }
 
-    const measure = () => onMeasured(Math.ceil(row.getBoundingClientRect().height));
+    const measure = () => onMeasured(rowKey, Math.ceil(row.getBoundingClientRect().height));
     measure();
     const observer = "ResizeObserver" in window ? new ResizeObserver(measure) : null;
     observer?.observe(row);
 
     return () => observer?.disconnect();
-  }, [post.uri, onMeasured]);
+  }, [rowKey, onMeasured]);
 
   return (
     <div className="virtual-row" data-post-uri={post.uri} ref={rowRef}>
@@ -4846,9 +4868,7 @@ function SearchView({
       return feedSources;
     }
 
-    return feedSources.filter((source) =>
-      `${source.label} ${source.description} ${source.group}`.toLowerCase().includes(normalizedQuery),
-    );
+    return feedSources.filter((source) => feedSourceMatches(source, normalizedQuery));
   }, [feedSources, query]);
 
   // When the NSFW preference is hidden, drop adult/graphic-labeled posts from
@@ -5190,7 +5210,7 @@ function ThreadedPostCard({
           </button>
         )}
         <button type="button" onClick={handleShare} title="Share first post">
-          <Share2 size={16} /> {shareState === "copied" ? "Copied" : shareState === "shared" ? "Shared" : shareState === "error" ? "Copy failed" : "Share"}
+          <Share2 size={16} /> {shareButtonLabel(shareState)}
         </button>
         <a href={postBskyUrl(rootPost)} target="_blank" rel="noreferrer" title="Open first post on Bluesky">
           <LinkIcon size={16} /> Open on Bluesky
@@ -5452,13 +5472,7 @@ function MediaOnlyPostCard({
   const text = post.record.text?.trim() || "";
   const threadMarker = threadMarkerMatch(text);
   const postTimeLabel = formatPostTime(postSortAt(post));
-  const viewerImages = images
-    .map((image) => ({
-      src: image.fullsize || image.thumb || "",
-      previewSrc: image.thumb && image.fullsize && image.thumb !== image.fullsize ? image.thumb : undefined,
-      alt: image.alt || "",
-    }))
-    .filter((image) => image.src);
+  const viewerImages = feedViewerImages(images);
 
   if (images.length === 0 && !video) {
     return null;
@@ -5656,7 +5670,7 @@ function PostActionBar({
           </button>
         ) : null}
         <button type="button" onClick={handleShare} title="Share post">
-          <Share2 size={16} /> {shareState === "copied" ? "Copied" : shareState === "shared" ? "Shared" : shareState === "error" ? "Copy failed" : "Share"}
+          <Share2 size={16} /> {shareButtonLabel(shareState)}
         </button>
         {onReply && (
           <button
@@ -5907,7 +5921,7 @@ function CombinedThreadViewCard({
           </button>
         ) : null}
         <button type="button" onClick={handleShare} title="Share first post">
-          <Share2 size={16} /> {shareState === "copied" ? "Copied" : shareState === "shared" ? "Shared" : shareState === "error" ? "Copy failed" : "Share"}
+          <Share2 size={16} /> {shareButtonLabel(shareState)}
         </button>
         <a href={postBskyUrl(rootPost)} target="_blank" rel="noreferrer" title="Open first post on Bluesky">
           <LinkIcon size={16} /> Open on Bluesky
