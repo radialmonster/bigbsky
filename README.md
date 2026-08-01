@@ -24,6 +24,10 @@ The posts and profiles you see in BigBsky are hosted on the Bluesky network, not
 
 For problems with the BigBsky reader itself — bugs, broken rendering, or a BigBsky-specific issue — open a [GitHub issue](https://github.com/radialmonster/bigbsky/issues) or use the contact below. Reports are reviewed and responded to through those channels.
 
+**How reports are handled:** issues filed on GitHub or sent to the contact below are reviewed by the operator and typically acknowledged within a few days. Reader bugs and BigBsky-specific problems are fixed and shipped in a released build. A report about content displayed from Bluesky is forwarded to Bluesky's moderation — BigBsky does not itself act on that content.
+
+**Deleting content:** BigBsky hosts none of the posts, profiles, feeds, or media you see — they live on the Bluesky network, so removal of that content must be requested through Bluesky's moderation tools. Data that BigBsky keeps on this device (preferences, drafts, pins, saved posts, local lists, scroll positions) can be deleted immediately from Settings → "Clear local data" or by clearing site data; nothing you save is stored on a BigBsky server.
+
 ## Links
 
 - Website: https://bigbsky.com

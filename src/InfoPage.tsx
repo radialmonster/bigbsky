@@ -70,6 +70,19 @@ export default function InfoPage() {
             </a>{" "}
             or use the contact below. Reports are reviewed and responded to through those channels.
           </p>
+          <p>
+            How reports are handled: issues filed on GitHub or sent to the contact below are reviewed by the operator
+            and typically acknowledged within a few days. Reader bugs and BigBsky-specific problems are fixed and
+            shipped in a released build. A report about content displayed from Bluesky is forwarded to Bluesky&rsquo;s
+            moderation &mdash; BigBsky does not itself act on that content.
+          </p>
+          <p>
+            Deleting content: BigBsky hosts none of the posts, profiles, feeds, or media you see &mdash; they live on
+            the Bluesky network, so removal of that content must be requested through Bluesky&rsquo;s moderation tools.
+            Data that BigBsky keeps on this device (preferences, drafts, pins, saved posts, local lists, scroll
+            positions) can be deleted immediately from Settings &rarr; &ldquo;Clear local data&rdquo; or by clearing
+            site data; nothing you save is stored on a BigBsky server.
+          </p>
         </article>
         <article className="info-panel">
           <h3>Contact</h3>
