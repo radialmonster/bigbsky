@@ -20,6 +20,7 @@ export type PostRefValue = { uri: string; cid: string };
 
 export const composerDraftStorageKey = "bigbsky:composer-draft";
 const replyDraftPrefix = "bigbsky:reply-draft:";
+const quoteDraftPrefix = "bigbsky:quote-draft:";
 
 // One in-progress composer image: the File to upload plus a preview object-URL,
 // stable id, and editable alt text. Session-only (not persisted).
@@ -391,6 +392,8 @@ export function PostComposer({
   canReply = true,
   onClose,
   onReplied,
+  quote,
+  onQuoted,
 }: {
   // New-post mode (controlled draft lifted to the app so it survives navigation):
   draft?: { posts: string[] };
@@ -402,23 +405,35 @@ export function PostComposer({
   canReply?: boolean;
   onClose?: () => void;
   onReplied?: () => void;
+  // Quote mode (presence of `quote` switches the composer into a quote post,
+  // publishing an app.bsky.embed.record to the quoted post, like bsky's
+  // ComposerOpts.quote). Mutually exclusive with reply mode.
+  quote?: FeedPost;
+  onQuoted?: () => void;
 }) {
   const isReply = !!replyTo;
+  const isQuote = !!quote;
   // Reply text is internal state seeded from a per-thread draft key; new-post
   // text is the controlled parent draft. `draftText`/`setText` unify the two so
   // the shared body never has to know which mode it's in.
   const [replyText, setReplyText] = useState("");
+  const [quoteText, setQuoteText] = useState("");
   const draftText = isReply
     ? replyText
-    : (draft?.posts && draft.posts.length > 0 ? draft.posts : [""]).join("\n\n");
+    : isQuote
+      ? quoteText
+      : (draft?.posts && draft.posts.length > 0 ? draft.posts : [""]).join("\n\n");
   const setText = (value: string) => {
     if (isReply) {
       setReplyText(value);
+    } else if (isQuote) {
+      setQuoteText(value);
     } else {
       onDraftChange?.({ posts: [value] });
     }
   };
   const replyDraftKey = replyTo ? `${replyDraftPrefix}${replyTo.parent.uri}` : "";
+  const quoteDraftKey = quote ? `${quoteDraftPrefix}${quote.uri}` : "";
 
   const generatedPosts = splitTextForThread(draftText);
   const generatedPostCount = Math.max(generatedPosts.length, 1);
@@ -440,7 +455,9 @@ export function PostComposer({
   // would leak every URL when the user attaches images then navigates away.
   const imagesRef = useRef(images);
   imagesRef.current = images;
-  const hasContent = draftText.trim().length > 0 || images.length > 0;
+  // A quote post can be text-less (the quoted record is itself the content), so
+  // the quote counts as content for enabling the publish button.
+  const hasContent = draftText.trim().length > 0 || images.length > 0 || isQuote;
   // Collapsed by default to keep the top of the feed clean; expand on click.
   // Start expanded if a local draft is already in progress so it isn't hidden.
   // (Replies render inline and ignore this — they're always expanded.)
@@ -448,14 +465,14 @@ export function PostComposer({
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
   const [postLang, setPostLang] = useState(() =>
-    replyTo ? readReplyDefaultLanguage(replyTo.parent) : readDefaultPostLanguage(),
+    replyTo ? readReplyDefaultLanguage(replyTo.parent) : quote ? readReplyDefaultLanguage(quote) : readDefaultPostLanguage(),
   );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // New-post draft autosave (controlled draft → localStorage). No-op for replies.
+  // New-post draft autosave (controlled draft → localStorage). No-op for replies/quotes.
   useEffect(() => {
-    if (isReply) {
+    if (isReply || isQuote) {
       return;
     }
     if (draftText.trim().length > 0) {
@@ -463,7 +480,7 @@ export function PostComposer({
     } else {
       safeLocalStorageRemove(composerDraftStorageKey);
     }
-  }, [isReply, draftText]);
+  }, [isReply, isQuote, draftText]);
 
   // Reply: seed the text from the per-thread draft key when the target changes.
   useEffect(() => {
@@ -484,6 +501,26 @@ export function PostComposer({
       safeLocalStorageRemove(replyDraftKey);
     }
   }, [isReply, replyDraftKey, replyText]);
+
+  // Quote: seed the text from the per-quote draft key when the target changes.
+  useEffect(() => {
+    if (!isQuote) {
+      return;
+    }
+    setQuoteText(safeLocalStorageGet(quoteDraftKey) || "");
+  }, [isQuote, quoteDraftKey]);
+
+  // Quote: autosave the text to the per-quote draft key.
+  useEffect(() => {
+    if (!isQuote) {
+      return;
+    }
+    if (quoteText.trim()) {
+      safeLocalStorageSet(quoteDraftKey, quoteText);
+    } else {
+      safeLocalStorageRemove(quoteDraftKey);
+    }
+  }, [isQuote, quoteDraftKey, quoteText]);
 
   // Revoke any outstanding object URLs when the composer unmounts.
   useEffect(() => {
@@ -556,7 +593,7 @@ export function PostComposer({
   }
 
   async function handleSubmit() {
-    if (posting || !hasContent || (isReply && isOverLimit)) {
+    if (posting || !hasContent || ((isReply || isQuote) && isOverLimit)) {
       return;
     }
     setPosting(true);
@@ -567,6 +604,13 @@ export function PostComposer({
         await publishPost({
           text: draftText.trim(),
           reply: { root: replyTo.root, parent: { uri: replyTo.parent.uri, cid: replyTo.parent.cid } },
+          ...(postLang ? { langs: [postLang] } : {}),
+          ...(composerImages.length > 0 ? { images: composerImages } : {}),
+        });
+      } else if (isQuote && quote) {
+        await publishPost({
+          text: draftText.trim(),
+          quote: { uri: quote.uri, cid: quote.cid },
           ...(postLang ? { langs: [postLang] } : {}),
           ...(composerImages.length > 0 ? { images: composerImages } : {}),
         });
@@ -586,6 +630,11 @@ export function PostComposer({
         safeLocalStorageRemove(replyDraftKey);
         onClose?.();
         onReplied?.();
+      } else if (isQuote) {
+        setQuoteText("");
+        safeLocalStorageRemove(quoteDraftKey);
+        onClose?.();
+        onQuoted?.();
       } else {
         safeLocalStorageRemove(composerDraftStorageKey);
         onDraftChange?.({ posts: [""] });
@@ -598,7 +647,9 @@ export function PostComposer({
           ? error.message
           : isReply
             ? "Could not publish reply. Try again."
-            : "Could not publish. Try again.",
+            : isQuote
+              ? "Could not publish quote. Try again."
+              : "Could not publish. Try again.",
       );
     } finally {
       setPosting(false);
@@ -676,7 +727,7 @@ export function PostComposer({
             safeLocalStorageSet(postLanguageStorageKey, code);
           }}
         />
-        {isReply ? (
+        {isReply || isQuote ? (
           <span className={`composer-count${isOverLimit ? " over-limit" : ""}`}>{remainingDisplay}</span>
         ) : (
           <span className="composer-count">
@@ -724,6 +775,46 @@ export function PostComposer({
               disabled={!canReply || posting || isOverLimit || !hasContent}
             >
               {posting ? "Replying..." : "Reply"}
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (isQuote && quote) {
+    const quotedText = quote.record.text?.trim() || "";
+    return (
+      <section className="reply-composer inline" aria-label={`Quote ${displayName(quote.author)}'s post`}>
+        <div className="reply-target-preview">
+          <Avatar profile={quote.author} />
+          <div className="reply-target-body">
+            <div className="reply-target-meta">
+              <span className="reply-target-name">{displayName(quote.author)}</span>
+              <span className="reply-target-handle">@{quote.author.handle}</span>
+            </div>
+            {quotedText && <p className="reply-target-text">{quotedText}</p>}
+          </div>
+        </div>
+        <textarea
+          ref={textareaRef}
+          autoFocus
+          placeholder="Add a comment"
+          value={draftText}
+          onChange={(event) => setText(event.currentTarget.value)}
+          disabled={posting}
+        />
+        {mediaGrid}
+        {fileInput}
+        {errorNode}
+        <div className="composer-actions">
+          {toolsAndMeta}
+          <div className="composer-send">
+            <button type="button" className="composer-send-cancel" onClick={onClose} disabled={posting}>
+              Cancel
+            </button>
+            <button type="button" onClick={handleSubmit} disabled={posting || isOverLimit || !hasContent}>
+              {posting ? "Quoting..." : "Quote"}
             </button>
           </div>
         </div>

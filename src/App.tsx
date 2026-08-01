@@ -25,6 +25,7 @@ import {
   ShieldAlert,
   User,
   Users,
+  Quote,
 } from "lucide-react";
 import { createContext, lazy, Suspense, type CSSProperties, type MouseEvent as ReactMouseEvent, type RefObject, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -3491,6 +3492,7 @@ function VirtualPostList({
   const rowHeightsRef = useRef(rowHeights);
   rowHeightsRef.current = rowHeights;
   const [activeReplyParentUri, setActiveReplyParentUri] = useState<string | null>(null);
+  const [activeQuoteUri, setActiveQuoteUri] = useState<string | null>(null);
   const canReply = !!currentDid;
   const rowOffsets = useMemo(() => {
     let offset = 0;
@@ -3704,8 +3706,10 @@ function VirtualPostList({
                     onOpenImage={onOpenImage}
                     onOpenPost={onOpenPost}
                     onOpenProfile={onOpenProfile}
-                    onReply={canReply ? (post) => setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)) : undefined}
+                    onReply={canReply ? (post) => { setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)); setActiveQuoteUri(null); } : undefined}
                     replyActive={activeReplyParentUri === rowPost.uri}
+                    onQuote={canReply ? (post) => { setActiveQuoteUri((current) => (current === post.uri ? null : post.uri)); setActiveReplyParentUri(null); } : undefined}
+                    quoteActive={activeQuoteUri === rowPost.uri}
                   />
                 ) : (
                   <PostCard
@@ -3714,8 +3718,10 @@ function VirtualPostList({
                     onOpenImage={onOpenImage}
                     onOpenPost={onOpenPost}
                     onOpenProfile={onOpenProfile}
-                    onReply={canReply ? (post) => setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)) : undefined}
+                    onReply={canReply ? (post) => { setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)); setActiveQuoteUri(null); } : undefined}
                     replyActive={activeReplyParentUri === rowPost.uri}
+                    onQuote={canReply ? (post) => { setActiveQuoteUri((current) => (current === post.uri ? null : post.uri)); setActiveReplyParentUri(null); } : undefined}
+                    quoteActive={activeQuoteUri === rowPost.uri}
                     localLists={localLists}
                     onToggleListPost={onToggleListPost}
                   />
@@ -3725,6 +3731,12 @@ function VirtualPostList({
                     replyTo={{ parent: rowPost, root: replyRootRefForPost(rowPost) }}
                     canReply={canReply}
                     onClose={() => setActiveReplyParentUri(null)}
+                  />
+                )}
+                {activeQuoteUri === rowPost.uri && (
+                  <PostComposer
+                    quote={rowPost}
+                    onClose={() => setActiveQuoteUri(null)}
                   />
                 )}
               </>
@@ -5614,6 +5626,8 @@ function ThreadedPostCard({
   onOpenProfile,
   onReply,
   replyActive = false,
+  onQuote,
+  quoteActive = false,
 }: {
   thread: ThreadedFeedItem;
   onOpenImage?: (image: ImageViewerState) => void;
@@ -5621,6 +5635,8 @@ function ThreadedPostCard({
   onOpenProfile?: (profile: Profile) => void;
   onReply?: (post: FeedPost) => void;
   replyActive?: boolean;
+  onQuote?: (post: FeedPost) => void;
+  quoteActive?: boolean;
 }) {
   const onOpenTag = useContext(TagSearchContext);
   const likeCtx = useContext(LikeContext);
@@ -5792,6 +5808,11 @@ function ThreadedPostCard({
         {onReply && (
           <button type="button" className={replyActive ? "active" : ""} onClick={handleReplyClick} title="Reply to the first post in this thread">
             <MessageCircle size={16} /> Reply
+          </button>
+        )}
+        {onQuote && (
+          <button type="button" className={quoteActive ? "active" : ""} onClick={() => onQuote(rootPost)} title="Quote the first post in this thread">
+            <Quote size={16} /> Quote
           </button>
         )}
       </footer>
@@ -6014,6 +6035,8 @@ function MediaOnlyPostCard({
   onReply,
   replyActive = false,
   canReply = true,
+  onQuote,
+  quoteActive = false,
   localLists = [],
   onToggleListPost,
   canDeletePost = false,
@@ -6026,6 +6049,8 @@ function MediaOnlyPostCard({
   onReply?: (post: FeedPost) => void;
   replyActive?: boolean;
   canReply?: boolean;
+  onQuote?: (post: FeedPost) => void;
+  quoteActive?: boolean;
   localLists?: LocalList[];
   onToggleListPost?: (listId: string, post: FeedPost) => void;
   canDeletePost?: boolean;
@@ -6149,6 +6174,8 @@ function MediaOnlyPostCard({
               onReply={onReply}
               replyActive={replyActive}
               canReply={canReply}
+              onQuote={onQuote}
+              quoteActive={quoteActive}
               localLists={localLists}
               onToggleListPost={onToggleListPost}
               canDeletePost={canDeletePost}
@@ -6169,6 +6196,8 @@ function PostActionBar({
   onReply,
   replyActive = false,
   canReply = true,
+  onQuote,
+  quoteActive = false,
   localLists = [],
   onToggleListPost,
   canDeletePost = false,
@@ -6181,6 +6210,8 @@ function PostActionBar({
   onReply?: (post: FeedPost) => void;
   replyActive?: boolean;
   canReply?: boolean;
+  onQuote?: (post: FeedPost) => void;
+  quoteActive?: boolean;
   localLists?: LocalList[];
   onToggleListPost?: (listId: string, post: FeedPost) => void;
   canDeletePost?: boolean;
@@ -6302,6 +6333,16 @@ function PostActionBar({
             <MessageCircle size={16} /> Reply
           </button>
         )}
+        {onQuote && (
+          <button
+            type="button"
+            className={quoteActive ? "active" : ""}
+            onClick={() => onQuote(post)}
+            title="Quote this post"
+          >
+            <Quote size={16} /> Quote
+          </button>
+        )}
         {localLists.length > 0 && (
           <details className="post-list-menu">
             <summary title="Add post to local lists">
@@ -6381,6 +6422,10 @@ function CombinedThreadViewCard({
   onCloseReply,
   onReplied,
   threadRootRef,
+  activeQuoteUri,
+  onOpenQuote,
+  onCloseQuote,
+  onQuoted,
 }: {
   parts: ThreadPart[];
   activeReplyParentUri: string | null;
@@ -6393,6 +6438,10 @@ function CombinedThreadViewCard({
   onCloseReply: () => void;
   onReplied?: () => void;
   threadRootRef: PostRefValue;
+  activeQuoteUri: string | null;
+  onOpenQuote: (post: FeedPost) => void;
+  onCloseQuote: () => void;
+  onQuoted?: () => void;
 }) {
   const onOpenTag = useContext(TagSearchContext);
   const likeCtx = useContext(LikeContext);
@@ -6516,6 +6565,9 @@ function CombinedThreadViewCard({
           onReplied={onReplied}
         />
       )}
+      {activeQuoteUri === rootPost.uri && (
+        <PostComposer quote={rootPost} onClose={onCloseQuote} onQuoted={onQuoted} />
+      )}
       <footer className="post-actions combined-thread-actions">
         <button type="button" onClick={() => (onShowReplies ? onShowReplies() : onOpenPost(rootPost))} title="Show full thread replies">
           <MessageCircle size={16} /> {replyCount}
@@ -6564,6 +6616,15 @@ function CombinedThreadViewCard({
           title="Reply to the first post in this thread"
         >
           <MessageCircle size={16} /> Reply
+        </button>
+        <button
+          type="button"
+          className={activeQuoteUri === rootPost.uri ? "active" : ""}
+          onClick={() => onOpenQuote(rootPost)}
+          disabled={!canReply}
+          title="Quote the first post in this thread"
+        >
+          <Quote size={16} /> Quote
         </button>
       </footer>
       {showReplyLimited && <ReplyLimitedNotice />}
@@ -6628,6 +6689,8 @@ function PostCard({
   onOpenProfile,
   onReply,
   replyActive = false,
+  onQuote,
+  quoteActive = false,
   forceFullCard,
   onToggleListPost,
 }: {
@@ -6639,6 +6702,8 @@ function PostCard({
   onOpenProfile?: (profile: Profile) => void;
   onReply?: (post: FeedPost) => void;
   replyActive?: boolean;
+  onQuote?: (post: FeedPost) => void;
+  quoteActive?: boolean;
   // In thread context we always want the full post card, never the compact
   // media-only variant that "media" density would otherwise substitute.
   forceFullCard?: boolean;
@@ -6684,6 +6749,8 @@ function PostCard({
         onReply={onReply}
         replyActive={replyActive}
         canReply={!!onReply}
+        onQuote={onQuote}
+        quoteActive={quoteActive}
         localLists={localLists}
         onToggleListPost={onToggleListPost}
         canDeletePost={canDeletePost}
@@ -6763,6 +6830,8 @@ function PostCard({
         onOpenPost={onOpenPost}
         onReply={onReply}
         replyActive={replyActive}
+        onQuote={onQuote}
+        quoteActive={quoteActive}
         localLists={localLists}
         onToggleListPost={onToggleListPost}
         canDeletePost={canDeletePost}
@@ -7028,6 +7097,7 @@ function ThreadView({
   const [expandedBranches, setExpandedBranches] = useState<Record<string, boolean>>({});
   const [engagement, setEngagement] = useState<null | "reposts" | "quotes" | "likes">(null);
   const [activeReplyParentUri, setActiveReplyParentUri] = useState<string | null>(null);
+  const [activeQuoteUri, setActiveQuoteUri] = useState<string | null>(null);
   const [threadDisplayMode, setThreadDisplayMode] = useState<"combined" | "separated">("combined");
   // Re-root self-threads: when the opened post is mid-chain (e.g. part 3 of 5
   // via search/URL), buildAnchoredThreadParts walks UP the parent chain so the
@@ -7155,10 +7225,14 @@ function ThreadView({
           onOpenPost={onOpenPost}
           onOpenProfile={onOpenProfile}
           onShowReplies={() => setThreadDisplayMode("separated")}
-          onOpenReply={(post) => setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri))}
+          onOpenReply={(post) => { setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)); setActiveQuoteUri(null); }}
           onCloseReply={() => setActiveReplyParentUri(null)}
           onReplied={onReplied}
           threadRootRef={threadRootRef}
+          activeQuoteUri={activeQuoteUri}
+          onOpenQuote={(post) => { setActiveQuoteUri((current) => (current === post.uri ? null : post.uri)); setActiveReplyParentUri(null); }}
+          onCloseQuote={() => setActiveQuoteUri(null)}
+          onQuoted={onReplied}
         />
       ) : threadParts.length > 1 && threadRootRef ? (
         <LongThreadCard
@@ -7175,10 +7249,14 @@ function ThreadView({
             onOpenProfile,
             activeReplyParentUri,
             canReply,
-            onOpenReply: (post) => setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)),
+            onOpenReply: (post) => { setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)); setActiveQuoteUri(null); },
             onCloseReply: () => setActiveReplyParentUri(null),
             onReplied,
             threadRootRef,
+            activeQuoteUri,
+            onOpenQuote: (post) => { setActiveQuoteUri((current) => (current === post.uri ? null : post.uri)); setActiveReplyParentUri(null); },
+            onCloseQuote: () => setActiveQuoteUri(null),
+            onQuoted: onReplied,
           }}
           savedState={{ currentDid, localLists, onToggleListPost }}
         />
@@ -7194,10 +7272,14 @@ function ThreadView({
             onOpenProfile,
             activeReplyParentUri,
             canReply,
-            onOpenReply: (post) => setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)),
+            onOpenReply: (post) => { setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)); setActiveQuoteUri(null); },
             onCloseReply: () => setActiveReplyParentUri(null),
             onReplied,
             threadRootRef,
+            activeQuoteUri,
+            onOpenQuote: (post) => { setActiveQuoteUri((current) => (current === post.uri ? null : post.uri)); setActiveReplyParentUri(null); },
+            onCloseQuote: () => setActiveQuoteUri(null),
+            onQuoted: onReplied,
           },
           { currentDid, localLists, onToggleListPost },
           1,
@@ -7289,6 +7371,10 @@ function LongThreadCard({
     onCloseReply: () => void;
     onReplied?: () => void;
     threadRootRef: PostRefValue;
+    activeQuoteUri: string | null;
+    onOpenQuote: (post: FeedPost) => void;
+    onCloseQuote: () => void;
+    onQuoted?: () => void;
   };
   savedState: {
     currentDid?: string;
@@ -7387,6 +7473,8 @@ function LongThreadCard({
                 onReply={handlers.onOpenReply}
                 replyActive={handlers.activeReplyParentUri === post.uri}
                 canReply={handlers.canReply}
+                onQuote={handlers.onOpenQuote}
+                quoteActive={handlers.activeQuoteUri === post.uri}
               />
               {handlers.activeReplyParentUri === post.uri && (
                 <PostComposer
@@ -7395,6 +7483,9 @@ function LongThreadCard({
                   onClose={handlers.onCloseReply}
                   onReplied={handlers.onReplied}
                 />
+              )}
+              {handlers.activeQuoteUri === post.uri && (
+                <PostComposer quote={post} onClose={handlers.onCloseQuote} onQuoted={handlers.onQuoted} />
               )}
               {expanded && part.replies.length > 0 && (
                 <div className="long-thread-replies">
@@ -7443,6 +7534,10 @@ function renderThreadNode(
     onCloseReply: () => void;
     onReplied?: () => void;
     threadRootRef: PostRefValue | null;
+    activeQuoteUri: string | null;
+    onOpenQuote: (post: FeedPost) => void;
+    onCloseQuote: () => void;
+    onQuoted?: () => void;
   },
   savedState: {
     currentDid?: string;
@@ -7489,6 +7584,8 @@ function renderThreadNode(
         onOpenProfile={handlers.onOpenProfile}
         onReply={handlers.canReply ? handlers.onOpenReply : undefined}
         replyActive={handlers.activeReplyParentUri === node.post.uri}
+        onQuote={handlers.canReply ? handlers.onOpenQuote : undefined}
+        quoteActive={handlers.activeQuoteUri === node.post.uri}
         localLists={savedState.localLists}
         onToggleListPost={savedState.onToggleListPost}
       />
@@ -7499,6 +7596,9 @@ function renderThreadNode(
           onClose={handlers.onCloseReply}
           onReplied={handlers.onReplied}
         />
+      )}
+      {handlers.activeQuoteUri === node.post.uri && (
+        <PostComposer quote={node.post} onClose={handlers.onCloseQuote} onQuoted={handlers.onQuoted} />
       )}
       {continuationReply && (
         <>

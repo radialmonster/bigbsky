@@ -29,6 +29,19 @@ const parentPost = {
   record: { text: "Original parent text", langs: ["en"] },
 };
 
+const quotedPost = {
+  uri: "at://did:plc:bob/app.bsky.feed.post/quoted",
+  cid: "cid-quoted",
+  author: {
+    did: "did:plc:bob",
+    handle: "bob.bsky.social",
+    displayName: "Bob",
+    avatar: undefined,
+    description: undefined,
+  },
+  record: { text: "Quoted post text", langs: ["en"] },
+};
+
 const rootRef = { uri: "at://did:plc:alice/app.bsky.feed.post/root", cid: "cid-root" };
 
 // A stateful wrapper so the controlled new-post draft actually updates when the
@@ -274,6 +287,93 @@ describe("PostComposer reply mode", () => {
     });
     const replyButton = screen.getByRole("button", { name: /^Reply$/ });
     expect((replyButton as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("-1")).toBeTruthy();
+  });
+});
+
+describe("PostComposer quote mode", () => {
+  beforeAll(() => {
+    window.requestAnimationFrame = (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    };
+  });
+
+  beforeEach(() => {
+    localStorage.clear();
+    mocks.publishPost.mockReset();
+  });
+
+  it("renders the quote composer with the quoted post preview", () => {
+    render(<PostComposer quote={quotedPost} onClose={vi.fn()} onQuoted={vi.fn()} />);
+    expect(screen.getByText("Bob")).toBeTruthy();
+    expect(screen.getByText("@bob.bsky.social")).toBeTruthy();
+    expect(screen.getByText("Quoted post text")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Add a comment")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Quote$/ })).toBeTruthy();
+  });
+
+  it("publishes a quote post embedding the quoted record and calls onQuoted", async () => {
+    const onClose = vi.fn();
+    const onQuoted = vi.fn();
+    mocks.publishPost.mockResolvedValue({ uri: "at://did:plc:alice/app.bsky.feed.post/quote-new", cid: "cid-quote-new" });
+    render(<PostComposer quote={quotedPost} onClose={onClose} onQuoted={onQuoted} />);
+    fireEvent.change(screen.getByPlaceholderText("Add a comment"), {
+      target: { value: "My hot take" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^Quote$/ }));
+    await waitFor(() => expect(mocks.publishPost).toHaveBeenCalledTimes(1));
+    const opts = mocks.publishPost.mock.calls[0][0] as { text: string; quote: { uri: string; cid: string } };
+    expect(opts.text).toBe("My hot take");
+    expect(opts.quote.uri).toBe(quotedPost.uri);
+    expect(opts.quote.cid).toBe(quotedPost.cid);
+    expect(onQuoted).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows a text-less quote post (the quoted record is the content)", async () => {
+    mocks.publishPost.mockResolvedValue({ uri: "at://did:plc:alice/app.bsky.feed.post/quote-bare", cid: "cid-quote-bare" });
+    render(<PostComposer quote={quotedPost} onClose={vi.fn()} onQuoted={vi.fn()} />);
+    const quoteButton = screen.getByRole("button", { name: /^Quote$/ });
+    expect((quoteButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(quoteButton);
+    await waitFor(() => expect(mocks.publishPost).toHaveBeenCalledTimes(1));
+    const opts = mocks.publishPost.mock.calls[0][0] as { text: string; quote: { uri: string } };
+    expect(opts.text).toBe("");
+    expect(opts.quote.uri).toBe(quotedPost.uri);
+  });
+
+  it("persists a quote draft per quoted post and clears it after publishing", async () => {
+    mocks.publishPost.mockResolvedValue({ uri: "at://did:plc:alice/app.bsky.feed.post/quote-draft", cid: "cid-quote-draft" });
+    render(<PostComposer quote={quotedPost} onClose={vi.fn()} onQuoted={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText("Add a comment"), {
+      target: { value: "Drafting a quote" },
+    });
+    expect(localStorage.getItem("bigbsky:quote-draft:at://did:plc:bob/app.bsky.feed.post/quoted")).toBe(
+      "Drafting a quote",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Quote$/ }));
+    await waitFor(() =>
+      expect(localStorage.getItem("bigbsky:quote-draft:at://did:plc:bob/app.bsky.feed.post/quoted")).toBeNull(),
+    );
+  });
+
+  it("surfaces the publish error when quoting fails", async () => {
+    mocks.publishPost.mockRejectedValue(new Error("Sign in to post."));
+    const onQuoted = vi.fn();
+    render(<PostComposer quote={quotedPost} onClose={vi.fn()} onQuoted={onQuoted} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Quote$/ }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Sign in to post."));
+    expect(onQuoted).not.toHaveBeenCalled();
+  });
+
+  it("blocks an over-limit quote from publishing", () => {
+    render(<PostComposer quote={quotedPost} onClose={vi.fn()} onQuoted={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText("Add a comment"), {
+      target: { value: "z".repeat(301) },
+    });
+    const quoteButton = screen.getByRole("button", { name: /^Quote$/ });
+    expect((quoteButton as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText("-1")).toBeTruthy();
   });
 });

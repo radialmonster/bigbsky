@@ -964,6 +964,8 @@ export async function getMissingScopes(): Promise<string[] | null> {
 
 export type PostRef = { uri: string; cid: string };
 export type ReplyRef = { root: PostRef; parent: PostRef };
+// A strong ref to an existing post that a new post quotes (app.bsky.embed.record).
+export type QuoteRef = PostRef;
 // One composer image: the raw blob to upload plus its alt text (empty allowed).
 export type ComposerImage = { file: Blob; alt: string };
 export type ComposerPostInput = { text: string; images?: ComposerImage[] };
@@ -1027,12 +1029,21 @@ async function buildImageEmbed(
   };
 }
 
-// Publish a single post (optionally a reply, optionally with images). Detects
-// rich-text facets (links, @mentions, #hashtags) so they render/click correctly,
-// the same way the reader renders incoming posts. Uploads any images as blobs
-// first. Writes an app.bsky.feed.post record (scope repo:app.bsky.feed.post).
-// Returns the new post's uri+cid. Throws if signed out.
-export async function publishPost(opts: { text: string; reply?: ReplyRef; langs?: string[]; images?: ComposerImage[] }): Promise<PostRef> {
+// Publish a single post (optionally a reply, optionally quoting another post,
+// optionally with images). Detects rich-text facets (links, @mentions,
+// #hashtags) so they render/click correctly, the same way the reader renders
+// incoming posts. Uploads any images as blobs first. A quote becomes an
+// app.bsky.embed.record embed (or recordWithMedia when the post also carries
+// images, matching bsky's ComposerOpts.quote behavior). Writes an
+// app.bsky.feed.post record (scope repo:app.bsky.feed.post). Returns the new
+// post's uri+cid. Throws if signed out.
+export async function publishPost(opts: {
+  text: string;
+  reply?: ReplyRef;
+  quote?: QuoteRef;
+  langs?: string[];
+  images?: ComposerImage[];
+}): Promise<PostRef> {
   const session = await ensureSession();
   if (!session) {
     throw new Error("Sign in to post.");
@@ -1041,7 +1052,16 @@ export async function publishPost(opts: { text: string; reply?: ReplyRef; langs?
   const agent = new Agent(session);
   const richText = new RichText({ text: opts.text });
   await richText.detectFacets(agent);
-  const embed = await buildImageEmbed(agent as never, opts.images ?? []);
+  const imageEmbed = await buildImageEmbed(agent as never, opts.images ?? []);
+  let embed: unknown = imageEmbed;
+  if (opts.quote) {
+    const recordEmbed = { $type: "app.bsky.embed.record", record: opts.quote };
+    // bsky combines a quote with attached media via recordWithMedia so the reader
+    // sees both; the raw record embed alone would drop the images.
+    embed = imageEmbed
+      ? { $type: "app.bsky.embed.recordWithMedia", record: recordEmbed, media: imageEmbed }
+      : recordEmbed;
+  }
   const result = await agent.post({
     text: richText.text,
     createdAt: new Date().toISOString(),
