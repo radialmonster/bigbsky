@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { safeHttpUrl } from "./url";
+import { postBskyUrl, safeHttpUrl } from "./url";
 
 describe("safeHttpUrl", () => {
   it("returns undefined for empty/nullish input", () => {
@@ -32,5 +32,19 @@ describe("safeHttpUrl", () => {
     expect(safeHttpUrl("not a url")).toBeUndefined();
     expect(safeHttpUrl("/relative/path")).toBeUndefined();
     expect(safeHttpUrl("example.com")).toBeUndefined();
+  });
+});
+
+describe("postBskyUrl", () => {
+  it("builds a bsky.app post permalink from the at:// rkey", () => {
+    expect(
+      postBskyUrl({ uri: "at://did:plc:abc/app.bsky.feed.post/3k2xr", author: { handle: "alice.test" } }),
+    ).toBe("https://bsky.app/profile/alice.test/post/3k2xr");
+  });
+
+  it("falls back to the profile URL when the record key is missing", () => {
+    expect(postBskyUrl({ uri: "at://did:plc:abc/", author: { handle: "alice.test" } })).toBe(
+      "https://bsky.app/profile/alice.test",
+    );
   });
 });

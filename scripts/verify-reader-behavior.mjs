@@ -105,9 +105,12 @@ requirePattern(/<ErrorBoundary label=\{`post-row:\$\{post\.uri\}`\} fallback=\{\
 if (!/import\.meta\.env\.PROD[\s\S]*import\.meta\.env\.BASE_URL\}sw\.js/.test(main)) {
   failures.push("service-worker registration should be gated behind PROD and derive its path from BASE_URL");
 }
-requirePattern(/import \{ segmentRichText \} from "\.\/richtext"/, "rich-text facet segmentation should come from the pure src/richtext.ts helper");
-requirePattern(/function renderRichText\([\s\S]*segmentRichText\(text, facets\)[\s\S]*segment\.kind === "link"[\s\S]*segment\.kind === "mention"[\s\S]*segment\.kind === "tag"/s, "post text should render link, mention, and tag facet segments from Bluesky rich text");
-requirePattern(/const TagSearchContext = createContext[\s\S]*onClick=\{\(event\) => \{[\s\S]*onOpenTag\(tag\)/s, "hashtag facets should open an in-app search via the tag-search context");
+// Rich-text rendering moved to src/features/post/RichText.tsx (slice 12 of
+// #18): `renderRichText` now lives there with a behavioral RTL suite
+// (RichText.test.tsx covering link/mention/tag segments and the in-app
+// mention/tag navigation), and `segmentRichText` remains exercised by the
+// executable scripts/verify-richtext.mjs harness. The old definition / import
+// regex guardrails were retired per the #19 test-migration plan.
 requirePattern(/renderRichText\(post\.record\.facets\?\.length \? post\.record\.text \|\| "" : text, post\.record\.facets, onOpenProfile/, "post cards should render rich-text facets for post body text");
 requirePattern(/renderRichText\(\s*record\.value\?\.facets\?\.length \? record\.value\.text \|\| "" : text,\s*record\.value\?\.facets,\s*onOpenProfile,\s*onOpenTag,/s, "quoted posts should render rich-text facets for their body text");
 requirePattern(/const gateMedia = !showNsfw && mediaWarningValues\.length > 0 && \(images\.length > 0 \|\| !!video\) && !mediaRevealed/, "adult/graphic media should be gated behind a reveal warning unless the NSFW preference is on");

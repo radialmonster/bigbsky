@@ -30,7 +30,7 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { createContext, lazy, Suspense, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, lazy, Suspense, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type RefObject, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   type ActorSearchResponse,
@@ -65,7 +65,6 @@ import {
   getVideoEmbed,
   searchActors,
 } from "./api";
-import { segmentRichText } from "./richtext";
 import { postSortAt } from "./lib/time";
 import { orderBySavedOrder } from "./lib/feed-order";
 import { isPinnedFeedMeta } from "./lib/feed-meta";
@@ -86,7 +85,7 @@ import {
   parseObjectMap,
   parseStringArray,
 } from "./lib/preferences";
-import { safeHttpUrl } from "./lib/url";
+import { postBskyUrl, safeHttpUrl } from "./lib/url";
 import { detectPostLanguage, filterFeedByLanguages, postsNeedingDetection } from "./lib/content-language";
 import {
   MOBILE_SCROLL_QUERY,
@@ -189,6 +188,10 @@ import { Avatar } from "./features/common/Avatar";
 import { ErrorState, LoadingState } from "./features/common/State";
 import { MediaHiddenButton, SensitiveMediaGate } from "./features/common/MediaGate";
 import { ReplyLimitedNotice } from "./features/post/ReplyLimitedNotice";
+import { ExternalLinkCard } from "./features/post/ExternalLinkCard";
+import { renderRichText } from "./features/post/RichText";
+import { UnsupportedEmbedNotice } from "./features/post/UnsupportedEmbedNotice";
+import { useReplyGate } from "./features/post/useReplyGate";
 import { isSensitiveLabel, moderationLabelText, sensitiveMediaValues } from "./lib/moderation";
 
 const navIcons = [Home, Hash, List, Bookmark, Search, Compass, User, Settings];
@@ -960,11 +963,6 @@ function hasPostImages(post: FeedPost) {
 
 function hasPostVideo(post: FeedPost) {
   return !!getVideoEmbed(post.embed);
-}
-
-function postBskyUrl(post: FeedPost) {
-  const rkey = post.uri.split("/").pop();
-  return rkey ? `https://bsky.app/profile/${post.author.handle}/post/${rkey}` : `https://bsky.app/profile/${post.author.handle}`;
 }
 
 function extractHashtags(text?: string) {
@@ -8431,144 +8429,6 @@ function SearchView({
   );
 }
 
-function renderRichText(
-  text: string,
-  facets: RichTextFacet[] | undefined,
-  onOpenProfile?: (profile: Profile) => void,
-  onOpenTag?: ((tag: string) => void) | null,
-): ReactNode {
-  if (!text) {
-    return text;
-  }
-  // Byte-range/facet-selection lives in the pure, tested segmentRichText helper
-  // (src/richtext.ts); here we only map segments to interactive React nodes.
-  const segments = segmentRichText(text, facets);
-  if (segments.length === 0) {
-    return text;
-  }
-  if (segments.length === 1 && segments[0].kind === "text") {
-    return segments[0].text;
-  }
-
-  return segments.map((segment, index) => {
-    if (segment.kind === "link") {
-      return (
-        <a
-          key={index}
-          className="post-link"
-          href={segment.uri}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(event) => event.stopPropagation()}
-        >
-          {segment.text}
-        </a>
-      );
-    }
-    if (segment.kind === "mention" && onOpenProfile) {
-      const did = segment.did;
-      const handle = segment.text.replace(/^@/, "");
-      return (
-        <button
-          key={index}
-          type="button"
-          className="post-mention"
-          onClick={(event) => {
-            event.stopPropagation();
-            onOpenProfile({ did, handle });
-          }}
-        >
-          {segment.text}
-        </button>
-      );
-    }
-    if (segment.kind === "tag" && onOpenTag) {
-      const tag = segment.tag;
-      return (
-        <button
-          key={index}
-          type="button"
-          className="post-tag"
-          onClick={(event) => {
-            event.stopPropagation();
-            onOpenTag(tag);
-          }}
-        >
-          {segment.text}
-        </button>
-      );
-    }
-    return segment.text;
-  });
-}
-
-function ExternalLinkCard({
-  className = "",
-  external,
-  hideThumbnail = false,
-}: {
-  className?: string;
-  external: NonNullable<ReturnType<typeof getExternalEmbed>>;
-  hideThumbnail?: boolean;
-}) {
-  const href = safeHttpUrl(external.uri);
-  const thumb = safeHttpUrl(external.thumb);
-  if (!href) {
-    return null;
-  }
-
-  const noMedia = hideThumbnail || !thumb;
-  const classes = ["link-card", className, noMedia ? "no-media" : ""].filter(Boolean).join(" ");
-
-  return (
-    <div className={classes}>
-      <a
-        href={href}
-        target="_blank"
-        rel="noreferrer"
-        onClick={(event) => {
-          event.stopPropagation();
-        }}
-      >
-        {thumb && !hideThumbnail && <img alt="" src={thumb} loading="lazy" decoding="async" />}
-        <span>
-          <strong>{external.title || external.uri}</strong>
-          <em>Open {formatExternalUrlLabel(external.uri || external.title || "")}</em>
-          {external.description && <small>{external.description}</small>}
-        </span>
-      </a>
-    </div>
-  );
-}
-
-function formatExternalUrlLabel(uri: string) {
-  try {
-    const url = new URL(uri);
-    const path = `${url.pathname}${url.search}`.replace(/\/$/, "");
-    return `${url.hostname.replace(/^www\./, "")}${path && path !== "/" ? path : ""}`;
-  } catch {
-    return uri;
-  }
-}
-
-function useReplyGate(post: FeedPost, onReply?: (post: FeedPost) => void) {
-  const [showReplyLimited, setShowReplyLimited] = useState(false);
-
-  useEffect(() => {
-    setShowReplyLimited(false);
-  }, [post.uri]);
-
-  const handleReplyClick = () => {
-    if (post.viewer?.replyDisabled) {
-      setShowReplyLimited(true);
-      return;
-    }
-    onReply?.(post);
-  };
-
-  return { showReplyLimited, handleReplyClick };
-}
-
 function ThreadedPostCard({
   thread,
   onOpenImage,
@@ -9579,34 +9439,6 @@ function PostEmbeds({
       {unknownEmbedType && <UnsupportedEmbedNotice embedType={unknownEmbedType} post={post} />}
     </>
   );
-}
-
-// Generic fallback for embed shapes BigBsky does not render locally (e.g. a new
-// `app.bsky.embed.*` view, or a third-party embed type). Keeps the post readable
-// and points the user to Bluesky for the full content instead of silently
-// hiding it.
-function UnsupportedEmbedNotice({ embedType, post }: { embedType: string; post: FeedPost }) {
-  const label = formatUnsupportedEmbedType(embedType);
-  return (
-    <div className="unsupported-embed" role="note">
-      <span>This post includes {label} that BigBsky can't display yet.</span>
-      <a href={postBskyUrl(post)} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-        Open on Bluesky
-      </a>
-    </div>
-  );
-}
-
-// Turn an embed `$type` NSID into a short human label. Strips the trailing
-// `#view`, drops the `app.bsky.embed.` prefix for the common case, and falls
-// back to a generic phrase for unfamiliar namespaces.
-function formatUnsupportedEmbedType(embedType: string): string {
-  const withoutView = embedType.replace(/#.*$/, "");
-  const known = withoutView.replace(/^app\.bsky\.embed\./, "");
-  if (known !== withoutView && known.length > 0) {
-    return `embedded ${known} content`;
-  }
-  return "embedded content";
 }
 
 function PostCard({

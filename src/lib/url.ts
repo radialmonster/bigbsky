@@ -19,3 +19,10 @@ export function safeHttpUrl(value?: string | null): string | undefined {
     return undefined;
   }
 }
+
+// Canonical bsky.app permalink for a post (falls back to the author's profile
+// when the record key cannot be derived from the at:// URI).
+export function postBskyUrl(post: { uri: string; author: { handle: string } }): string {
+  const rkey = post.uri.split("/").pop();
+  return rkey ? `https://bsky.app/profile/${post.author.handle}/post/${rkey}` : `https://bsky.app/profile/${post.author.handle}`;
+}
