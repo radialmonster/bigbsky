@@ -1,3 +1,4 @@
+import { createContext } from "react";
 import { X } from "lucide-react";
 
 // Transient, self-dismissing status messages (e.g. a failed follow/unfollow
@@ -11,6 +12,10 @@ export interface ToastMessage {
   kind: ToastKind;
   message: string;
 }
+
+// How surfaces request a toast. Provided by App; consumed by any component that
+// surfaces a transient status message (e.g. the Lists surface's delete error).
+export const ToastContext = createContext<(message: string, kind?: ToastKind) => void>(() => {});
 
 // Fixed overlay listing active toasts. Errors use role="alert" so assistive
 // tech announces them immediately; informational toasts use role="status".
