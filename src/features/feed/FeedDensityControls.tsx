@@ -1,7 +1,33 @@
-import type { FeedSource } from "../../sources";
+import { feedSources, type FeedSource } from "../../sources";
 
 export const densityModes = ["comfortable", "compact", "media"] as const;
 export type DensityMode = (typeof densityModes)[number];
+
+export function feedPreferenceKeys(source: FeedSource) {
+  const keys = new Set([`feed:${source.uri}`, `feed:${source.id}`]);
+  for (const known of feedSources) {
+    if (known.uri === source.uri) {
+      keys.add(`feed:${known.id}`);
+    }
+  }
+  return [...keys];
+}
+
+export function feedPreferenceKey(source: FeedSource) {
+  return `feed:${source.uri}`;
+}
+
+export function feedDensityOverride(source: FeedSource, preferences: Record<string, DensityMode>) {
+  const value = preferences[feedPreferenceKey(source)];
+  return densityModes.includes(value) ? value : undefined;
+}
+
+// Per-feed Show Media override: true (always on) / false (always off) / undefined
+// (inherit the global Settings preference). Mirrors feedDensityOverride.
+export function feedShowMediaOverride(source: FeedSource, preferences: Record<string, boolean>) {
+  const value = preferences[feedPreferenceKey(source)];
+  return typeof value === "boolean" ? value : undefined;
+}
 
 export function FeedDensityOverrideControl({
   source,

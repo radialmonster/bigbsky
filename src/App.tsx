@@ -193,6 +193,10 @@ import {
   FeedDensityOverrideControl,
   FeedShowMediaOverrideControl,
   densityModes,
+  feedDensityOverride,
+  feedPreferenceKey,
+  feedPreferenceKeys,
+  feedShowMediaOverride,
   type DensityMode,
 } from "./features/feed/FeedDensityControls";
 import { AccountPanel, SignInForm } from "./features/auth/AccountPanel";
@@ -511,32 +515,6 @@ function profileFeedFilterForTab(tab: ProfileTab): ProfileFeedFilter {
     return "posts_with_video";
   }
   return "posts_with_replies";
-}
-
-function feedPreferenceKeys(source: FeedSource) {
-  const keys = new Set([`feed:${source.uri}`, `feed:${source.id}`]);
-  for (const known of feedSources) {
-    if (known.uri === source.uri) {
-      keys.add(`feed:${known.id}`);
-    }
-  }
-  return [...keys];
-}
-
-function feedPreferenceKey(source: FeedSource) {
-  return `feed:${source.uri}`;
-}
-
-function feedDensityOverride(source: FeedSource, preferences: Record<string, DensityMode>) {
-  const value = preferences[feedPreferenceKey(source)];
-  return densityModes.includes(value) ? value : undefined;
-}
-
-// Per-feed Show Media override: true (always on) / false (always off) / undefined
-// (inherit the global Settings preference). Mirrors feedDensityOverride.
-function feedShowMediaOverride(source: FeedSource, preferences: Record<string, boolean>) {
-  const value = preferences[feedPreferenceKey(source)];
-  return typeof value === "boolean" ? value : undefined;
 }
 
 function postPath(post: FeedPost) {

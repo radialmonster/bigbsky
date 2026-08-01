@@ -1,7 +1,16 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { FeedSource } from "../../sources";
-import { FeedDensityOverrideControl, FeedShowMediaOverrideControl, densityModes, type DensityMode } from "./FeedDensityControls";
+import { feedSources, type FeedSource } from "../../sources";
+import {
+  FeedDensityOverrideControl,
+  FeedShowMediaOverrideControl,
+  densityModes,
+  feedDensityOverride,
+  feedPreferenceKey,
+  feedPreferenceKeys,
+  feedShowMediaOverride,
+  type DensityMode,
+} from "./FeedDensityControls";
 
 const source: FeedSource = {
   id: "feed1",
@@ -10,6 +19,56 @@ const source: FeedSource = {
   group: "My Feeds",
   description: "A test feed.",
 };
+
+describe("feedPreferenceKey / feedPreferenceKeys", () => {
+  it("keys a feed by its uri", () => {
+    expect(feedPreferenceKey(source)).toBe("feed:at://did:example:feed1");
+  });
+
+  it("includes the id alias and known-feed id aliases for the same uri", () => {
+    const keys = feedPreferenceKeys(source);
+    expect(keys).toContain("feed:at://did:example:feed1");
+    expect(keys).toContain("feed:feed1");
+  });
+
+  it("adds the built-in id alias when the source uri matches a known feed", () => {
+    const known = feedSources[0];
+    const sameUri = { ...source, id: "renamed", uri: known.uri };
+    const keys = feedPreferenceKeys(sameUri);
+    expect(keys).toContain(`feed:${known.uri}`);
+    expect(keys).toContain("feed:renamed");
+    expect(keys).toContain(`feed:${known.id}`);
+  });
+});
+
+describe("feedDensityOverride", () => {
+  it("returns undefined when no per-feed preference is stored", () => {
+    expect(feedDensityOverride(source, {})).toBeUndefined();
+  });
+
+  it("returns the stored density when valid", () => {
+    expect(feedDensityOverride(source, { "feed:at://did:example:feed1": "compact" })).toBe("compact");
+  });
+
+  it("ignores an invalid stored value", () => {
+    expect(feedDensityOverride(source, { "feed:at://did:example:feed1": "dense" as DensityMode })).toBeUndefined();
+  });
+});
+
+describe("feedShowMediaOverride", () => {
+  it("returns undefined when no per-feed preference is stored", () => {
+    expect(feedShowMediaOverride(source, {})).toBeUndefined();
+  });
+
+  it("returns the stored boolean on/off value", () => {
+    expect(feedShowMediaOverride(source, { "feed:at://did:example:feed1": false })).toBe(false);
+    expect(feedShowMediaOverride(source, { "feed:at://did:example:feed1": true })).toBe(true);
+  });
+
+  it("ignores a non-boolean stored value", () => {
+    expect(feedShowMediaOverride(source, { "feed:at://did:example:feed1": "yes" as unknown as boolean })).toBeUndefined();
+  });
+});
 
 describe("FeedDensityOverrideControl", () => {
   it("shows the effective default when no override is set", () => {
