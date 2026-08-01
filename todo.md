@@ -10,6 +10,7 @@ Open work is tracked as GitHub issues on the `radialmonster/bigbsky` repo (22 op
 
 ## Working Rules
 
+- Claim an issue with the `claimed` label (`gh issue edit <N> --repo radialmonster/bigbsky --add-label claimed`) as soon as you start working on it, and remove it when finished. Do NOT start on any issue that already has the `claimed` label.
 - If a task needs an answer from the human, do not skip or abandon the task. Ask the specific question needed, then continue once answered.
 - If there is no human reply after 10 minutes, record the unanswered question(s) as a GitHub issue (or in the issue being worked), then move to a different task.
 - For browser checks, first see whether Chrome dev mode is already running on port 9222. Check processes for `chrome.exe` with `--remote-debugging-port=9222`, then verify `http://127.0.0.1:9222/json/version`. If it is running, use that browser instead of starting another one. If it is not running, start Chrome with:

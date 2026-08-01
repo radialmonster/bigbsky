@@ -2,8 +2,14 @@
 
 read the open GitHub issues (gh issue list --repo radialmonster/bigbsky) and proceed to work on a task and implement.  add any follow ups as new GitHub issues for any issue you see that can be improved or fixed also.  if your task is fully complete, you may close its issue. make a commit to main when done.  you have browser access and may have oauth already.  kill any running servers you started for testing or verification.
 
+ISSUE CLAIMING (always):
+- Claim an issue with the `claimed` label as soon as you start working on it: `gh issue edit <N> --repo radialmonster/bigbsky --add-label claimed`
+- Do NOT start work on any issue that already has the `claimed` label (someone else — or a prior parallel session — is on it). Check labels before picking: `gh issue list --repo radialmonster/bigbsky --state open --json number,title,labels`
+- Remove the `claimed` label when you finish (task done/closed, or you stop working on it): `gh issue edit <N> --repo radialmonster/bigbsky --remove-label claimed`
+- Claim one issue at a time; if you delegate to sub-agents, each sub-agent must claim its issue the same way so parallel sessions never collide.
+
 WHAT TO WORK ON THIS SESSION (forward-looking; use your judgement, keep rotating areas, batch small fixes):
-- Pick from the open GitHub issues (currently #1–#22). Highlights:
+- Pick from the open GitHub issues (currently #1–#22). Skip any that already carry the `claimed` label. Highlights:
   - Bookmarks scroll-restore (#8) — hard; anchor to content (top-visible post URI), not raw pixel offset. Full root-cause + CDP repro in the issue. A time-budget widening was tried and reverted; don't re-try that.
   - App.tsx decomposition (#18) — component/CSS co-location into src/features/**; cache layer with the loaders. All pure `read*`/`safe*`/scroll/feed-order helpers are already extracted to src/lib with vitest suites — the remaining work is components + the mega-stylesheet.
   - Replace regex source-text tests (#19), CSS dead-selector sweep (#20), and the CSS-token investigation (#7) are good low-risk batching with the decomposition.
@@ -28,7 +34,7 @@ Required startup reads:
 1. Get-Content -LiteralPath docs\PLAN.md
 2. git status --short --branch
 3. rg --files
-4. gh issue list --repo radialmonster/bigbsky --state open
+4. gh issue list --repo radialmonster/bigbsky --state open --json number,title,labels
 
 
 
@@ -106,7 +112,7 @@ powershell can take some time to start so check again in 10 seconds. if it doesn
 
 
 
-If the session did not direct you what to work on, then check for open issues on github (gh issue list --repo radialmonster/bigbsky --state open) and work on some issues.  If there are no open issues, then take this opportunity to perform a code review, pick a random function in our project and deep dive it to find bugs, issues, deduplication, simplification, enhance security, etc, and create an issue for each thing found to do that in a future session.
+If the session did not direct you what to work on, then check for open issues on github (gh issue list --repo radialmonster/bigbsky --state open --json number,title,labels), skip any with the `claimed` label, and work on some issues.  If there are no open issues, then take this opportunity to perform a code review, pick a random function in our project and deep dive it to find bugs, issues, deduplication, simplification, enhance security, etc, and create an issue for each thing found to do that in a future session.
 
 You are encouraged to delegate tasks to agents to work on individual tasks, this will save tokens on this main session. Your job would be to coordinate those agents, verify their work, you can also send their returned work out to another agent and instruct that agent to 'roast' and code review what the other agent did.  Your goal is to manage these tasks and keep this project moving forward.  Minimize (eliminate if possible) blockers requiring a human to answer a question or make a decision.  You are the ai coder, there will be no human ai coder to check anything behind you, you are encouraged to check yourself depending on what this particular project is about, for example by opening the site, spin up a dev server and check there. you can use Node to open chrome in debug mode and remote control it for example.  If during this session you do start a server or process or something, and it was just temporary, ensure you terminate that process at session end. ensure temporary working folders or files you created are removed. 
 
