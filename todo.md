@@ -221,7 +221,7 @@ From the full code review of `src/App.tsx`, `src/auth.ts`, `src/api.ts`, `src/ri
     - Bug fix: the reply char counter used `300 - replyText.length` (UTF-16 code units). Bluesky's 300 limit counts **graphemes**, so emoji/multibyte replies overcounted. Now uses `POST_GRAPHEME_LIMIT - graphemeLength(replyText)`, matching the post composer. Added an `over-limit` class on the count when negative.
     - Added an attach button to the reply `.composer-actions` row (`Image` icon, disabled when at the image cap / signed out / posting), so the reply control row now starts to mirror the post composer's row.
     - Added a `.reply-composer .composer-media-grid` style override in `src/styles.css` (zero horizontal padding, since the reply composer already pads its body) so previews align with the textarea.
-    - Verified: `npm run build` passes (tsc, vite, audit initial JS 114 kB gzip, reader + layout + rich-text verifiers all green). Drove the running dev server via `scripts/cdp.mjs` on the example thread `/profile/monriatitans.bsky.social/post/3mo7bk477bs2m`: opening Reply renders the "Attach image" button + hidden `image/*` file input and a "300" count; typing a single emoji (`😀`, 2 UTF-16 code units) shows remaining **299** (1 grapheme), confirming the fix; no console errors. (Image *upload* itself needs an authenticated send, not exercised in the read-only CDP check.)
+    - Verified: `npm run build` passes (tsc, vite, audit initial JS 114 kB gzip, reader + layout + rich-text verifiers all green). Drove the running dev server via `scripts/cdp.mjs` on an example public thread: opening Reply renders the "Attach image" button + hidden `image/*` file input and a "300" count; typing a single emoji (`😀`, 2 UTF-16 code units) shows remaining **299** (1 grapheme), confirming the fix; no console errors. (Image *upload* itself needs an authenticated send, not exercised in the read-only CDP check.)
   - Progress (2026-06-14, second pass): added a **post-language selector** to both composers.
     - Added shared language metadata in `src/App.tsx`: `postLanguageStorageKey` (`bigbsky:post-language`), a curated `POST_LANGUAGE_OPTIONS` list of 21 common BCP-47 base codes (label in native script), `readDefaultPostLanguage()` (last-used choice → normalized `navigator.language`/`languages` base code → `en`), and a reusable `PostLanguageSelect` component (Globe icon + "Language" label + `<select>`).
     - `Composer`: added `postLang` state (initialized from `readDefaultPostLanguage`), rendered `PostLanguageSelect` in the `.composer-actions` row, and now passes `langs` through `publishThread(postsToPublish, postLang ? [postLang] : undefined)`.
@@ -252,7 +252,7 @@ From the full code review of `src/App.tsx`, `src/auth.ts`, `src/api.ts`, `src/ri
   - Done (2026-06-14): **Reply-target preview** — the reply skeleton now renders the parent author (avatar + display name + handle) and a 2-line-clamped snippet of the parent post text at the top of `PostComposer`'s reply branch, above the textarea (mirrors bsky's reply composer; previously it relied only on rendering directly beneath the post).
     - `src/App.tsx`: in the `if (isReply && replyTo)` branch, added a `.reply-target-preview` block (`<Avatar profile={replyTo.parent.author} />` + `.reply-target-name`/`.reply-target-handle`/`.reply-target-text` from `replyTo.parent.record.text`). Text is omitted when the parent has no text (e.g. media-only).
     - `src/styles.css`: added `.reply-target-preview` (flex row, bottom divider), `.reply-target-preview .avatar` (28px), `.reply-target-body`/`-meta`/`-name`/`-handle`/`-text` (the snippet uses a 2-line `-webkit-line-clamp`).
-    - Verified: `npm run build` passes (tsc, vite, audit initial JS 116 kB gzip, reader + layout + rich-text verifiers all green). Drove the signed-in dev server via `scripts/cdp.mjs` on `/profile/monriatitans.bsky.social/post/3mo7bk477bs2m`: opening Reply renders the preview with name `MonriaTitans`, handle `@monriatitans.bsky.social`, the 294-char parent snippet (clamped to 2 lines), and the avatar; screenshot confirmed the divider + tool row layout. No console errors; no draft artifacts left behind.
+    - Verified: `npm run build` passes (tsc, vite, audit initial JS 116 kB gzip, reader + layout + rich-text verifiers all green). Drove the signed-in dev server via `scripts/cdp.mjs` on an example public thread: opening Reply renders the preview with the parent post's name/handle, a 294-char parent snippet (clamped to 2 lines), and the avatar; screenshot confirmed the divider + tool row layout. No console errors; no draft artifacts left behind.
   - Relevant files/functions found:
     - `src/App.tsx`: `PostComposer` (`replyTo`, `isReply`, `toolsAndMeta`, `handleSubmit`, reply-target preview), `EmojiPicker`, `PostLanguagePicker`, `Avatar`.
     - `src/auth.ts`: `publishPost`, `publishThread`, `buildImageEmbed`, `MAX_POST_IMAGES`.
@@ -845,19 +845,38 @@ them.
   "Liked by" panel on a 38,916-like post loaded 50 → auto-load → 97 → manual
   Load more → 189 cards, zero console errors. tsc/vitest(202)/build green;
   reader verifier guards the pagination + the AutoLoadMoreButton.
-- [ ] **Still open — pagination parity for the remaining paged surfaces:**
-  profile Feeds/Lists tabs (`getActorFeeds`/`getActorLists` cursors) and the
-  in-app list timeline (`getListFeed` cursor) all take a single 50-item page
-  today. Each needs the same append-and-advance pattern as the engagement panel
-  (and should be careful about `AutoLoadMoreButton` nested inside a tab vs. the
-  feed's own loader).
-- [ ] **Search/thread/quoted-post NSFW filtering parity (deferred this session).**
-  Feed/profile timelines already drop `isAdultPost` rows when the NSFW toggle is
-  hidden (`VirtualPostList`), but search results, the standalone-thread render,
-  and quoted-post media only gate the *media* behind the reveal warning — the
-  posts themselves still render. Decide whether to apply the same
-  remove-entirely filter to those surfaces (a malformed/abusive record in search
-  results is the highest-impact gap).
+- [x] **Pagination parity for the remaining paged surfaces. (DONE 2026-08-01.)**
+  - Profile **Feeds** and **Lists** tabs now paginate. `getActorFeeds`/
+    `getActorLists` (`src/api.ts`) gained an optional `cursor` param forwarded as
+    the XRPC cursor; `ProfileFeedsTab`/`ProfileListsTab` (`src/App.tsx`) mirror
+    the engagement-panel pattern exactly — a `loadPage(cursor, signal)` helper
+    per actor, single-in-flight busy ref, an abort controller that the actor
+    effect cleanup cancels (and which aborts any in-flight load-more when the
+    actor/tab changes), append-and-advance state updates, and an
+    `AutoLoadMoreButton` (with `error={loadMoreError}` so a rate-limited retry
+    storm stops) rendered under the card grid while a cursor remains. Load-more
+    failures keep the already-loaded cards. The in-app list timeline
+    (`getListFeed`) was already paginated via the shared `loadFeed` path.
+    Verified: `tsc -b` clean; `npm test` 205/205 (12 files, +3 new api.test.ts
+    cursor-forwarding tests for getActorFeeds/getActorLists); reader verifier
+    guards updated + extended (tab cursor resolution, append-and-advance, the
+    `signal, cursor` call signature). No live CDP check needed — the tab
+    load-more is a signed-out public read (getActorFeeds/getActorLists return
+    200 unauthenticated), but the tabs only render inside a profile route, which
+    the localhost dev smoke already covers as a plain page.
+- [x] **Search-results NSFW filtering parity. (DONE 2026-08-01.)** `SearchView`
+  now consumes `ShowNsfwContext` and computes `visiblePosts = showNsfw ?
+  searchState.posts : searchState.posts.filter(post => !isAdultPost(post))`,
+  rendering the filtered list and using its length for the empty state — so
+  when the NSFW toggle is hidden, adult/graphic-labeled posts are removed from
+  search results entirely (matching feed/profile timelines) instead of only
+  gating their media. **Decision recorded:** the standalone-thread render and
+  quoted-post cards deliberately keep the media-gate-only behavior — a thread
+  root the user explicitly navigated to disappearing entirely would be a blank
+  page, and hiding an embedded quote's text would strip conversation context;
+  their imagery stays behind the reveal warning, which is the safety-relevant
+  part. Revisit only if an explicit "hide entire thread" preference is ever
+  wanted. Reader verifier guards the filter.
 - [ ] **Bookmarks scroll-restore content-anchoring (still open, hard).** The
   full root-cause writeup lives in the "Integrate scroll restoration with the
   VirtualPostList measurement pass" item above (2026-07-03 CDP repro: 2698 → 96
@@ -865,11 +884,27 @@ them.
   time-budget widening was tried and reverted. Real fix is anchoring to the
   top-visible post URI (+ intra-post offset) or a "measurement settled /
   totalHeight stable" signal from VirtualPostList — not raw pixel offsets.
-- [ ] **Toast reuse (follow-up).** The shared `ToastContext`/`ToastHost`
-  (b7074b8) is still only wired into `toggleFollowFeed` and the trending-note.
-  Other `console.error`-only catch paths (e.g. `toggleBlock`, list create/
-  delete/member ops) could surface actionable toasts; verify each call site is
-  inside the provider first.
+- [x] **Toast reuse (follow-up). (DONE 2026-08-01.)** Wired the shared
+  `ToastContext` into three more silent-failure paths:
+  - `toggleBlock` (App.tsx) — the catch that previously just reverted the
+    optimistic state (no feedback at all) now also pushes an actionable error
+    toast ("Couldn't block/unblock this account. Please try again."). To do this
+    without a TS TDZ error, `pushToast`/`dismissToast` were moved from their
+    original spot (~line 1616) up to just above `toggleBlock` (they only depend
+    on `toasts`/`toastIdRef`, defined at ~1189); `toggleBlock`'s deps gained
+    `pushToast`.
+  - `persistFeedOrder` (App.tsx) — the `syncSavedFeedsOrder` failure that was
+    `console.error`-only now also surfaces "Couldn't sync your feed order to
+    your account. It's saved on this browser."
+  - `BlueskyListCard.handleDelete` (App.tsx) — list delete previously had a
+    try/finally with no catch (an unhandled rejection on failure); it now
+    consumes `ToastContext` and shows "Couldn't delete this list. Please try
+    again."
+  - The list member add/remove and list create/mute/subscribe ops already had
+    inline error displays (`setError`/`subError`), so they were left as-is
+    (inline is arguably clearer than a toast next to the control).
+  Reader verifier guards all three new toasts. All call sites are inside the
+  provider (it wraps the whole app tree).
 
 ### Verified correct / dropped (checked, not bugs)
 
