@@ -2,7 +2,6 @@ import {
   Bookmark,
   Check,
   Compass,
-  EyeOff,
   Film,
   Hash,
   Heart,
@@ -183,6 +182,11 @@ import { getRouteState, type RouteState } from "./router";
 import { displayName, feedSources, navigationItems, type FeedSource } from "./sources";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { AutoLoadMoreButton, PostRowFallback } from "./features/feed/AutoLoadMoreButton";
+import { Avatar } from "./features/common/Avatar";
+import { ErrorState, LoadingState } from "./features/common/State";
+import { MediaHiddenButton, SensitiveMediaGate } from "./features/common/MediaGate";
+import { ReplyLimitedNotice } from "./features/post/ReplyLimitedNotice";
+import { isSensitiveLabel, moderationLabelText, sensitiveMediaValues } from "./lib/moderation";
 
 const navIcons = [Home, Hash, List, Bookmark, Search, Compass, User, Settings];
 const InfoPage = lazy(() => import("./InfoPage"));
@@ -974,32 +978,6 @@ function extractHashtags(text?: string) {
   }
 
   return Array.from(text.matchAll(/(^|[\s([{])#([\p{L}\p{N}_-]{2,64})/gu), (match) => `#${match[2]}`);
-}
-
-function moderationLabelText(label: { val?: string }) {
-  const value = label.val?.trim();
-  if (!value) {
-    return "Content label";
-  }
-
-  return value
-    .replace(/^!/, "")
-    .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function isSensitiveLabel(label: { val?: string }) {
-  const value = label.val?.toLowerCase() || "";
-  return [
-    "adult",
-    "graphic",
-    "gore",
-    "nudity",
-    "porn",
-    "sexual",
-    "spam",
-    "violence",
-  ].some((term) => value.includes(term));
 }
 
 // Whether a post should be hidden entirely when the NSFW preference is set to
@@ -8578,55 +8556,6 @@ function formatExternalUrlLabel(uri: string) {
   }
 }
 
-function sensitiveMediaValues(labels: Array<{ val?: string }>) {
-  return Array.from(
-    new Set(
-      labels
-        .filter(isSensitiveLabel)
-        .map((label) => label.val?.toLowerCase() || "")
-        .filter((value) => value && !value.includes("spam")),
-    ),
-  );
-}
-
-function SensitiveMediaGate({ values, onReveal }: { values: string[]; onReveal: () => void }) {
-  return (
-    <button type="button" className="sensitive-media-gate" onClick={onReveal}>
-      <EyeOff size={18} />
-      <strong>Sensitive content</strong>
-      <small>{values.map((value) => moderationLabelText({ val: value })).join(", ")}</small>
-      <span className="sensitive-media-show">Show</span>
-    </button>
-  );
-}
-
-// Shown in place of images/video when the "Show Media" setting is off. Clicking
-// reveals the media for that one card without changing the global setting.
-function MediaHiddenButton({ kind, onReveal, revealed = false }: { kind: "image" | "video"; onReveal: () => void; revealed?: boolean }) {
-  const label = revealed ? "Hide Media" : "Reveal Media";
-  return (
-    <button
-      type="button"
-      className="media-hidden-button"
-      onClick={onReveal}
-      title={revealed ? `Hide ${kind}` : `Show ${kind}`}
-      aria-label={revealed ? `Hide ${kind}` : `Show hidden ${kind}`}
-    >
-      {kind === "video" ? <Film size={16} /> : <Image size={16} />}
-      <span>{label}</span>
-    </button>
-  );
-}
-
-function ReplyLimitedNotice() {
-  return (
-    <p className="reply-limited-notice" role="status">
-      <ShieldAlert size={14} />
-      <span>Replies are limited for this post.</span>
-    </p>
-  );
-}
-
 function useReplyGate(post: FeedPost, onReply?: (post: FeedPost) => void) {
   const [showReplyLimited, setShowReplyLimited] = useState(false);
 
@@ -11686,10 +11615,6 @@ function ProfileContextPanel({ actor, profile }: { actor: string; profile: Profi
   );
 }
 
-function Avatar({ profile }: { profile?: Profile }) {
-  return profile?.avatar ? <img className="avatar" src={profile.avatar} alt="" loading="lazy" /> : <span className="avatar fallback" />;
-}
-
 // "Back to top" affordance for the wide endless-scroll reader. Appears after the
 // active timeline is scrolled past a threshold and returns to the top without a
 // route change. watchKey re-attaches the scroll listener when the mounted
@@ -11751,24 +11676,6 @@ function BackToTopButton({ containerRef, watchKey }: { containerRef: RefObject<H
       <ChevronUp size={18} />
       <span>Top</span>
     </button>
-  );
-}
-
-function LoadingState({ label }: { label: string }) {
-  return (
-    <div className="state">
-      <Loader2 className="spin" size={24} />
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function ErrorState({ message }: { message: string }) {
-  return (
-    <div className="state error">
-      <strong>Unable to load</strong>
-      <span>{message}</span>
-    </div>
   );
 }
 
