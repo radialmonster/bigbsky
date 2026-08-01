@@ -190,6 +190,14 @@ import { ExploreTrendingTopics } from "./features/explore/ExploreTrendingTopics"
 import { ExploreDiscoverFeeds } from "./features/explore/ExploreDiscoverFeeds";
 import { NotificationsSurface } from "./features/notifications/NotificationsSurface";
 import {
+  FeedDensityOverrideControl,
+  FeedShowMediaOverrideControl,
+  densityModes,
+  type DensityMode,
+} from "./features/feed/FeedDensityControls";
+import { AccountPanel, SignInForm } from "./features/auth/AccountPanel";
+import { SearchBox } from "./features/search/SearchBox";
+import {
   POST_LANGUAGE_OPTIONS,
   PostComposer,
   composerDraftStorageKey,
@@ -280,9 +288,6 @@ function readShowMedia() {
 function readContentLanguages() {
   return parseNonEmptyStringArray(safeLocalStorageGet(contentLanguagesStorageKey));
 }
-
-const densityModes = ["comfortable", "compact", "media"] as const;
-type DensityMode = (typeof densityModes)[number];
 // Bluesky's newer gallery embed allows up to 10 authored images per post.
 const maxPostImages = 10;
 
@@ -4602,80 +4607,6 @@ function SurfaceView({
   );
 }
 
-function FeedDensityOverrideControl({
-  source,
-  defaultDensity,
-  override,
-  showMedia,
-  onChange,
-}: {
-  source: FeedSource;
-  defaultDensity: DensityMode;
-  override?: DensityMode;
-  showMedia: boolean;
-  onChange: (source: FeedSource, density: DensityMode | null) => void;
-}) {
-  const effective = override || defaultDensity;
-  const mediaPaused = effective === "media" && !showMedia;
-  const effectiveLabel = mediaPaused ? "media, paused" : effective;
-  return (
-    <>
-      <label className="feed-density-control">
-        <span>View</span>
-        <select
-          value={override || "default"}
-          onChange={(event) => {
-            const value = event.target.value;
-            onChange(source, value === "default" ? null : (value as DensityMode));
-          }}
-        >
-          <option value="default">Default ({effectiveLabel})</option>
-          {densityModes.map((mode) => (
-            <option value={mode} key={mode} disabled={mode === "media" && !showMedia}>
-              {mode}
-            </option>
-          ))}
-        </select>
-      </label>
-      {mediaPaused && (
-        <p className="feed-media-warning">Media view paused — turn Media on for this feed.</p>
-      )}
-    </>
-  );
-}
-
-function FeedShowMediaOverrideControl({
-  source,
-  defaultShowMedia,
-  override,
-  onChange,
-}: {
-  source: FeedSource;
-  defaultShowMedia: boolean;
-  override?: boolean;
-  onChange: (source: FeedSource, value: boolean | null) => void;
-}) {
-  const value = override === undefined ? "default" : override ? "on" : "off";
-  const defaultLabel = defaultShowMedia ? "on" : "off";
-  return (
-    <label className="feed-density-control">
-      <span>Media</span>
-      <select
-        value={value}
-        onChange={(event) => {
-          const next = event.target.value;
-          onChange(source, next === "default" ? null : next === "on");
-        }}
-      >
-        <option value="default">Default ({defaultLabel})</option>
-        <option value="on">On</option>
-        <option value="off">Off</option>
-      </select>
-    </label>
-  );
-}
-
-
 function SelfProfileSurface({
   auth,
   pinnedFeedCount,
@@ -4791,122 +4722,6 @@ function SelfProfileSurface({
         onReauthorize={onReauthorize}
       />
     </div>
-  );
-}
-
-function SignInForm({
-  status,
-  onSignIn,
-}: {
-  status: AuthState["status"];
-  onSignIn: (handle: string) => void | Promise<void>;
-}) {
-  const [handle, setHandle] = useState("");
-  const isBusy = status === "checking" || status === "callback" || status === "signing-in" || status === "signing-out";
-
-  return (
-    <>
-      <form
-        className="sign-in-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void onSignIn(handle);
-        }}
-      >
-        <input
-          aria-label="Bluesky handle, DID, or PDS URL"
-          autoComplete="username"
-          placeholder="your.handle"
-          value={handle}
-          onInput={(event) => setHandle(event.currentTarget.value)}
-        />
-        <button type="submit" disabled={isBusy}>
-          {isBusy ? "Working" : "Sign in"}
-        </button>
-      </form>
-      <p className="sign-in-create-note">
-        No account yet?{" "}
-        <a href="https://bsky.app/" target="_blank" rel="noreferrer">
-          Create one on Bluesky
-        </a>
-      </p>
-    </>
-  );
-}
-
-function AccountPanel({
-  auth,
-  onSignIn,
-  onSignOut,
-}: {
-  auth: AuthState;
-  onSignIn: (handle: string) => void | Promise<void>;
-  onSignOut: () => void | Promise<void>;
-}) {
-  return (
-    <section className="context-panel account-panel">
-      <h2>Account</h2>
-      {auth.session ? (
-        <>
-          <div className="account-identity">
-            <Avatar profile={auth.session} />
-            <span>
-              <strong>{auth.session.displayName || auth.session.handle}</strong>
-              <small>@{auth.session.handle}</small>
-            </span>
-          </div>
-          <button type="button" onClick={onSignOut}>
-            Sign out
-          </button>
-        </>
-      ) : (
-        <>
-          <p>
-            {auth.status === "callback"
-              ? "Completing OAuth callback."
-              : auth.status === "checking"
-                ? "Checking browser session."
-                : "Signed-out public reader mode."}
-          </p>
-          <SignInForm status={auth.status} onSignIn={onSignIn} />
-        </>
-      )}
-      {auth.message && <p className={auth.status === "error" ? "account-warning" : undefined}>{auth.message}</p>}
-    </section>
-  );
-}
-
-
-function SearchBox({
-  value,
-  onChange,
-  onSearch,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  onSearch: (query: string) => void;
-}) {
-  return (
-    <form
-      className="search-box"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSearch(value);
-      }}
-    >
-      <Search size={18} />
-      <input
-        aria-label="Search"
-        placeholder="Search or paste a post URL"
-        value={value}
-        onInput={(event) => onChange(event.currentTarget.value)}
-      />
-      {value && (
-        <button type="button" className="search-box-clear" onClick={() => onChange("")} aria-label="Clear search box" title="Clear search">
-          <X size={16} />
-        </button>
-      )}
-    </form>
   );
 }
 
