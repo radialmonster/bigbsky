@@ -5094,6 +5094,48 @@ function SearchView({
   );
 }
 
+function PostCardHeader({
+  profile,
+  post,
+  timestampLabel,
+  onOpenProfile,
+  onOpenPost,
+}: {
+  profile: Profile;
+  post: FeedPost;
+  timestampLabel: string;
+  onOpenProfile?: (profile: Profile) => void;
+  onOpenPost?: (post: FeedPost) => void;
+}) {
+  return (
+    <header className="post-header">
+      <Avatar profile={profile} />
+      <div className="post-author-block">
+        <a
+          className="author-button"
+          href={profilePath(profile)}
+          onClick={(event) => onOpenProfile && handleInternalLinkClick(event, () => onOpenProfile(profile))}
+        >
+          <strong>{displayName(profile)}</strong>
+        </a>
+        <div className="post-byline">
+          <span>@{profile.handle}</span>
+          <span aria-hidden="true">·</span>
+          <a
+            className="post-timestamp"
+            href={postPath(post) ?? postBskyUrl(post)}
+            onClick={(event) => onOpenPost && handleInternalLinkClick(event, () => onOpenPost(post))}
+            title={`Open thread posted ${timestampLabel}`}
+            aria-label={`Open thread posted ${timestampLabel}`}
+          >
+            {timestampLabel}
+          </a>
+        </div>
+      </div>
+    </header>
+  );
+}
+
 function ThreadedPostCard({
   thread,
   onOpenImage,
@@ -5127,31 +5169,13 @@ function ThreadedPostCard({
 
   return (
     <article className="post-card thread-combined-card text-only">
-      <header className="post-header">
-        <Avatar profile={rootPost.author} />
-        <div className="post-author-block">
-          <a
-            className="author-button"
-            href={profilePath(rootPost.author)}
-            onClick={(event) => onOpenProfile && handleInternalLinkClick(event, () => onOpenProfile(rootPost.author))}
-          >
-            <strong>{displayName(rootPost.author)}</strong>
-          </a>
-          <div className="post-byline">
-            <span>@{rootPost.author.handle}</span>
-            <span aria-hidden="true">·</span>
-            <a
-              className="post-timestamp"
-              href={postPath(rootPost) ?? postBskyUrl(rootPost)}
-              onClick={(event) => onOpenPost && handleInternalLinkClick(event, () => onOpenPost(rootPost))}
-              title={`Open thread posted ${postTimeLabel}`}
-              aria-label={`Open thread posted ${postTimeLabel}`}
-            >
-              {postTimeLabel}
-            </a>
-          </div>
-        </div>
-      </header>
+      <PostCardHeader
+        profile={rootPost.author}
+        post={rootPost}
+        timestampLabel={postTimeLabel}
+        onOpenProfile={onOpenProfile}
+        onOpenPost={onOpenPost}
+      />
       <button type="button" className="thread-open-chip" onClick={() => onOpenPost?.(rootPost)} title="Open full thread">
         <MessageCircle size={13} />
         <span>{posts.length} post thread</span>
@@ -5817,31 +5841,13 @@ function CombinedThreadViewCard({
 
   return (
     <article className="post-card combined-thread-view-card text-only">
-      <header className="post-header">
-        <Avatar profile={rootPost.author} />
-        <div className="post-author-block">
-          <a
-            className="author-button"
-            href={profilePath(rootPost.author)}
-            onClick={(event) => handleInternalLinkClick(event, () => onOpenProfile(rootPost.author))}
-          >
-            <strong>{displayName(rootPost.author)}</strong>
-          </a>
-          <div className="post-byline">
-            <span>@{rootPost.author.handle}</span>
-            <span aria-hidden="true">·</span>
-            <a
-              className="post-timestamp"
-              href={postPath(rootPost) ?? postBskyUrl(rootPost)}
-              onClick={(event) => handleInternalLinkClick(event, () => onOpenPost(rootPost))}
-              title={`Open thread posted ${postTimeLabel}`}
-              aria-label={`Open thread posted ${postTimeLabel}`}
-            >
-              {postTimeLabel}
-            </a>
-          </div>
-        </div>
-      </header>
+      <PostCardHeader
+        profile={rootPost.author}
+        post={rootPost}
+        timestampLabel={postTimeLabel}
+        onOpenProfile={onOpenProfile}
+        onOpenPost={onOpenPost}
+      />
       <div className="combined-thread-text">
         {parts.map((part, index) => {
           const post = part.node.post;
@@ -6072,31 +6078,13 @@ function PostCard({
 
   return (
     <article className={`post-card ${postVariant}${hasHiddenMedia ? " media-hidden" : ""}`}>
-      <header className="post-header">
-        <Avatar profile={post.author} />
-        <div className="post-author-block">
-          <a
-            className="author-button"
-            href={profilePath(post.author)}
-            onClick={(event) => onOpenProfile && handleInternalLinkClick(event, () => onOpenProfile(post.author))}
-          >
-            <strong>{displayName(post.author)}</strong>
-          </a>
-          <div className="post-byline">
-            <span>@{post.author.handle}</span>
-            <span aria-hidden="true">·</span>
-            <a
-              className="post-timestamp"
-              href={postPath(post) ?? postBskyUrl(post)}
-              onClick={(event) => onOpenPost && handleInternalLinkClick(event, () => onOpenPost(post))}
-              title={`Open thread posted ${postTimeLabel}`}
-              aria-label={`Open thread posted ${postTimeLabel}`}
-            >
-              {postTimeLabel}
-            </a>
-          </div>
-        </div>
-      </header>
+      <PostCardHeader
+        profile={post.author}
+        post={post}
+        timestampLabel={postTimeLabel}
+        onOpenProfile={onOpenProfile}
+        onOpenPost={onOpenPost}
+      />
       {threadMarker && (
         <button type="button" className="thread-open-chip" onClick={() => onOpenPost?.(post)} title="Open full thread">
           <MessageCircle size={13} />
@@ -6685,31 +6673,13 @@ function LongThreadCard({
 
   return (
     <article className="post-card long-thread-card text-only">
-      <header className="post-header">
-        <Avatar profile={rootPost.author} />
-        <div className="post-author-block">
-          <a
-            className="author-button"
-            href={profilePath(rootPost.author)}
-            onClick={(event) => handleInternalLinkClick(event, () => handlers.onOpenProfile(rootPost.author))}
-          >
-            <strong>{displayName(rootPost.author)}</strong>
-          </a>
-          <div className="post-byline">
-            <span>@{rootPost.author.handle}</span>
-            <span aria-hidden="true">·</span>
-            <a
-              className="post-timestamp"
-              href={postPath(rootPost) ?? postBskyUrl(rootPost)}
-              onClick={(event) => handleInternalLinkClick(event, () => handlers.onOpenPost(rootPost))}
-              title={`Open thread posted ${firstTimeLabel}`}
-              aria-label={`Open thread posted ${firstTimeLabel}`}
-            >
-              {firstTimeLabel}
-            </a>
-          </div>
-        </div>
-      </header>
+      <PostCardHeader
+        profile={rootPost.author}
+        post={rootPost}
+        timestampLabel={firstTimeLabel}
+        onOpenProfile={handlers.onOpenProfile}
+        onOpenPost={handlers.onOpenPost}
+      />
       <div className="post-badges" aria-label="Thread context">
         <span>{parts.length.toLocaleString()} part thread</span>
         <span>{totalReplies === 1 ? "1 reply" : `${totalReplies.toLocaleString()} replies`}</span>
