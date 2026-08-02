@@ -45,9 +45,9 @@ requirePattern(css, /\.media \.post-card\.has-media \.image-grid\.count-1 img,[\
 requirePattern(css, /\.video-card \{[\s\S]*width: 100%;[\s\S]*aspect-ratio: var\(--video-aspect, 16 \/ 9\);[\s\S]*max-height: calc\(100vh - 140px\);/s, "video card should reserve the playback frame before media metadata loads and use the image viewport cap");
 requirePattern(css, /\.video-card video,[\s\S]*\.video-card img,[\s\S]*\.video-placeholder \{[\s\S]*height: 100%;/s, "video media elements should fill the stable card frame");
 
-requirePattern(css, /\.app-shell:where\(\.feeds-hidden\) \{[\s\S]*grid-template-columns: 76px minmax\(0, 1fr\) 320px;/s, "hiding the feeds column should drop its track and let content absorb the space");
-requirePattern(css, /\.app-shell:where\(\.right-hidden\) \{[\s\S]*grid-template-columns: 76px 288px minmax\(0, 1fr\);/s, "hiding the right column should drop its track and let content absorb the space");
-requirePattern(css, /\.app-shell:where\(\.feeds-hidden\):where\(\.right-hidden\) \{[\s\S]*grid-template-columns: 76px minmax\(0, 1fr\);/s, "hiding both columns should leave only the icon rail and content");
+requirePattern(css, /\.app-shell:where\(\.feeds-hidden\) \{[\s\S]*grid-template-columns: var\(--rail-width\) minmax\(0, 1fr\) var\(--right-rail-width\);/s, "hiding the feeds column should drop its track and let content absorb the space");
+requirePattern(css, /\.app-shell:where\(\.right-hidden\) \{[\s\S]*grid-template-columns: var\(--rail-width\) var\(--feed-map-width\) minmax\(0, 1fr\);/s, "hiding the right column should drop its track and let content absorb the space");
+requirePattern(css, /\.app-shell:where\(\.feeds-hidden\):where\(\.right-hidden\) \{[\s\S]*grid-template-columns: var\(--rail-width\) minmax\(0, 1fr\);/s, "hiding both columns should leave only the icon rail and content");
 requirePattern(css, /\.feeds-hidden \.feed-map \{[\s\S]*display: none;/s, "feeds-hidden should remove the feeds column element from the grid");
 requirePattern(css, /\.right-hidden \.right-rail \{[\s\S]*display: none;/s, "right-hidden should remove the right column element from the grid");
 requirePattern(css, /@media \(max-width: 1323px\) \{[\s\S]*\.right-rail \{[\s\S]*display: none;/s, "below the 4-column minimum the right column should auto-hide so it cannot clip off-screen");
@@ -55,7 +55,9 @@ requirePattern(css, /@media \(max-width: 1003px\) \{[\s\S]*\.feed-map \{[\s\S]*d
 // The reader is widened fluidly by a single `1fr` content column, not by
 // per-screen-size grid overrides. The content column must always be the
 // one that absorbs remaining width (the widest), with fixed narrow rails.
-requirePattern(css, /\.app-shell \{[\s\S]*grid-template-columns: 76px 288px minmax\(640px, 1fr\) 320px;/s, "content column should fluidly absorb remaining width via 1fr as the widest column");
+requirePattern(css, /--rail-width: 76px;[\s\S]*--feed-map-width: 288px;[\s\S]*--right-rail-width: 320px;[\s\S]*--content-min-width: 640px;[\s\S]*--mobile-header-height: 55px;/, "app-shell grid track widths should be defined once as semantic tokens");
+requirePattern(css, /\.app-shell \{[\s\S]*grid-template-columns: var\(--rail-width\) var\(--feed-map-width\) minmax\(var\(--content-min-width\), 1fr\) var\(--right-rail-width\);/s, "content column should fluidly absorb remaining width via 1fr as the widest column");
+forbidPattern(css, /grid-template-columns:\s*76px\s+288px/s, "app-shell grid tracks should use the semantic tokens, not literal pixel columns");
 forbidPattern(css, /minmax\(980px, 1fr\)/s, "do not re-add the per-screen-size content-column override; widen it fluidly with 1fr");
 forbidPattern(css, /\.app-shell\.width-(wide|focus)/s, "do not re-add per-screen-size width-mode grid overrides; the base width-mode grids already scale via 1fr");
 forbidPattern(css, /min-width: 2560px/s, "do not add ultrawide-specific breakpoints; the 1fr content column already scales");

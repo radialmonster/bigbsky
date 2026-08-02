@@ -34,6 +34,12 @@
   --app-panel-padding: var(--space-6);
   --app-card-gap: var(--space-3);
   --app-grid-gap: var(--space-4);
+  /* App-shell grid track widths (single source of truth for the shell layout). */
+  --rail-width: 76px;
+  --feed-map-width: 288px;
+  --right-rail-width: 320px;
+  --content-min-width: 640px;
+  --mobile-header-height: 55px;
   background: var(--app-bg);
   color: var(--app-text);
   font-synthesis: none;
@@ -70,7 +76,7 @@ button {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 76px 288px minmax(640px, 1fr) 320px;
+  grid-template-columns: var(--rail-width) var(--feed-map-width) minmax(var(--content-min-width), 1fr) var(--right-rail-width);
   height: 100dvh;
   min-height: 0;
   background: var(--app-bg);
@@ -634,15 +640,15 @@ button {
    override by source order regardless of how many state classes are present;
    the both-hidden rule is last so it wins when both classes are set. */
 .app-shell:where(.feeds-hidden) {
-  grid-template-columns: 76px minmax(0, 1fr) 320px;
+  grid-template-columns: var(--rail-width) minmax(0, 1fr) var(--right-rail-width);
 }
 
 .app-shell:where(.right-hidden) {
-  grid-template-columns: 76px 288px minmax(0, 1fr);
+  grid-template-columns: var(--rail-width) var(--feed-map-width) minmax(0, 1fr);
 }
 
 .app-shell:where(.feeds-hidden):where(.right-hidden) {
-  grid-template-columns: 76px minmax(0, 1fr);
+  grid-template-columns: var(--rail-width) minmax(0, 1fr);
 }
 
 .feeds-hidden .feed-map {
@@ -5553,11 +5559,11 @@ button.surface-action {
   }
 
   .app-shell {
-    grid-template-columns: 76px 288px minmax(0, 1fr);
+    grid-template-columns: var(--rail-width) var(--feed-map-width) minmax(0, 1fr);
   }
 
   .app-shell:where(.feeds-hidden) {
-    grid-template-columns: 76px minmax(0, 1fr);
+    grid-template-columns: var(--rail-width) minmax(0, 1fr);
   }
 }
 
@@ -5604,7 +5610,7 @@ button.surface-action {
     width: 100%;
     flex-direction: row;
     gap: 0;
-    height: 55px;
+    height: var(--mobile-header-height);
     padding: 7px 58px 7px 6px;
     border-bottom: 1px solid var(--app-border);
   }
@@ -5615,7 +5621,7 @@ button.surface-action {
     left: 0;
     right: 0;
     z-index: 6;
-    height: 55px;
+    height: var(--mobile-header-height);
     transition: transform 160ms ease;
     will-change: transform;
   }
@@ -5669,7 +5675,7 @@ button.surface-action {
 
   .workspace {
     min-height: calc(100vh - 64px);
-    padding-top: 55px;
+    padding-top: var(--mobile-header-height);
   }
 
   .segmented {
