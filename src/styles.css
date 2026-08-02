@@ -51,6 +51,12 @@
   --card-min-medium: 340px;
   --card-min-wide: 360px;
   --card-min-xwide: 400px;
+  /* Media sizing: viewport-capped embed heights, reserved video frames, and
+     the link-card thumbnail column (single source of truth for media layout). */
+  --media-max-height: calc(100vh - 140px);
+  --media-only-max-height: calc(100vh - 132px);
+  --video-min-height: 180px;
+  --link-card-thumb: clamp(220px, 24%, 440px);
   background: var(--app-bg);
   color: var(--app-text);
   font-synthesis: none;
@@ -3158,7 +3164,7 @@ button.surface-action {
   width: auto;
   height: auto;
   min-height: 120px;
-  max-height: calc(100vh - 140px);
+  max-height: var(--media-max-height);
   border-radius: 8px;
   object-fit: contain;
   background: var(--app-surface-2);
@@ -3207,9 +3213,9 @@ button.surface-action {
   width: 100%;
   aspect-ratio: var(--video-aspect, 16 / 9);
   max-width: 100%;
-  max-height: calc(100vh - 140px);
+  max-height: var(--media-max-height);
   min-width: 0;
-  min-height: 180px;
+  min-height: var(--video-min-height);
   margin: 12px auto;
   overflow: hidden;
   border: 1px solid var(--app-border);
@@ -3230,7 +3236,7 @@ button.surface-action {
 }
 
 .video-card video {
-  min-height: 180px;
+  min-height: var(--video-min-height);
 }
 
 .video-fallback-link {
@@ -3242,7 +3248,7 @@ button.surface-action {
 }
 
 .video-placeholder {
-  min-height: 180px;
+  min-height: var(--video-min-height);
 }
 
 .video-label {
@@ -3310,7 +3316,7 @@ button.surface-action {
   /* In the very wide content column a 148px thumbnail left a thin, empty
      stretched strip. A larger proportional thumbnail (bounded) makes the
      card a substantial banner that fills the width pleasingly. */
-  grid-template-columns: clamp(220px, 24%, 440px) minmax(0, 1fr);
+  grid-template-columns: var(--link-card-thumb) minmax(0, 1fr);
   gap: 16px;
   min-height: 100%;
   margin: 0;
@@ -3758,7 +3764,7 @@ button.surface-action {
   display: block;
   max-width: 100%;
   width: auto;
-  max-height: calc(100vh - 132px);
+  max-height: var(--media-only-max-height);
   margin: 0 auto;
   border-radius: 8px;
   object-fit: contain;
@@ -3779,7 +3785,7 @@ button.surface-action {
   width: 100%;
   max-width: 100%;
   aspect-ratio: var(--media-row-aspect, 3) / 1;
-  max-height: calc(100vh - 132px);
+  max-height: var(--media-only-max-height);
   min-width: 0;
 }
 
@@ -3810,7 +3816,7 @@ button.surface-action {
 .media-only-card .video-card video,
 .media-only-card .video-card img,
 .media-only-card .video-placeholder {
-  max-height: calc(100vh - 132px);
+  max-height: var(--media-only-max-height);
 }
 
 .media-only-footer {
@@ -4419,7 +4425,7 @@ button.surface-action {
   width: 100%;
   max-width: 100%;
   aspect-ratio: var(--media-row-aspect, 2) / 1;
-  max-height: calc(100vh - 140px);
+  max-height: var(--media-max-height);
   min-width: 0;
 }
 
@@ -4460,7 +4466,7 @@ button.surface-action {
 .post-image-video-media .image-masonry .image-row-solo .image-button img {
   width: 100%;
   height: auto;
-  max-height: calc(100vh - 140px);
+  max-height: var(--media-max-height);
   object-fit: contain;
 }
 
