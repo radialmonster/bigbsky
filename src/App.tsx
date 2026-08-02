@@ -3435,6 +3435,22 @@ export function App() {
   );
 }
 
+function useComposerTargets() {
+  const [activeReplyParentUri, setActiveReplyParentUri] = useState<string | null>(null);
+  const [activeQuoteUri, setActiveQuoteUri] = useState<string | null>(null);
+  const toggleReplyFor = useCallback((uri: string) => {
+    setActiveReplyParentUri((current) => (current === uri ? null : uri));
+    setActiveQuoteUri(null);
+  }, []);
+  const toggleQuoteFor = useCallback((uri: string) => {
+    setActiveQuoteUri((current) => (current === uri ? null : uri));
+    setActiveReplyParentUri(null);
+  }, []);
+  const closeReply = useCallback(() => setActiveReplyParentUri(null), []);
+  const closeQuote = useCallback(() => setActiveQuoteUri(null), []);
+  return { activeReplyParentUri, activeQuoteUri, toggleReplyFor, toggleQuoteFor, closeReply, closeQuote };
+}
+
 function VirtualPostList({
   children,
   containerRef,
@@ -3494,8 +3510,7 @@ function VirtualPostList({
   // back-to-back measurements in one batch still diff against the latest height.
   const rowHeightsRef = useRef(rowHeights);
   rowHeightsRef.current = rowHeights;
-  const [activeReplyParentUri, setActiveReplyParentUri] = useState<string | null>(null);
-  const [activeQuoteUri, setActiveQuoteUri] = useState<string | null>(null);
+  const { activeReplyParentUri, activeQuoteUri, toggleReplyFor, toggleQuoteFor, closeReply, closeQuote } = useComposerTargets();
   const canReply = !!currentDid;
   const rowOffsets = useMemo(() => {
     let offset = 0;
@@ -3717,9 +3732,9 @@ function VirtualPostList({
                     onOpenImage={onOpenImage}
                     onOpenPost={onOpenPost}
                     onOpenProfile={onOpenProfile}
-                    onReply={canReply ? (post) => { setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)); setActiveQuoteUri(null); } : undefined}
+                    onReply={canReply ? (post) => toggleReplyFor(post.uri) : undefined}
                     replyActive={activeReplyParentUri === rowPost.uri}
-                    onQuote={canReply ? (post) => { setActiveQuoteUri((current) => (current === post.uri ? null : post.uri)); setActiveReplyParentUri(null); } : undefined}
+                    onQuote={canReply ? (post) => toggleQuoteFor(post.uri) : undefined}
                     quoteActive={activeQuoteUri === rowPost.uri}
                   />
                 ) : (
@@ -3729,9 +3744,9 @@ function VirtualPostList({
                     onOpenImage={onOpenImage}
                     onOpenPost={onOpenPost}
                     onOpenProfile={onOpenProfile}
-                    onReply={canReply ? (post) => { setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)); setActiveQuoteUri(null); } : undefined}
+                    onReply={canReply ? (post) => toggleReplyFor(post.uri) : undefined}
                     replyActive={activeReplyParentUri === rowPost.uri}
-                    onQuote={canReply ? (post) => { setActiveQuoteUri((current) => (current === post.uri ? null : post.uri)); setActiveReplyParentUri(null); } : undefined}
+                    onQuote={canReply ? (post) => toggleQuoteFor(post.uri) : undefined}
                     quoteActive={activeQuoteUri === rowPost.uri}
                     localLists={localLists}
                     onToggleListPost={onToggleListPost}
@@ -3741,13 +3756,13 @@ function VirtualPostList({
                   <PostComposer
                     replyTo={{ parent: rowPost, root: replyRootRefForPost(rowPost) }}
                     canReply={canReply}
-                    onClose={() => setActiveReplyParentUri(null)}
+                    onClose={closeReply}
                   />
                 )}
                 {activeQuoteUri === rowPost.uri && (
                   <PostComposer
                     quote={rowPost}
-                    onClose={() => setActiveQuoteUri(null)}
+                    onClose={closeQuote}
                   />
                 )}
               </>
@@ -6379,8 +6394,7 @@ function ThreadView({
   const density = useContext(DensityContext);
   const [expandedBranches, setExpandedBranches] = useState<Record<string, boolean>>({});
   const [engagement, setEngagement] = useState<null | "reposts" | "quotes" | "likes">(null);
-  const [activeReplyParentUri, setActiveReplyParentUri] = useState<string | null>(null);
-  const [activeQuoteUri, setActiveQuoteUri] = useState<string | null>(null);
+  const { activeReplyParentUri, activeQuoteUri, toggleReplyFor, toggleQuoteFor, closeReply, closeQuote } = useComposerTargets();
   const [threadDisplayMode, setThreadDisplayMode] = useState<"combined" | "separated">("combined");
   // Re-root self-threads: when the opened post is mid-chain (e.g. part 3 of 5
   // via search/URL), buildAnchoredThreadParts walks UP the parent chain so the
@@ -6508,13 +6522,13 @@ function ThreadView({
           onOpenPost={onOpenPost}
           onOpenProfile={onOpenProfile}
           onShowReplies={() => setThreadDisplayMode("separated")}
-          onOpenReply={(post) => { setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)); setActiveQuoteUri(null); }}
-          onCloseReply={() => setActiveReplyParentUri(null)}
+          onOpenReply={(post) => toggleReplyFor(post.uri)}
+          onCloseReply={closeReply}
           onReplied={onReplied}
           threadRootRef={threadRootRef}
           activeQuoteUri={activeQuoteUri}
-          onOpenQuote={(post) => { setActiveQuoteUri((current) => (current === post.uri ? null : post.uri)); setActiveReplyParentUri(null); }}
-          onCloseQuote={() => setActiveQuoteUri(null)}
+          onOpenQuote={(post) => toggleQuoteFor(post.uri)}
+          onCloseQuote={closeQuote}
           onQuoted={onReplied}
         />
       ) : threadParts.length > 1 && threadRootRef ? (
@@ -6532,13 +6546,13 @@ function ThreadView({
             onOpenProfile,
             activeReplyParentUri,
             canReply,
-            onOpenReply: (post) => { setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)); setActiveQuoteUri(null); },
-            onCloseReply: () => setActiveReplyParentUri(null),
+            onOpenReply: (post) => toggleReplyFor(post.uri),
+            onCloseReply: closeReply,
             onReplied,
             threadRootRef,
             activeQuoteUri,
-            onOpenQuote: (post) => { setActiveQuoteUri((current) => (current === post.uri ? null : post.uri)); setActiveReplyParentUri(null); },
-            onCloseQuote: () => setActiveQuoteUri(null),
+            onOpenQuote: (post) => toggleQuoteFor(post.uri),
+            onCloseQuote: closeQuote,
             onQuoted: onReplied,
           }}
           savedState={{ currentDid, localLists, onToggleListPost }}
@@ -6555,13 +6569,13 @@ function ThreadView({
             onOpenProfile,
             activeReplyParentUri,
             canReply,
-            onOpenReply: (post) => { setActiveReplyParentUri((current) => (current === post.uri ? null : post.uri)); setActiveQuoteUri(null); },
-            onCloseReply: () => setActiveReplyParentUri(null),
+            onOpenReply: (post) => toggleReplyFor(post.uri),
+            onCloseReply: closeReply,
             onReplied,
             threadRootRef,
             activeQuoteUri,
-            onOpenQuote: (post) => { setActiveQuoteUri((current) => (current === post.uri ? null : post.uri)); setActiveReplyParentUri(null); },
-            onCloseQuote: () => setActiveQuoteUri(null),
+            onOpenQuote: (post) => toggleQuoteFor(post.uri),
+            onCloseQuote: closeQuote,
             onQuoted: onReplied,
           },
           { currentDid, localLists, onToggleListPost },
