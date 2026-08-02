@@ -2629,6 +2629,11 @@ export function App() {
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(MOBILE_SCROLL_QUERY);
+    // Keyed on the full route object (not just route.kind): surface->surface
+    // navigation (e.g. bookmarks -> lists) swaps the mounted .timeline node
+    // without changing route.kind, so the listener must re-attach on every
+    // navigation. route, activeSource.id, profileTab, and navOpen together
+    // fully determine which element timelineRef.current points at.
     const timeline = timelineRef.current;
     let lastScrollY = readScrollOffset(timeline);
     let frame = 0;
@@ -2669,7 +2674,7 @@ export function App() {
       timeline?.removeEventListener("scroll", onScroll);
       mediaQuery.removeEventListener("change", updateHeader);
     };
-  }, [activeSource.id, navOpen, profileTab, route.kind]);
+  }, [activeSource.id, navOpen, profileTab, route]);
 
   useEffect(() => {
     const timeline = timelineRef.current;
