@@ -2650,6 +2650,8 @@ export function App() {
     // the later restore reads 0 and no-ops.
     armScrollRestore(scrollCache.get(activeScrollKey) || 0);
 
+    // Pending rAF for the deferred content-anchor scan (see rememberScroll).
+    let anchorFrame: number | null = null;
     const rememberScroll = () => {
       const offset = readScrollOffset(timeline);
       if (shouldSuppressScrollSave(offset)) {
@@ -2664,7 +2666,17 @@ export function App() {
       // clamps back — so the restore never converges. The anchor is only captured
       // once the timeline has rendered post rows (readTopVisibleAnchor scans
       // [data-post-uri]); before that it returns null and the pixel cache stays
-      // the fallback.
+      // the fallback. readTopVisibleAnchor scans the mounted rows, so defer the
+      // scan to a rAF instead of running it on every scroll event (issue #40);
+      // the cheap pixel write above stays synchronous.
+      if (anchorFrame === null) {
+        anchorFrame = requestAnimationFrame(() => {
+          anchorFrame = null;
+          captureAnchor();
+        });
+      }
+    };
+    const captureAnchor = () => {
       const anchor = readTopVisibleAnchor(timeline);
       if (anchor) {
         scrollAnchorCache.set(activeScrollKey, anchor);
@@ -2674,6 +2686,13 @@ export function App() {
     };
     const persistScroll = () => {
       rememberScroll();
+      // Flush any deferred anchor scan synchronously while the timeline is
+      // still attached (pagehide fires before navigation detaches the element).
+      if (anchorFrame !== null) {
+        cancelAnimationFrame(anchorFrame);
+        anchorFrame = null;
+      }
+      captureAnchor();
       writeTimelineScrollCache(Object.fromEntries(scrollCache.entries()));
       writeTimelineAnchorCache(Object.fromEntries(scrollAnchorCache.entries()));
     };
@@ -2683,13 +2702,17 @@ export function App() {
     window.addEventListener("scroll", rememberScroll, { passive: true });
     window.addEventListener("pagehide", persistScroll);
     return () => {
+      if (anchorFrame !== null) {
+        cancelAnimationFrame(anchorFrame);
+      }
       timeline.removeEventListener("scroll", rememberScroll);
       window.removeEventListener("scroll", rememberScroll);
       window.removeEventListener("pagehide", persistScroll);
       // Flush the last live offset captured by the scroll handlers. Do NOT
       // re-read scroll here: on navigation this cleanup runs after the timeline
       // element has detached, and a detached element reports scrollTop 0, which
-      // would clobber the saved offset and break restoration on return.
+      // would clobber the saved offset and break restoration on return. The
+      // anchor cache likewise holds the last capture taken while attached.
       writeTimelineScrollCache(Object.fromEntries(scrollCache.entries()));
       writeTimelineAnchorCache(Object.fromEntries(scrollAnchorCache.entries()));
     };
