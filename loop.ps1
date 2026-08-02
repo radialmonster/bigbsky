@@ -15,6 +15,11 @@
 # Usage:
 #   pwsh -NoProfile -ExecutionPolicy Bypass -File loop.ps1 [-DelayMinutes 10]
 #        [-IdleKillMinutes 15] [-HardTimeoutMinutes 120] [-MaxIterations N]
+#        [-ControlPort 4096]
+#
+# While a session is running, steer it from another terminal with:
+#   .\steer-loop.ps1 "Your correction or new instruction"
+# Or press S in the loop terminal, type the message, and press Enter.
 #
 # loop.bat in this directory is a thin wrapper around this file.
 
@@ -24,6 +29,8 @@ param(
   [int]$HardTimeoutMinutes = 120,
   [string]$PromptFile     = 'nextsessionprompt.md',
   [string]$LauncherCommand = 'opencode run --auto',
+  [ValidateRange(0, 65535)]
+  [int]$ControlPort       = 4096,  # 0 disables live steering
   [int]$MaxIterations     = 0,     # 0 = run until stopped
   [int]$SleepBetweenSec   = 60
 )
@@ -51,11 +58,28 @@ $activeSessionPath       = Join-Path $tempDir 'active-session.json'
 $HardTimeoutSec          = $HardTimeoutMinutes * 60
 $IdleKillSec             = $IdleKillMinutes * 60
 $NoOutputStatusSec       = 120    # heartbeat while agent is silent; does not kill
+$HintIntervalSec         = 30     # keep the active-session key menu near the visible output
 $ChildDrainTimeoutSec    = 5      # after cmd exits, give children time to flush before force-kill
 $ChildScanIntervalSec    = 15     # WMI is slow; keep it off the hot output path as much as possible
 $OrphanSweepPids         = @()    # pids swept last iteration (for logging only)
 $LogMaxBytes             = 50MB
 $LogKeepDays             = 14
+$EffectiveLauncherCommand = $LauncherCommand
+
+if ($ControlPort -gt 0) {
+  if ($LauncherCommand -match '(?i)(?:^|\s)--attach(?:\s|=|$)') {
+    throw '-ControlPort cannot be combined with a LauncherCommand that uses --attach.'
+  }
+  $portMatch = [regex]::Match($LauncherCommand, '(?i)(?:^|\s)--port(?:\s+|=)(\d+)')
+  if ($portMatch.Success) {
+    $launcherPort = [int]$portMatch.Groups[1].Value
+    if ($launcherPort -ne $ControlPort) {
+      throw "LauncherCommand uses port $launcherPort but -ControlPort is $ControlPort. Make them match or set -ControlPort 0."
+    }
+  } else {
+    $EffectiveLauncherCommand = "$LauncherCommand --port $ControlPort"
+  }
+}
 
 if (-not (Test-Path $tempDir)) { New-Item -ItemType Directory -Path $tempDir -Force | Out-Null }
 
@@ -186,10 +210,14 @@ function Get-DescendantProcessIds {
 function Save-ActiveSession {
   param([System.Diagnostics.Process]$Process)
   try {
+    $started = $Process.StartTime.ToUniversalTime()
     $state = [ordered]@{
       repo               = $root
       pid                = $Process.Id
-      startedFileTimeUtc = $Process.StartTime.ToFileTimeUtc()
+      startedFileTimeUtc = $started.ToFileTimeUtc()
+      startedUnixMs      = [DateTimeOffset]::new($started).ToUnixTimeMilliseconds()
+      controlPort        = $ControlPort
+      controlUrl         = if ($ControlPort -gt 0) { "http://127.0.0.1:$ControlPort" } else { $null }
     }
     $state | ConvertTo-Json | Set-Content -LiteralPath $activeSessionPath -Encoding UTF8
   } catch {
@@ -330,6 +358,33 @@ function Test-StopRequested {
         $script:skipSleepRequested = $true
         Write-Both '' Yellow
         Write-Both '[loop] SKIP-WAIT REQUESTED via N -- next session check will start immediately.' Yellow
+      } elseif ($k.Key -eq [ConsoleKey]::S) {
+        Write-Both '' Cyan
+        if ($script:activeRootPid -le 0) {
+          Write-Both '[loop] STEER unavailable -- no session is currently running.' Yellow
+          continue
+        }
+        try {
+          $steerText = (Read-Host '[loop] STEER message').Trim()
+          if (-not $steerText) {
+            Write-Both '[loop] STEER cancelled -- message was empty.' Yellow
+            continue
+          }
+          $steerScript = Join-Path $root 'steer-loop.ps1'
+          if (-not (Test-Path -LiteralPath $steerScript)) {
+            Write-Both "[loop] STEER failed -- helper not found: $steerScript" Red
+            continue
+          }
+          $pwsh = (Get-Command pwsh -ErrorAction Stop).Source
+          & $pwsh -NoProfile -ExecutionPolicy Bypass -File $steerScript -Message $steerText
+          if ($LASTEXITCODE -ne 0) {
+            Write-Both "[loop] STEER helper failed (exit $LASTEXITCODE)." Red
+          }
+          Show-HintBannerThrottled -Force
+        } catch {
+          Write-Both "[loop] STEER failed: $_" Red
+          Show-HintBannerThrottled -Force
+        }
       }
     }
   } catch {}
@@ -350,12 +405,12 @@ function Wait-WhilePaused {
 function Show-HintBannerThrottled {
   param([switch]$Force)
   $now = Get-Date
-  if (-not $Force -and ($now - $script:lastHintAt).TotalSeconds -lt 30) { return }
+  if (-not $Force -and ($now - $script:lastHintAt).TotalSeconds -lt $HintIntervalSec) { return }
   $script:lastHintAt = $now
   if ($script:stopRequested) { return }
   try { Write-Host '' } catch {}
-  Write-Host '  -- Ctrl+C = abort now  |  Q = stop after this session  |  P = pause/resume  |  N = skip wait now --' -ForegroundColor DarkGray
-  Append-Log -Text '  -- Ctrl+C = abort now  |  Q = stop after this session  |  P = pause/resume  |  N = skip wait now --'
+  Write-Host '  -- S = steer session  |  Q = stop after session  |  P = pause/resume  |  N = skip wait  |  Ctrl+C = abort --' -ForegroundColor DarkGray
+  Append-Log -Text '  -- S = steer session  |  Q = stop after session  |  P = pause/resume  |  N = skip wait  |  Ctrl+C = abort --'
 }
 
 # ============================================================================
@@ -406,10 +461,15 @@ Write-Both "[loop.ps1] prompt:      $PromptFile" DarkGray
 Write-Both "[loop.ps1] delay:       ${DelayMinutes}m between sessions" DarkGray
 Write-Both "[loop.ps1] idle kill:   ${IdleKillMinutes}m without output" DarkGray
 Write-Both "[loop.ps1] hard cap:    ${HardTimeoutMinutes}m per session" DarkGray
+if ($ControlPort -gt 0) {
+  Write-Both ('[loop.ps1] steering:    .\steer-loop.ps1 "message" (localhost:{0})' -f $ControlPort) DarkGray
+} else {
+  Write-Both '[loop.ps1] steering:    disabled (-ControlPort 0)' DarkGray
+}
 if ($MaxIterations -gt 0) { Write-Both "[loop.ps1] max iterations: $MaxIterations" DarkGray }
 Write-Both "[loop.ps1] logging to:  $logPath" DarkGray
 Write-Both ''
-Write-Both '[loop.ps1] Ctrl+C aborts immediately.  Q ends after this session.' Yellow
+Write-Both '[loop.ps1] S steers the active session.  Ctrl+C aborts immediately.  Q ends after this session.' Yellow
 Write-Both ('[loop.ps1] Or drop a sentinel file: ' + $stopFlagPath) DarkGray
 Write-Both '             (touch it from another window to stop cleanly)' DarkGray
 Write-Both ''
@@ -470,7 +530,7 @@ while ($true) {
     $psi.FileName               = (Get-Command cmd.exe).Source
     # Include the absolute prompt path so a fallback WMI sweep can identify
     # this repo's launcher after an ungraceful wrapper exit.
-    $psi.Arguments              = '/d /s /c "' + $LauncherCommand + ' < "' + $promptPath + '""'
+    $psi.Arguments              = '/d /s /c "' + $EffectiveLauncherCommand + ' < "' + $promptPath + '""'
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError  = $true
     $psi.UseShellExecute        = $false
@@ -481,7 +541,7 @@ while ($true) {
       $psi.StandardErrorEncoding  = $Utf8NoBom
     } catch {}
 
-    Write-Both "[loop] invoking $LauncherCommand (prompt: $PromptFile) ..." DarkGray
+    Write-Both "[loop] invoking $EffectiveLauncherCommand (prompt: $PromptFile) ..." DarkGray
 
     $proc = New-Object System.Diagnostics.Process
     $proc.StartInfo = $psi
@@ -523,6 +583,11 @@ while ($true) {
 
     while ($true) {
       $now = Get-Date
+
+      # Poll console hotkeys during the active run. This is what makes S/Q/P/N
+      # responsive while OpenCode is working rather than only between runs.
+      [void](Test-StopRequested)
+      Show-HintBannerThrottled
 
       # Hard cap.
       if (($now - $iterStart).TotalSeconds -ge $HardTimeoutSec) {
