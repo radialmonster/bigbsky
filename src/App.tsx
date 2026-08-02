@@ -230,11 +230,11 @@ const TagSearchContext = createContext<((tag: string) => void) | null>(null);
 
 // Browser-local NSFW preference; false (hide/warn) by default for everyone.
 // Read by post cards to decide whether adult/graphic media is gated.
-const ShowNsfwContext = createContext<boolean>(false);
+export const ShowNsfwContext = createContext<boolean>(false);
 
 // Read by post cards to decide whether to render images/video at all. When
 // off, media is replaced by a click-to-reveal affordance (text still shows).
-const ShowMediaContext = createContext<boolean>(true);
+export const ShowMediaContext = createContext<boolean>(true);
 
 const DensityContext = createContext<string>("comfortable");
 
@@ -5327,32 +5327,52 @@ function ThreadedPostCard({
   );
 }
 
-function PostImageVideoMedia({ post, onOpenImage }: { post: FeedPost; onOpenImage?: (image: ImageViewerState) => void }) {
+export function useMediaReveal({
+  sensitiveWarningCount,
+  hasMedia,
+  hasThumbnail,
+}: {
+  sensitiveWarningCount: number;
+  hasMedia: boolean;
+  hasThumbnail: boolean;
+}) {
   const showNsfw = useContext(ShowNsfwContext);
   const showMedia = useContext(ShowMediaContext);
-  const [mediaRevealed, setMediaRevealed] = useState(false);
+  const [revealed, setRevealed] = useState(false);
+  // Sensitive-content gate takes precedence over the show-media hide: once a
+  // post is revealed past the NSFW gate, the show-media setting still applies.
+  const gate = !showNsfw && sensitiveWarningCount > 0 && hasMedia && !revealed;
+  const hidden = !showMedia && !revealed && !gate;
+  const thumbnailHidden = !showMedia && !revealed && hasThumbnail;
+  return { revealed, setRevealed, gate, hidden, thumbnailHidden };
+}
+
+function PostImageVideoMedia({ post, onOpenImage }: { post: FeedPost; onOpenImage?: (image: ImageViewerState) => void }) {
+  const showMedia = useContext(ShowMediaContext);
   const images = safeEmbedImages(getEmbedImages(post.embed));
   const video = getVideoEmbed(post.embed);
-  const labels = post.labels ?? [];
-  const mediaWarningValues = sensitiveMediaValues([...labels, ...(post.author.labels ?? [])]);
-  const gateMedia = !showNsfw && mediaWarningValues.length > 0 && (images.length > 0 || !!video) && !mediaRevealed;
-  const hideMediaForSetting = !showMedia && !mediaRevealed && !gateMedia;
+  const mediaWarningValues = sensitiveMediaValues([...(post.labels ?? []), ...(post.author.labels ?? [])]);
+  const { revealed: mediaRevealed, setRevealed, gate: gateMedia, hidden: hideMediaForSetting } = useMediaReveal({
+    sensitiveWarningCount: mediaWarningValues.length,
+    hasMedia: images.length > 0 || !!video,
+    hasThumbnail: false,
+  });
 
   if (images.length === 0 && !video) {
     return null;
   }
 
   if (gateMedia) {
-    return <SensitiveMediaGate values={mediaWarningValues} onReveal={() => setMediaRevealed(true)} />;
+    return <SensitiveMediaGate values={mediaWarningValues} onReveal={() => setRevealed(true)} />;
   }
 
   if (hideMediaForSetting) {
-    return <MediaHiddenButton kind={images.length > 0 ? "image" : "video"} onReveal={() => setMediaRevealed(true)} />;
+    return <MediaHiddenButton kind={images.length > 0 ? "image" : "video"} onReveal={() => setRevealed(true)} />;
   }
 
   const hideMediaButton =
     mediaRevealed && (mediaWarningValues.length > 0 || !showMedia) ? (
-      <MediaHiddenButton kind={images.length > 0 ? "image" : "video"} revealed onReveal={() => setMediaRevealed(false)} />
+      <MediaHiddenButton kind={images.length > 0 ? "image" : "video"} revealed onReveal={() => setRevealed(false)} />
     ) : null;
 
   return (
@@ -6025,13 +6045,16 @@ function PostEmbeds({
   onOpenProfile?: (profile: Profile) => void;
 }) {
   const showMedia = useContext(ShowMediaContext);
-  const [linkMediaRevealed, setLinkMediaRevealed] = useState(false);
   const images = safeEmbedImages(getEmbedImages(post.embed));
   const video = getVideoEmbed(post.embed);
   const external = getExternalEmbed(post.embed);
   const externalThumb = safeHttpUrl(external?.thumb);
   const recordEmbed = getRecordEmbed(post.embed);
-  const linkMediaHidden = !showMedia && !linkMediaRevealed && !!externalThumb;
+  const { revealed: linkMediaRevealed, setRevealed, thumbnailHidden: linkMediaHidden } = useMediaReveal({
+    sensitiveWarningCount: 0,
+    hasMedia: false,
+    hasThumbnail: !!externalThumb,
+  });
   // If the post carries an embed we don't know how to render and none of the
   // known extractors produced anything, tell the reader rather than dropping it.
   const renderedEmbed = images.length > 0 || !!video || !!external || !!recordEmbed;
@@ -6041,7 +6064,7 @@ function PostEmbeds({
     <>
       <PostImageVideoMedia post={post} onOpenImage={onOpenImage} />
       {!showMedia && externalThumb && (
-        <MediaHiddenButton kind="image" revealed={linkMediaRevealed} onReveal={() => setLinkMediaRevealed((current) => !current)} />
+        <MediaHiddenButton kind="image" revealed={linkMediaRevealed} onReveal={() => setRevealed((current) => !current)} />
       )}
       {external && (
         <ExternalLinkCard
@@ -6213,9 +6236,6 @@ function QuotedPostCard({
   onOpenProfile?: (profile: Profile) => void;
 }) {
   const onOpenTag = useContext(TagSearchContext);
-  const showNsfw = useContext(ShowNsfwContext);
-  const showMedia = useContext(ShowMediaContext);
-  const [mediaRevealed, setMediaRevealed] = useState(false);
   const quoteEmbedSource = record.embeds?.[0] ?? record.value?.embed;
   const embeddedExternal = getExternalEmbed(quoteEmbedSource);
   const embeddedExternalThumb = safeHttpUrl(embeddedExternal?.thumb);
@@ -6233,11 +6253,14 @@ function QuotedPostCard({
     ...((record.labels as Array<{ val?: string }> | undefined) ?? []),
     ...(record.author?.labels ?? []),
   ]);
-  const gateMedia = !showNsfw && mediaWarningValues.length > 0 && (embeddedImages.length > 0 || !!embeddedVideo) && !mediaRevealed;
-  const hideMediaForSetting = !showMedia && !mediaRevealed && !gateMedia;
+  const { revealed: mediaRevealed, setRevealed, gate: gateMedia, hidden: hideMediaForSetting } = useMediaReveal({
+    sensitiveWarningCount: mediaWarningValues.length,
+    hasMedia: embeddedImages.length > 0 || !!embeddedVideo,
+    hasThumbnail: !!embeddedExternalThumb,
+  });
   const hiddenMediaControl =
     hideMediaForSetting && hasHiddenPreviewMedia ? (
-      <MediaHiddenButton kind={hiddenPreviewMediaKind} onReveal={() => setMediaRevealed(true)} />
+      <MediaHiddenButton kind={hiddenPreviewMediaKind} onReveal={() => setRevealed(true)} />
     ) : null;
   const quotedPost = record.author
     ? ({
@@ -6320,7 +6343,7 @@ function QuotedPostCard({
       )}
       {!record.author && hiddenMediaControl}
       {gateMedia ? (
-        <SensitiveMediaGate values={mediaWarningValues} onReveal={() => setMediaRevealed(true)} />
+        <SensitiveMediaGate values={mediaWarningValues} onReveal={() => setRevealed(true)} />
       ) : hideMediaForSetting && hasHiddenPreviewMedia ? (
         null
       ) : (
