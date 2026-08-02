@@ -5566,6 +5566,7 @@ function MediaOnlyPostCard({
           className="media-only-expand"
           onClick={() => setExpanded((current) => !current)}
           aria-expanded={expanded}
+          aria-label={expanded ? "Hide post details" : "Show post details"}
           title={expanded ? "Hide post details" : "Show post details"}
         >
           {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -5671,7 +5672,7 @@ function PostActionBar({
   return (
     <>
       <footer className="post-actions">
-        <button type="button" onClick={() => onOpenPost?.(post)} title={commentTitle}>
+        <button type="button" onClick={() => onOpenPost?.(post)} aria-label={commentTitle} title={commentTitle}>
           <MessageCircle size={16} /> {displayedCommentCount}
         </button>
         <span>
@@ -5682,6 +5683,7 @@ function PostActionBar({
             type="button"
             className={likeView.liked ? "liked" : ""}
             onClick={() => likeCtx.toggle(post)}
+            aria-label={likeView.liked ? "Unlike post" : "Like post"}
             title={likeView.liked ? "Unlike" : "Like"}
           >
             <Heart size={16} /> {likeView.count}
@@ -5696,12 +5698,13 @@ function PostActionBar({
             className={bookmarkView.error ? "bookmark-error" : bookmarkView.bookmarked ? "bookmarked" : ""}
             type="button"
             onClick={() => bookmarkCtx.toggle(post)}
+            aria-label={bookmarkView.error || (bookmarkView.bookmarked ? "Remove bookmark" : "Bookmark post")}
             title={bookmarkView.error || (bookmarkView.bookmarked ? "Remove bookmark" : "Bookmark post")}
           >
             <Bookmark size={16} /> {bookmarkView.error || (bookmarkView.bookmarked ? "Bookmarked" : "Bookmark")}
           </button>
         ) : null}
-        <button type="button" onClick={handleShare} title="Share post">
+        <button type="button" onClick={handleShare} aria-label={shareButtonLabel(shareState)} title="Share post">
           <Share2 size={16} /> {shareButtonLabel(shareState)}
         </button>
         {onReply && (
@@ -5753,7 +5756,7 @@ function PostActionBar({
           ref={moreMenuRef}
           onToggle={(event) => setMoreMenuOpen(event.currentTarget.open)}
         >
-          <summary title="More options">
+          <summary title="More options" aria-label="More options">
             <MoreHorizontal size={16} />
           </summary>
           <div>
