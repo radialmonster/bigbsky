@@ -1,4 +1,5 @@
 import type { MouseEvent as ReactMouseEvent } from "react";
+import type { RichTextFacet } from "../api";
 
 // Minimal http(s) URL guard shared across the app.
 //
@@ -50,4 +51,40 @@ export function handleInternalLinkClick(event: ReactMouseEvent<HTMLAnchorElement
   }
   event.preventDefault();
   navigate();
+}
+
+export function normalizeLinkHref(value?: string | null) {
+  const href = safeHttpUrl(value);
+  if (!href) {
+    return undefined;
+  }
+  try {
+    const url = new URL(href);
+    url.hash = "";
+    return url.href;
+  } catch {
+    return href;
+  }
+}
+
+export function extractFacetLinks(facets: RichTextFacet[] | undefined): string[] {
+  if (!facets?.length) {
+    return [];
+  }
+
+  const links: string[] = [];
+  const seen = new Set<string>();
+
+  for (const facet of facets) {
+    const feature = facet.features?.find((item) => item.$type === "app.bsky.richtext.facet#link" && item.uri);
+    const href = normalizeLinkHref(feature?.uri);
+    if (!href || seen.has(href)) {
+      continue;
+    }
+
+    links.push(href);
+    seen.add(href);
+  }
+
+  return links;
 }

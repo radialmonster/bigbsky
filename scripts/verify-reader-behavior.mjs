@@ -52,8 +52,14 @@ requirePattern(/const restoreScrollFor = useCallback\([\s\S]*restoreOrResetScrol
 requirePattern(/window\.addEventListener\("pagehide", persistScroll\)/, "timeline scroll offsets should flush before browser reloads");
 requirePattern(/Object\.keys\(sessionStorage\)[\s\S]*key\.startsWith\("bigbsky:"\)[\s\S]*safeSessionStorageRemove\(key\)/s, "local reader data reset should clear browser-local session scroll state");
 requirePattern(/route\.name === "bookmarks" \|\| route\.name === "lists"[\s\S]*`surface:\$\{route\.name\}`/s, "bookmarks and lists surfaces should receive route-specific scroll cache keys");
-requirePattern(/function threadUnavailableState\([\s\S]*Blocked reply[\s\S]*Reply not found[\s\S]*Deleted reply[\s\S]*Reply temporarily unavailable/s, "thread unavailable states should distinguish blocked, deleted, not-found, and rate-limited branches");
-requirePattern(/<div className=\{`thread-alert \$\{state\.tone\}`\}/, "thread unavailable branches should render typed alert tones");
+// The thread cluster (ThreadView + renderThreadNode/renderThreadContextNode +
+// CombinedThreadViewCard/LongThreadCard/ThreadedPostCard + the
+// threadUnavailableState/threadDepthStyle helpers) moved to
+// src/features/thread/ThreadView.tsx (slice of #18). The unavailable-branch
+// alert tones (blocked/missing/deleted/rate-limit) and the on-demand
+// engagement-panel toggle (setEngagement) are now guaranteed behaviorally by
+// src/features/thread/ThreadView.test.tsx; the old App.tsx source pins were
+// retired per #19.
 forbidPattern(/timelineRef\.current\?\.scrollTo\(\{ top: 0 \}\)/, "feed switching should not force the timeline back to the top");
 // The `cursor ? { ...current, status: "ready", loadMoreError: rateLimitMessage(error) }`
 // load-more error retention moved to src/lib/loaders.ts with the data loaders
@@ -107,7 +113,6 @@ if (!/export function getActorLists\(/.test(api)) {
 if (!/export function getListFeed\(/.test(api) || !/export function getList\(/.test(api) || !/export function isListUri\(/.test(api)) {
   failures.push("api should expose public getListFeed/getList/isListUri helpers");
 }
-requirePattern(/setEngagement\(\(current\) => \(current === stat\.key \? null : stat\.key\)\)/, "thread reposts/quotes/likes counts should toggle an on-demand engagement panel");
 if (!/export function getLikes\(/.test(api) || !/export function getRepostedBy\(/.test(api) || !/export function getQuotes\(/.test(api)) {
   failures.push("api should expose public getLikes/getRepostedBy/getQuotes readers");
 }

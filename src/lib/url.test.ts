@@ -1,6 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import type { MouseEvent as ReactMouseEvent } from "react";
-import { postBskyUrl, safeHttpUrl, postPath, profilePath, handleInternalLinkClick } from "./url";
+import type { RichTextFacet } from "../api";
+import {
+  postBskyUrl,
+  safeHttpUrl,
+  postPath,
+  profilePath,
+  handleInternalLinkClick,
+  normalizeLinkHref,
+  extractFacetLinks,
+} from "./url";
 
 describe("safeHttpUrl", () => {
   it("returns undefined for empty/nullish input", () => {
@@ -87,5 +96,49 @@ describe("handleInternalLinkClick", () => {
     handleInternalLinkClick(event, navigate);
     expect(event.preventDefault).not.toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalled();
+  });
+});
+
+describe("normalizeLinkHref", () => {
+  it("strips the hash fragment from a web URL", () => {
+    expect(normalizeLinkHref("https://example.com/post#comments")).toBe("https://example.com/post");
+  });
+
+  it("rejects non-web schemes", () => {
+    expect(normalizeLinkHref("javascript:alert(1)")).toBeUndefined();
+    expect(normalizeLinkHref("at://did:plc:abc/app.bsky.feed.post/1")).toBeUndefined();
+  });
+
+  it("returns undefined for empty or invalid input", () => {
+    expect(normalizeLinkHref(undefined)).toBeUndefined();
+    expect(normalizeLinkHref("not a url")).toBeUndefined();
+  });
+});
+
+describe("extractFacetLinks", () => {
+  const facet = (byteStart: number, byteEnd: number, uri?: string): RichTextFacet => ({
+    index: { byteStart, byteEnd },
+    features: uri ? [{ $type: "app.bsky.richtext.facet#link", uri }] : [],
+  });
+
+  it("returns the normalized link URIs from link facets in order", () => {
+    expect(extractFacetLinks([facet(0, 4, "https://a.com/x#frag"), facet(5, 9, "https://b.com/y")])).toEqual([
+      "https://a.com/x",
+      "https://b.com/y",
+    ]);
+  });
+
+  it("drops non-link facets and invalid schemes", () => {
+    expect(extractFacetLinks([facet(0, 4), facet(5, 9, "javascript:alert(1)")])).toEqual([]);
+  });
+
+  it("deduplicates repeated link URIs", () => {
+    expect(extractFacetLinks([facet(0, 4, "https://a.com"), facet(5, 9, "https://a.com")])).toEqual([
+      "https://a.com/",
+    ]);
+  });
+
+  it("returns an empty array for undefined facets", () => {
+    expect(extractFacetLinks(undefined)).toEqual([]);
   });
 });
