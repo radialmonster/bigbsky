@@ -35,7 +35,9 @@ requirePattern(app, /rowTop \+ previousHeight <= container\.scrollTop[\s\S]*cont
 requirePattern(css, /\.virtual-list \{[\s\S]*overflow-anchor: none;/s, "virtual list should disable native scroll anchoring so measured row compensation is not doubled");
 requirePattern(app, /onRenderedRowsChange\(visibleItems\.length\)/, "development inspector should receive rendered row counts");
 
-requirePattern(app, /image\.aspectRatio\?\.width && image\.aspectRatio\?\.height[\s\S]*aspectRatio: `\$\{image\.aspectRatio\.width\} \/ \$\{image\.aspectRatio\.height\}`/s, "image embeds should use Bluesky aspect-ratio metadata");
+// Image aspect-ratio metadata moved to src/features/post/PostImageVideoMedia.tsx;
+// guaranteed behaviorally by PostImageVideoMedia.test.tsx (inline aspectRatio
+// style on single/solo-row image buttons from Bluesky metadata).
 // Video aspect-ratio metadata and frame-style handling moved to
 // src/features/post/VideoEmbedCard.tsx; guaranteed behaviorally by
 // VideoEmbedCard.test.tsx (--video-aspect on the stable frame).

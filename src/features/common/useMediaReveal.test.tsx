@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { ShowMediaContext, ShowNsfwContext, useMediaReveal } from "./App";
+import { ShowMediaContext, ShowNsfwContext, useMediaReveal } from "./useMediaReveal";
 
 function Probe({
   sensitiveWarningCount,
@@ -51,6 +51,11 @@ function Harness({
 describe("useMediaReveal (media-reveal gating decision)", () => {
   it("gates sensitive media behind the reveal warning when the NSFW preference is off", () => {
     render(<Harness showNsfw={false} showMedia={true} sensitiveWarningCount={1} hasMedia={true} hasThumbnail={false} />);
+    expect(screen.getByTestId("state").textContent).toBe("false|true|false|false");
+  });
+
+  it("defaults the NSFW preference to hidden so sensitive media gates with no provider", () => {
+    render(<Probe sensitiveWarningCount={1} hasMedia={true} hasThumbnail={false} />);
     expect(screen.getByTestId("state").textContent).toBe("false|true|false|false");
   });
 

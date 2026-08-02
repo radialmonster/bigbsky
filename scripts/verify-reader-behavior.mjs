@@ -134,10 +134,12 @@ requirePattern(/renderRichText\(\s*record\.value\?\.facets\?\.length \? record\.
 // hook (#43). The old per-site `const gateMedia = !showNsfw && ...` source pins
 // (post media, the SensitiveMediaGate reveal, and quoted-post media) were
 // retired per the #19 test-migration plan; the gate/hide/thumbnail decision
-// matrix is now behaviorally covered by src/App.media-reveal.test.tsx.
+// matrix is now behaviorally covered by src/features/common/useMediaReveal.test.tsx.
 requirePattern(/const showNsfw = useContext\(ShowNsfwContext\);\s*const visiblePosts = useMemo\([\s\S]*isAdultPost\(post\)\)/, "search results should drop adult-labeled posts entirely when the NSFW preference is hidden");
 requirePattern(/\[\.\.\.labels, \.\.\.\(post\.author\.labels \?\? \[\]\)\]\.filter\(isSensitiveLabel\)/, "media gating should consider account-level (author) labels, not just post labels");
-requirePattern(/const ShowNsfwContext = createContext<boolean>\(false\)/, "the NSFW preference should default to hidden for everyone");
+// NSFW default (hidden unless the ShowNsfwContext provider opts in) now lives in
+// src/features/common/useMediaReveal.ts; guaranteed behaviorally by
+// src/features/common/useMediaReveal.test.tsx (no-provider default gates media).
 requirePattern(/localStorage\.getItem\(showNsfwStorageKey\) === "true"/, "showing NSFW media should require an explicit stored opt-in");
 requirePattern(/window\.confirm\([\s\S]*BigBSky will not ask for or store your birthday/s, "enabling NSFW media should require a local confirmation without collecting birthdate");
 requirePattern(/safeLocalStorageSet\(showNsfwStorageKey, next \? "true" : "false"\)/, "the NSFW preference should persist in browser-local storage");
