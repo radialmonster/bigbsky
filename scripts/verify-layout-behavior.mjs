@@ -56,6 +56,12 @@ requirePattern(css, /@media \(max-width: 1003px\) \{[\s\S]*\.feed-map \{[\s\S]*d
 // per-screen-size grid overrides. The content column must always be the
 // one that absorbs remaining width (the widest), with fixed narrow rails.
 requirePattern(css, /--rail-width: 76px;[\s\S]*--feed-map-width: 288px;[\s\S]*--right-rail-width: 320px;[\s\S]*--content-min-width: 640px;[\s\S]*--mobile-header-height: 55px;/, "app-shell grid track widths should be defined once as semantic tokens");
+requirePattern(css, /--thread-indent: 22px;[\s\S]*--timeline-padding-block: 22px;[\s\S]*--timeline-padding-inline: 26px;[\s\S]*--timeline-padding-bottom: 48px;[\s\S]*--card-min-narrow: 280px;[\s\S]*--card-min-medium: 340px;[\s\S]*--card-min-wide: 360px;[\s\S]*--card-min-xwide: 400px;/, "timeline/thread geometry and surface-grid card min-widths should be defined once as semantic tokens");
+requirePattern(css, /\.timeline,\r?\n\.thread-view \{[\s\S]*padding: var\(--timeline-padding-block\) var\(--timeline-padding-inline\) var\(--timeline-padding-bottom\);/s, "the scroll surface should use the semantic timeline padding tokens");
+requirePattern(css, /calc\(var\(--thread-depth, 0\) \* var\(--thread-indent\)\)/, "thread node indent should use the --thread-indent token, not a literal 22px");
+forbidPattern(css, /calc\(var\(--thread-depth, 0\) \* 22px\)/, "thread indent should not re-introduce a literal 22px multiply");
+forbidPattern(css, /padding:\s*22px\s+26px\s+48px/, "the timeline should not re-introduce literal padding values");
+forbidPattern(css, /minmax\(min\(100%, (280|340|360|400)px\), 1fr\)/, "surface-grid card min-widths should use the --card-min-* tokens, not literal pixels");
 requirePattern(css, /\.app-shell \{[\s\S]*grid-template-columns: var\(--rail-width\) var\(--feed-map-width\) minmax\(var\(--content-min-width\), 1fr\) var\(--right-rail-width\);/s, "content column should fluidly absorb remaining width via 1fr as the widest column");
 forbidPattern(css, /grid-template-columns:\s*76px\s+288px/s, "app-shell grid tracks should use the semantic tokens, not literal pixel columns");
 forbidPattern(css, /minmax\(980px, 1fr\)/s, "do not re-add the per-screen-size content-column override; widen it fluidly with 1fr");

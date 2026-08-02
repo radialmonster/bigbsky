@@ -40,6 +40,17 @@
   --right-rail-width: 320px;
   --content-min-width: 640px;
   --mobile-header-height: 55px;
+  /* Timeline/thread geometry (single source of truth for indentation and
+     scroll-surface padding). */
+  --thread-indent: 22px;
+  --timeline-padding-block: 22px;
+  --timeline-padding-inline: 26px;
+  --timeline-padding-bottom: 48px;
+  /* Surface-grid card min-widths that determine wrapping/density. */
+  --card-min-narrow: 280px;
+  --card-min-medium: 340px;
+  --card-min-wide: 360px;
+  --card-min-xwide: 400px;
   background: var(--app-bg);
   color: var(--app-text);
   font-synthesis: none;
@@ -515,7 +526,7 @@ button {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 22px 26px 48px;
+  padding: var(--timeline-padding-block) var(--timeline-padding-inline) var(--timeline-padding-bottom);
 }
 
 .composer,
@@ -1197,7 +1208,7 @@ button {
 
 .info-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--card-min-wide)), 1fr));
   gap: 12px;
   width: 100%;
   max-width: none;
@@ -1225,7 +1236,7 @@ button {
 .surface-grid,
 .feed-directory-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--card-min-wide)), 1fr));
   gap: var(--app-grid-gap);
   width: 100%;
   margin-top: 14px;
@@ -1271,7 +1282,7 @@ button {
 
 .settings-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--card-min-medium)), 1fr));
   gap: var(--app-grid-gap);
   width: 100%;
   margin-top: 14px;
@@ -1606,7 +1617,7 @@ button {
 
 .self-profile-tabs {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--card-min-narrow)), 1fr));
   gap: var(--app-grid-gap);
   width: 100%;
 }
@@ -2335,7 +2346,7 @@ button.surface-action {
      (~3-4 on a widescreen monitor) instead of a fixed 2-up grid capped at
      980px, which left ~half the column empty. min(100%, 400px) keeps a
      single column on narrow/mobile widths without horizontal overflow. */
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--card-min-xwide)), 1fr));
   gap: var(--app-grid-gap);
   margin-top: 14px;
 }
@@ -4676,7 +4687,7 @@ button.surface-action {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 10px 0 8px calc(var(--thread-depth, 0) * 22px);
+  margin: 10px 0 8px calc(var(--thread-depth, 0) * var(--thread-indent));
   color: var(--app-text-soft);
   font-size: 11px;
   font-weight: 900;
@@ -4997,7 +5008,7 @@ button.surface-action {
 }
 
 .thread-alert {
-  margin-left: calc(var(--thread-depth, 0) * 22px);
+  margin-left: calc(var(--thread-depth, 0) * var(--thread-indent));
   justify-content: flex-start;
   min-height: 92px;
   padding: 14px 16px;
@@ -5216,7 +5227,7 @@ button.surface-action {
 }
 
 .thread-node {
-  margin-left: calc(var(--thread-depth, 0) * 22px);
+  margin-left: calc(var(--thread-depth, 0) * var(--thread-indent));
   border-left: 2px solid var(--app-border);
   padding-left: 14px;
 }
