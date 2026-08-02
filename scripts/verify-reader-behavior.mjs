@@ -128,15 +128,20 @@ if (!/import\.meta\.env\.PROD[\s\S]*import\.meta\.env\.BASE_URL\}sw\.js/.test(ma
 // mention/tag navigation), and `segmentRichText` remains exercised by the
 // executable scripts/verify-richtext.mjs harness. The old definition / import
 // regex guardrails were retired per the #19 test-migration plan.
-requirePattern(/renderRichText\(post\.record\.facets\?\.length \? post\.record\.text \|\| "" : text, post\.record\.facets, onOpenProfile/, "post cards should render rich-text facets for post body text");
-requirePattern(/renderRichText\(\s*record\.value\?\.facets\?\.length \? record\.value\.text \|\| "" : text,\s*record\.value\?\.facets,\s*onOpenProfile,\s*onOpenTag,/s, "quoted posts should render rich-text facets for their body text");
+// The post-card cluster (PostCard, PostCardHeader, PostActionBar, PostEmbeds,
+// MediaOnlyPostCard, QuotedPostCard + the shared Like/Bookmark/Block/Delete/
+// Density/TagSearch contexts) moved to src/features/post/PostCard.tsx +
+// src/features/post/PostCardContexts.ts (slice of #18). The rich-text facet
+// rendering for post body text and quoted body text, and the account-level
+// (author) label gating, are now guaranteed behaviorally by
+// src/features/post/PostCard.test.tsx, so the old App.tsx source pins were
+// retired per #19.
 // Media-reveal gating decision moved into the shared in-file useMediaReveal
 // hook (#43). The old per-site `const gateMedia = !showNsfw && ...` source pins
 // (post media, the SensitiveMediaGate reveal, and quoted-post media) were
 // retired per the #19 test-migration plan; the gate/hide/thumbnail decision
 // matrix is now behaviorally covered by src/features/common/useMediaReveal.test.tsx.
 requirePattern(/const showNsfw = useContext\(ShowNsfwContext\);\s*const visiblePosts = useMemo\([\s\S]*isAdultPost\(post\)\)/, "search results should drop adult-labeled posts entirely when the NSFW preference is hidden");
-requirePattern(/\[\.\.\.labels, \.\.\.\(post\.author\.labels \?\? \[\]\)\]\.filter\(isSensitiveLabel\)/, "media gating should consider account-level (author) labels, not just post labels");
 // NSFW default (hidden unless the ShowNsfwContext provider opts in) now lives in
 // src/features/common/useMediaReveal.ts; guaranteed behaviorally by
 // src/features/common/useMediaReveal.test.tsx (no-provider default gates media).
