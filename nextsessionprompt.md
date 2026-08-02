@@ -3,7 +3,7 @@ Read the open GitHub issues (gh issue list --repo radialmonster/bigbsky) and pro
 ISSUE CLAIMING (always):
 - Claim an issue with the `claimed` label as soon as you start working on it: `gh issue edit <N> --repo radialmonster/bigbsky --add-label claimed`
 - Do NOT start work on any issue that already has the `claimed` label (someone else - or a prior parallel session - is on it). Check labels before picking: `gh issue list --repo radialmonster/bigbsky --state open --json number,title,labels`
-- Remove the `claimed` label when you finish (task done/closed, or you stop working on it): `gh issue edit <N> --repo radialmonster/bigbsky --remove-label claimed`
+- Remove the `claimed` label as soon as you stop working on an issue - at end of session even if the issue is NOT closed yet, and again when you close it: `gh issue edit <N> --repo radialmonster/bigbsky --remove-label claimed`. A stale `claimed` on an open issue you've left, or on a closed issue, blocks future sessions and signals a live claim that isn't there. Before finishing, sweep for stragglers: `gh issue list --repo radialmonster/bigbsky --state all --label claimed --json number,title,state` and remove `claimed` from anything that isn't an actively-worked open issue.
 - Claim one issue at a time; if you delegate to sub-agents, each sub-agent must claim its issue the same way so parallel sessions never collide.
 
 ISSUE STRUCTURE (GitHub-native, honor it): BigBsky issues use GitHub's native task/sub-issue and dependency features. Use them to organize work; honor them when picking and working:
