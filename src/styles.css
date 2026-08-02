@@ -142,37 +142,6 @@ button {
   color: #fff;
 }
 
-.plain-info-icon {
-  position: relative;
-  display: inline-block;
-  width: 20px;
-  height: 20px;
-  color: currentColor;
-}
-
-.plain-info-icon::before,
-.plain-info-icon::after {
-  position: absolute;
-  left: 50%;
-  background: currentColor;
-  content: "";
-  transform: translateX(-50%);
-}
-
-.plain-info-icon::before {
-  top: 2px;
-  width: 4px;
-  height: 4px;
-  border-radius: 999px;
-}
-
-.plain-info-icon::after {
-  top: 8px;
-  width: 4px;
-  height: 10px;
-  border-radius: 2px;
-}
-
 .rail-button.has-notifications {
   background: rgba(5, 96, 255, 0.26);
   color: #fff;
@@ -217,12 +186,6 @@ button {
   gap: 14px;
 }
 
-.rail-account {
-  position: relative;
-  display: grid;
-  gap: 8px;
-}
-
 .settings-account-first {
   order: -1;
 }
@@ -246,135 +209,6 @@ button {
   margin-top: 10px;
   color: var(--app-text-muted);
   font-size: 13px;
-}
-
-.rail-account button {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border-radius: 8px;
-  background: var(--app-surface-2);
-  color: var(--app-text-muted);
-}
-
-.rail-account .avatar {
-  width: 34px;
-  height: 34px;
-}
-
-.rail-account button:hover {
-  color: var(--app-text);
-  background: rgba(5, 96, 255, 0.18);
-}
-
-.account-switcher {
-  position: absolute;
-  z-index: 30;
-  bottom: -8px;
-  left: 56px;
-  display: grid;
-  gap: 12px;
-  width: min(288px, calc(100vw - 96px));
-  padding: 12px;
-  border: 1px solid var(--app-border-strong);
-  border-radius: 8px;
-  background: var(--app-surface);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.38);
-}
-
-.account-switcher::before {
-  position: absolute;
-  bottom: 22px;
-  left: -6px;
-  width: 10px;
-  height: 10px;
-  border-bottom: 1px solid var(--app-border-strong);
-  border-left: 1px solid var(--app-border-strong);
-  background: var(--app-surface);
-  content: "";
-  transform: rotate(45deg);
-}
-
-/* On the mobile top bar the avatar sits top-right, so the desktop
-   left:56px/bottom positioning threw the dropdown off-screen. Pin it to the
-   viewport just below the bar instead. */
-@media (max-width: 720px) {
-  .account-switcher {
-    position: fixed;
-    top: 68px;
-    right: 8px;
-    left: auto;
-    bottom: auto;
-    width: min(288px, calc(100vw - 16px));
-  }
-
-  .account-switcher::before {
-    display: none;
-  }
-}
-
-.account-switcher .account-identity {
-  grid-template-columns: 38px minmax(0, 1fr);
-}
-
-.account-switcher .avatar {
-  width: 38px;
-  height: 38px;
-}
-
-.account-switcher-actions {
-  display: grid;
-  gap: 6px;
-}
-
-.account-switcher-actions button,
-.account-switcher-add button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: var(--app-card-gap);
-  width: 100%;
-  height: var(--app-control-md);
-  padding: 0 10px;
-  border-radius: var(--app-radius);
-  background: var(--app-surface-2);
-  color: var(--app-text);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.account-switcher-add {
-  display: grid;
-  gap: 8px;
-  padding-top: 10px;
-  border-top: 1px solid var(--app-border);
-}
-
-.account-switcher-add > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--app-text-muted);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.account-switcher-add form {
-  display: grid;
-  gap: 6px;
-}
-
-.account-switcher-add input {
-  width: 100%;
-  height: 34px;
-  padding: 0 10px;
-  border: 1px solid var(--app-border);
-  border-radius: 8px;
-  outline: 0;
-  background: #0f1724;
-  color: var(--app-text);
 }
 
 .feed-map {
@@ -864,59 +698,9 @@ button {
   background: rgba(255, 255, 255, 0.025);
 }
 
-.composer-draft-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: var(--app-control-md);
-  padding: 0 10px;
-  border-bottom: 1px solid var(--app-border);
-  color: var(--app-text-soft);
-  font-size: 12px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.composer-draft-header button {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--app-text-muted);
-}
-
 .composer-draft textarea {
   min-height: 150px;
   padding: 10px;
-}
-
-.composer-media-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 0 10px 10px;
-}
-
-.composer-media-row span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 28px;
-  padding: 0 8px;
-  border: 1px solid var(--app-border);
-  border-radius: 7px;
-  color: var(--app-text-muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.composer-media-note {
-  margin: 0;
-  padding: 0 14px 8px;
-  color: var(--app-text-muted);
-  font-size: 12px;
 }
 
 .composer-media-grid {
@@ -1478,8 +1262,7 @@ button {
 
 .surface-card p,
 .notification-item p,
-.local-list-card p,
-.local-list-timeline-header p {
+.local-list-card p {
   margin: 0;
   color: var(--app-text-muted);
   font-size: 13px;
@@ -1795,7 +1578,6 @@ button {
 }
 
 .self-profile-card dt,
-.local-list-timeline-header span,
 .feed-directory-card span,
 .feed-density-control span,
 .profile-detail-stats dt,
@@ -2406,23 +2188,6 @@ button.surface-action {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-}
-
-.local-list-timeline {
-  max-width: 980px;
-  margin-top: 16px;
-}
-
-.local-list-timeline-header {
-  margin-bottom: 12px;
-  padding: var(--app-panel-padding);
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius);
-  background: var(--app-surface);
-}
-
-.local-list-timeline-header h3 {
-  margin: 7px 0 5px;
 }
 
 .feed-directory-card {
@@ -3211,30 +2976,6 @@ button.surface-action {
 .thread-open-chip:hover {
   border-color: rgba(117, 175, 255, 0.58);
   color: #fff;
-}
-
-.thread-combined-body {
-  display: grid;
-  gap: 0;
-  margin-top: 10px;
-}
-
-.thread-combined-part {
-  padding: 0 0 12px;
-  border-bottom: 1px solid var(--app-border);
-}
-
-.thread-combined-part + .thread-combined-part {
-  padding-top: 12px;
-}
-
-.thread-combined-part:last-child {
-  padding-bottom: 0;
-  border-bottom: 0;
-}
-
-.thread-combined-part .post-text {
-  margin-top: 0;
 }
 
 .moderation-notice {
@@ -4362,12 +4103,6 @@ button.surface-action {
   height: 13px;
 }
 
-.bookmarks-list {
-  display: grid;
-  gap: 0;
-  margin-top: 14px;
-}
-
 .thread-detail-header,
 .reply-composer {
   margin-bottom: 14px;
@@ -4535,7 +4270,6 @@ button.surface-action {
   opacity: 0.55;
 }
 
-.account-switcher-add input:focus,
 .feed-search:focus,
 .sign-in-form input:focus,
 .local-list-form input:focus {
@@ -5233,30 +4967,6 @@ button.surface-action {
   min-height: 28px;
   margin: 0;
   padding: 0;
-}
-
-.feed-map-panel {
-  display: grid;
-  gap: var(--app-card-gap);
-}
-
-.feed-map-panel div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: var(--app-control-md);
-  padding: 0 10px;
-  border-radius: var(--app-radius);
-  background: var(--app-surface-2);
-}
-
-.feed-map-panel span {
-  color: var(--app-text-muted);
-  font-size: 13px;
-}
-
-.feed-map-panel strong {
-  font-variant-numeric: tabular-nums;
 }
 
 .recent-panel button {
