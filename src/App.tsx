@@ -2047,11 +2047,9 @@ export function App() {
   }
 
   function setColumnVisible(which: keyof ColumnVisibility, visible: boolean) {
-    setColumns((current) => {
-      const next = { ...current, [which]: visible };
-      safeLocalStorageSet(columnsStorageKey, JSON.stringify(next));
-      return next;
-    });
+    const next = { ...columns, [which]: visible };
+    setColumns(next);
+    safeLocalStorageSet(columnsStorageKey, JSON.stringify(next));
   }
 
   function toggleShowNsfw() {
@@ -2173,11 +2171,9 @@ export function App() {
   }
 
   function remember(item: RecentItem) {
-    setRecentItems((current) => {
-      const next = [item, ...current.filter((existing) => existing.path !== item.path)].slice(0, 8);
-      safeLocalStorageSet(recentStorageKey, JSON.stringify(next));
-      return next;
-    });
+    const next = [item, ...recentItems.filter((existing) => existing.path !== item.path)].slice(0, 8);
+    setRecentItems(next);
+    safeLocalStorageSet(recentStorageKey, JSON.stringify(next));
   }
 
   function clearRecentItems() {
@@ -2294,67 +2290,59 @@ export function App() {
     if (!trimmedName) {
       return;
     }
-
-    setLocalLists((current) => {
-      const next = [
-        {
-          id: crypto.randomUUID(),
-          name: trimmedName.slice(0, 80),
-          description: description.trim().slice(0, 180),
-          createdAt: new Date().toISOString(),
-        },
-        ...current,
-      ].slice(0, 20);
-      safeLocalStorageSet(localListsStorageKey, JSON.stringify(next));
-      return next;
-    });
+    // The UUID/timestamp must be generated outside the updater (updaters must
+    // be pure; crypto.randomUUID() inside one can generate a different id per
+    // invocation under StrictMode double-render).
+    const next = [
+      {
+        id: crypto.randomUUID(),
+        name: trimmedName.slice(0, 80),
+        description: description.trim().slice(0, 180),
+        createdAt: new Date().toISOString(),
+      },
+      ...localLists,
+    ].slice(0, 20);
+    setLocalLists(next);
+    safeLocalStorageSet(localListsStorageKey, JSON.stringify(next));
   }
 
   function deleteLocalList(id: string) {
-    setLocalLists((current) => {
-      const next = current.filter((list) => list.id !== id);
-      safeLocalStorageSet(localListsStorageKey, JSON.stringify(next));
-      return next;
-    });
+    const next = localLists.filter((list) => list.id !== id);
+    setLocalLists(next);
+    safeLocalStorageSet(localListsStorageKey, JSON.stringify(next));
   }
 
   function togglePostInLocalList(listId: string, post: FeedPost) {
-    setLocalLists((current) => {
-      const next = current.map((list) => {
-        if (list.id !== listId) {
-          return list;
-        }
+    const next = localLists.map((list) => {
+      if (list.id !== listId) {
+        return list;
+      }
 
-        const posts = list.posts ?? [];
-        const exists = posts.some((listPost) => listPost.uri === post.uri);
-        return {
-          ...list,
-          posts: exists ? posts.filter((listPost) => listPost.uri !== post.uri) : [post, ...posts].slice(0, 100),
-        };
-      });
-      safeLocalStorageSet(localListsStorageKey, JSON.stringify(next));
-      return next;
+      const posts = list.posts ?? [];
+      const exists = posts.some((listPost) => listPost.uri === post.uri);
+      return {
+        ...list,
+        posts: exists ? posts.filter((listPost) => listPost.uri !== post.uri) : [post, ...posts].slice(0, 100),
+      };
     });
+    setLocalLists(next);
+    safeLocalStorageSet(localListsStorageKey, JSON.stringify(next));
   }
 
   function togglePinnedFeed(source: FeedSource) {
     const willPin = !pinnedFeedIds.includes(source.id);
-    setPinnedFeedIds((current) => {
-      const next = willPin
-        ? [source.id, ...current.filter((id) => id !== source.id)].slice(0, 12)
-        : current.filter((id) => id !== source.id);
-      safeLocalStorageSet(pinnedFeedsStorageKey, JSON.stringify(next));
-      return next;
-    });
+    const nextIds = willPin
+      ? [source.id, ...pinnedFeedIds.filter((id) => id !== source.id)].slice(0, 12)
+      : pinnedFeedIds.filter((id) => id !== source.id);
+    setPinnedFeedIds(nextIds);
+    safeLocalStorageSet(pinnedFeedsStorageKey, JSON.stringify(nextIds));
     // Discovered Feeds aren't in the static feedSources list, so persist their
     // metadata separately; otherwise the pinned id can't be resolved on reload.
     if (!feedSources.some((item) => item.id === source.id)) {
-      setPinnedFeedMeta((current) => {
-        const withoutSource = current.filter((item) => item.id !== source.id);
-        const next = willPin ? [{ ...source }, ...withoutSource].slice(0, 12) : withoutSource;
-        writePinnedFeedMeta(next);
-        return next;
-      });
+      const withoutSource = pinnedFeedMeta.filter((item) => item.id !== source.id);
+      const nextMeta = willPin ? [{ ...source }, ...withoutSource].slice(0, 12) : withoutSource;
+      setPinnedFeedMeta(nextMeta);
+      writePinnedFeedMeta(nextMeta);
     }
   }
 
@@ -2362,20 +2350,18 @@ export function App() {
   // pinnedFeedIds order, so swapping ids here reorders the selector and the
   // change persists in browser storage (no account-backed ordering yet).
   function movePinnedFeed(id: string, direction: -1 | 1) {
-    setPinnedFeedIds((current) => {
-      const index = current.indexOf(id);
-      if (index < 0) {
-        return current;
-      }
-      const target = index + direction;
-      if (target < 0 || target >= current.length) {
-        return current;
-      }
-      const next = [...current];
-      [next[index], next[target]] = [next[target], next[index]];
-      safeLocalStorageSet(pinnedFeedsStorageKey, JSON.stringify(next));
-      return next;
-    });
+    const index = pinnedFeedIds.indexOf(id);
+    if (index < 0) {
+      return;
+    }
+    const target = index + direction;
+    if (target < 0 || target >= pinnedFeedIds.length) {
+      return;
+    }
+    const next = [...pinnedFeedIds];
+    [next[index], next[target]] = [next[target], next[index]];
+    setPinnedFeedIds(next);
+    safeLocalStorageSet(pinnedFeedsStorageKey, JSON.stringify(next));
   }
 
   // Persist a new saved-feed order (browser-local). The list is the full set of
@@ -2435,12 +2421,12 @@ export function App() {
       return;
     }
 
-    setPinnedSearches((current) => {
-      const exists = current.some((item) => item.toLowerCase() === trimmed.toLowerCase());
-      const next = exists ? current.filter((item) => item.toLowerCase() !== trimmed.toLowerCase()) : [trimmed, ...current].slice(0, 12);
-      safeLocalStorageSet(pinnedSearchesStorageKey, JSON.stringify(next));
-      return next;
-    });
+    const exists = pinnedSearches.some((item) => item.toLowerCase() === trimmed.toLowerCase());
+    const next = exists
+      ? pinnedSearches.filter((item) => item.toLowerCase() !== trimmed.toLowerCase())
+      : [trimmed, ...pinnedSearches].slice(0, 12);
+    setPinnedSearches(next);
+    safeLocalStorageSet(pinnedSearchesStorageKey, JSON.stringify(next));
   }
 
   function togglePinnedProfile(profileToPin: Profile | null | undefined) {
@@ -2448,30 +2434,26 @@ export function App() {
       return;
     }
 
-    setPinnedProfiles((current) => {
-      const exists = current.some((item) => item.did === profileToPin.did || item.handle === profileToPin.handle);
-      const next = exists
-        ? current.filter((item) => item.did !== profileToPin.did && item.handle !== profileToPin.handle)
-        : [profileToPin, ...current].slice(0, 16);
-      safeLocalStorageSet(pinnedProfilesStorageKey, JSON.stringify(next));
-      return next;
-    });
+    const exists = pinnedProfiles.some((item) => item.did === profileToPin.did || item.handle === profileToPin.handle);
+    const next = exists
+      ? pinnedProfiles.filter((item) => item.did !== profileToPin.did && item.handle !== profileToPin.handle)
+      : [profileToPin, ...pinnedProfiles].slice(0, 16);
+    setPinnedProfiles(next);
+    safeLocalStorageSet(pinnedProfilesStorageKey, JSON.stringify(next));
   }
 
   function togglePinnedNotification(id: string) {
-    setPinnedNotificationIds((current) => {
-      const next = current.includes(id) ? current.filter((item) => item !== id) : [id, ...current].slice(0, 20);
-      safeLocalStorageSet(pinnedNotificationsStorageKey, JSON.stringify(next));
-      return next;
-    });
+    const next = pinnedNotificationIds.includes(id)
+      ? pinnedNotificationIds.filter((item) => item !== id)
+      : [id, ...pinnedNotificationIds].slice(0, 20);
+    setPinnedNotificationIds(next);
+    safeLocalStorageSet(pinnedNotificationsStorageKey, JSON.stringify(next));
   }
 
   function toggleCollapsedFeedGroup(group: string) {
-    setCollapsedFeedGroups((current) => {
-      const next = { ...current, [group]: !current[group] };
-      safeLocalStorageSet(collapsedFeedGroupsStorageKey, JSON.stringify(next));
-      return next;
-    });
+    const next = { ...collapsedFeedGroups, [group]: !collapsedFeedGroups[group] };
+    setCollapsedFeedGroups(next);
+    safeLocalStorageSet(collapsedFeedGroupsStorageKey, JSON.stringify(next));
   }
 
   function openNavigation(item: string) {
