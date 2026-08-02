@@ -19,6 +19,7 @@ Reusable knowledge for future sessions. NOT a changelog: no per-session history,
 - `src/features/post/RichText.tsx` (`renderRichText`) - any surface needing facets imports it; no inline copies.
 
 ## Live smoke / dev loop
+- The coding model CANNOT view CDP screenshot files (`scripts/cdp.mjs screenshot`). Assert layout/scroll via DOM metrics instead: `getComputedStyle(...).gridTemplateColumns`, `scrollWidth/clientWidth` (horizontal overflow), `workspace-header` `mobile-hidden` class + transform, `.timeline` node presence/count after surface->surface nav. Resize calls race if issued in parallel on the same tab - run them sequentially in one command.
 - `location.href` navigation is a FULL reload (cold feed, empty caches). To exercise the cache-hit/anchored-restore path use in-app navigation (click a post, then `history.back()`).
 - Scroll restore: the scroller is `.timeline`; programmatic `scrollTop` gets re-adjusted by measurement, so set it, let it settle a few seconds, and assert the settled value.
 - `$PID` is read-only in PowerShell - when killing the port-5173 dev server (find the listener's OwningProcess), use another variable name.
