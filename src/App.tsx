@@ -28,7 +28,7 @@ import {
   Users,
   Quote,
 } from "lucide-react";
-import { createContext, lazy, Suspense, type CSSProperties, type MouseEvent as ReactMouseEvent, type RefObject, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, lazy, Suspense, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   type FeedItem,
   type FeedGeneratorView,
@@ -174,7 +174,7 @@ import { UnsupportedEmbedNotice } from "./features/post/UnsupportedEmbedNotice";
 import { useReplyGate } from "./features/post/useReplyGate";
 import { ThreadEngagementPanel } from "./features/post/ThreadEngagementPanel";
 import { ImageViewer, type ImageViewerImage, type ImageViewerState } from "./features/post/ImageViewer";
-import { useSharePost, shareButtonLabel } from "./features/common/useSharePost";
+import { useSharePost, shareButtonLabel, type ShareState } from "./features/common/useSharePost";
 import { useDismissMenu } from "./features/common/useDismissMenu";
 import { isSensitiveLabel, moderationLabelText, sensitiveMediaValues } from "./lib/moderation";
 import { RecentPanel, type RecentItem } from "./features/rightRail/RecentPanel";
@@ -1734,9 +1734,6 @@ export function App() {
       setFeedState,
       setDevMetrics,
       restoreScrollFor,
-      restoreOrResetScroll,
-      timelineRef,
-      scrollCache,
       density,
       signedInDid,
     }),
@@ -1834,7 +1831,7 @@ export function App() {
     } else if (searchTab === "feeds") {
       setSearchState(emptySearchState);
       setActorSearchState(emptyActorSearchState);
-      void loadFeedSearch(route.query, controller.signal);
+      void loadFeedSearch(route.query, undefined, controller.signal);
     } else {
       setSearchState(emptySearchState);
       setActorSearchState(emptyActorSearchState);
@@ -2215,11 +2212,14 @@ export function App() {
     });
   }
 
-  function remember(item: RecentItem) {
-    const next = [item, ...recentItems.filter((existing) => existing.path !== item.path)].slice(0, 8);
-    setRecentItems(next);
-    safeLocalStorageSet(recentStorageKey, JSON.stringify(next));
-  }
+  const remember = useCallback(
+    (item: RecentItem) => {
+      const next = [item, ...recentItems.filter((existing) => existing.path !== item.path)].slice(0, 8);
+      setRecentItems(next);
+      safeLocalStorageSet(recentStorageKey, JSON.stringify(next));
+    },
+    [recentItems],
+  );
 
   function clearRecentItems() {
     setRecentItems([]);
@@ -2559,9 +2559,15 @@ export function App() {
 
     const path = `/${item.toLowerCase()}`;
     const routeState = { kind: "surface", name: item.toLowerCase() } as const;
+    const surfaceDetail: Record<string, string> = {
+      Lists: "Local list workspaces",
+      Bookmarks: "Bookmarked posts and saves",
+      Settings: "Appearance, data, and account settings",
+      Info: "About BigBsky and help",
+    };
     remember({
       label: item,
-      detail: "Signed-in surface placeholder",
+      detail: surfaceDetail[item] ?? item,
       path,
       route: routeState,
     });
@@ -2834,6 +2840,8 @@ export function App() {
         promise = loadSearch(route.query, searchSort, searchLanguage, searchState.cursor, signal);
       } else if (route.query && searchTab === "people" && actorSearchState.cursor) {
         promise = loadActorSearch(route.query, actorSearchState.cursor, signal);
+      } else if (route.query && searchTab === "feeds" && feedSearchState.cursor) {
+        promise = loadFeedSearch(route.query, feedSearchState.cursor, signal);
       }
     } else if (feedState.cursor) {
       promise =
@@ -2953,43 +2961,49 @@ export function App() {
     });
     navigate({ kind: "feed", uri: source.id }, feedRoutePath(source));
   };
-  const openTag = (tag: string) => {
-    const trimmed = tag.trim();
-    if (!trimmed) {
-      return;
-    }
-    submitSearch(trimmed.startsWith("#") ? trimmed : `#${trimmed}`);
-  };
-  const submitSearch = (query: string) => {
-    const trimmed = query.trim();
-    if (!trimmed) {
-      navigate({ kind: "search" }, "/search");
-      return;
-    }
+  const submitSearch = useCallback(
+    (query: string) => {
+      const trimmed = query.trim();
+      if (!trimmed) {
+        navigate({ kind: "search" }, "/search");
+        return;
+      }
 
-    const postUrl = parsePostUrl(trimmed);
-    if (postUrl) {
-      const routeState = { kind: "post", actor: postUrl.actor, rkey: postUrl.rkey } as const;
+      const postUrl = parsePostUrl(trimmed);
+      if (postUrl) {
+        const routeState = { kind: "post", actor: postUrl.actor, rkey: postUrl.rkey } as const;
+        remember({
+          label: "Post conversation",
+          detail: `@${postUrl.actor}`,
+          path: postUrl.path,
+          route: routeState,
+        });
+        navigate(routeState, postUrl.path);
+        return;
+      }
+
+      const path = `/search?q=${encodeURIComponent(trimmed)}`;
+      const routeState = { kind: "search", query: trimmed } as const;
       remember({
-        label: "Post conversation",
-        detail: `@${postUrl.actor}`,
-        path: postUrl.path,
+        label: trimmed,
+        detail: "Search",
+        path,
         route: routeState,
       });
-      navigate(routeState, postUrl.path);
-      return;
-    }
-
-    const path = `/search?q=${encodeURIComponent(trimmed)}`;
-    const routeState = { kind: "search", query: trimmed } as const;
-    remember({
-      label: trimmed,
-      detail: "Search",
-      path,
-      route: routeState,
-    });
-    navigate(routeState, path);
-  };
+      navigate(routeState, path);
+    },
+    [navigate, remember],
+  );
+  const openTag = useCallback(
+    (tag: string) => {
+      const trimmed = tag.trim();
+      if (!trimmed) {
+        return;
+      }
+      submitSearch(trimmed.startsWith("#") ? trimmed : `#${trimmed}`);
+    },
+    [submitSearch],
+  );
   const clearSearch = () => {
     setGlobalSearchText("");
     setSearchState(emptySearchState);
@@ -3920,6 +3934,7 @@ function FeedDirectoryCard({
             ? "feed-directory-card reorderable"
             : "feed-directory-card"
       }
+      aria-label={canReorderFeeds ? `Feed reorder target: ${source.label}` : undefined}
       key={source.id}
       onDragOver={
         canReorderFeeds && onReorderFeed
@@ -3946,6 +3961,9 @@ function FeedDirectoryCard({
         <div
           className="feed-card-reorder"
           draggable
+          role="button"
+          tabIndex={0}
+          aria-label={`Drag ${source.label} to reorder`}
           onDragStart={(event) => {
             event.dataTransfer.setData("text/plain", source.uri);
             event.dataTransfer.effectAllowed = "move";
@@ -5112,6 +5130,14 @@ function SearchView({
                   {feed.description && <small>{feed.description}</small>}
                 </button>
               ))}
+            {feedSearchState.status === "ready" && feedSearchState.feeds.length > 0 && (
+              <>
+                {feedSearchState.cursor && (
+                  <AutoLoadMoreButton label="Load more feeds" onLoadMore={onLoadMore} error={feedSearchState.loadMoreError} />
+                )}
+                {!feedSearchState.cursor && !feedSearchState.loadMoreError && <EndOfFeedCard />}
+              </>
+            )}
           </section>
         </>
       )}
@@ -5246,6 +5272,146 @@ function PostCardHeader({
   );
 }
 
+function CombinedThreadSegments({
+  posts,
+  hideThreadMarkers,
+  onOpenImage,
+  onOpenPost,
+  onOpenProfile,
+}: {
+  posts: FeedPost[];
+  hideThreadMarkers: boolean;
+  onOpenImage?: (image: ImageViewerState) => void;
+  onOpenPost?: (post: FeedPost) => void;
+  onOpenProfile?: (profile: Profile) => void;
+}) {
+  const onOpenTag = useContext(TagSearchContext);
+  return (
+    <div className="combined-thread-text">
+      {posts.map((post, index) => {
+        const segment = combinedThreadSegment(post, hideThreadMarkers);
+        // Render the full embed set (link cards, quotes, unsupported-embed
+        // notices), not just media, so a self-thread part carrying a link card or
+        // quote isn't silently dropped from the feed. Skip a part that has neither
+        // text nor embeds.
+        const hasEmbeds = postHasEmbeds(post);
+        if (!segment.text && !hasEmbeds) {
+          return null;
+        }
+        return (
+          <section className="combined-thread-segment" key={post.uri}>
+            <p className={postTextClass(segment.text)}>
+              {index > 0 && <span className="combined-thread-break" aria-hidden="true" />}
+              {segment.text
+                ? renderRichText(segment.text, segment.facets, onOpenProfile, onOpenTag)
+                : `Post ${index + 1} has no plain text.`}
+            </p>
+            <PostEmbeds
+              post={post}
+              onOpenImage={onOpenImage}
+              onOpenPost={onOpenPost}
+              onOpenProfile={onOpenProfile}
+            />
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function CombinedThreadActionBar({
+  rootPost,
+  stats,
+  likeView,
+  bookmarkView,
+  shareState,
+  onShare,
+  onOpenThreadReplies,
+  openThreadTitle,
+  reply,
+  quote,
+}: {
+  rootPost: FeedPost;
+  stats: Pick<ReturnType<typeof combinedThreadStats>, "replyCount" | "repostCount" | "quoteCount" | "liveLikeCount">;
+  likeView?: LikeView;
+  bookmarkView?: BookmarkView;
+  shareState: ShareState;
+  onShare: () => void;
+  onOpenThreadReplies: () => void;
+  openThreadTitle: string;
+  reply?: { active: boolean; onClick: () => void; disabled?: boolean; title: string };
+  quote?: { active: boolean; onClick: () => void; disabled?: boolean; title: string };
+}) {
+  const likeCtx = useContext(LikeContext);
+  const bookmarkCtx = useContext(BookmarkContext);
+  const { replyCount, repostCount, quoteCount, liveLikeCount } = stats;
+  return (
+    <footer className="post-actions combined-thread-actions">
+      <button type="button" onClick={onOpenThreadReplies} title={openThreadTitle}>
+        <MessageCircle size={16} /> {replyCount}
+      </button>
+      <span title="Total reposts across combined posts">
+        <Repeat2 size={16} /> {repostCount}
+      </span>
+      <span title="Total quotes across combined posts">
+        <Share2 size={16} /> {quoteCount}
+      </span>
+      {likeCtx?.canLike && likeView ? (
+        <button
+          type="button"
+          className={likeView.liked ? "liked" : ""}
+          onClick={() => likeCtx.toggle(rootPost)}
+          title={likeView.liked ? "Unlike first post" : "Like first post"}
+        >
+          <Heart size={16} /> {liveLikeCount}
+        </button>
+      ) : (
+        <span title="Total likes across combined posts">
+          <Heart size={16} /> {liveLikeCount}
+        </span>
+      )}
+      {bookmarkCtx?.canBookmark && bookmarkView ? (
+        <button
+          type="button"
+          className={bookmarkView.error ? "bookmark-error" : bookmarkView.bookmarked ? "bookmarked" : ""}
+          onClick={() => bookmarkCtx.toggle(rootPost)}
+          title={bookmarkView.error || (bookmarkView.bookmarked ? "Remove bookmark from first post" : "Bookmark first post")}
+        >
+          <Bookmark size={16} /> {bookmarkView.error || (bookmarkView.bookmarked ? "Bookmarked" : "Bookmark")}
+        </button>
+      ) : null}
+      <button type="button" onClick={onShare} title="Share first post">
+        <Share2 size={16} /> {shareButtonLabel(shareState)}
+      </button>
+      <a href={postBskyUrl(rootPost)} target="_blank" rel="noreferrer" title="Open first post on Bluesky">
+        <LinkIcon size={16} /> Open on Bluesky
+      </a>
+      {reply && (
+        <button
+          type="button"
+          className={reply.active ? "active" : ""}
+          onClick={reply.onClick}
+          disabled={reply.disabled}
+          title={reply.title}
+        >
+          <MessageCircle size={16} /> Reply
+        </button>
+      )}
+      {quote && (
+        <button
+          type="button"
+          className={quote.active ? "active" : ""}
+          onClick={quote.onClick}
+          disabled={quote.disabled}
+          title={quote.title}
+        >
+          <Quote size={16} /> Quote
+        </button>
+      )}
+    </footer>
+  );
+}
+
 function ThreadedPostCard({
   thread,
   onOpenImage,
@@ -5265,7 +5431,6 @@ function ThreadedPostCard({
   onQuote?: (post: FeedPost) => void;
   quoteActive?: boolean;
 }) {
-  const onOpenTag = useContext(TagSearchContext);
   const likeCtx = useContext(LikeContext);
   const bookmarkCtx = useContext(BookmarkContext);
   const posts = [thread.root.post, ...thread.replies.map((item) => item.post)];
@@ -5290,86 +5455,33 @@ function ThreadedPostCard({
         <MessageCircle size={13} />
         <span>{posts.length} post thread</span>
       </button>
-      <div className="combined-thread-text">
-        {posts.map((post, index) => {
-          const segment = combinedThreadSegment(post, hideThreadMarkers);
-          // Mirror the thread-view CombinedThreadViewCard: render the full embed
-          // set (link cards, quotes, unsupported-embed notices), not just media,
-          // so a self-thread part carrying a link card or quote isn't silently
-          // dropped from the feed. Skip a part that has neither text nor embeds.
-          const hasEmbeds = postHasEmbeds(post);
-          if (!segment.text && !hasEmbeds) {
-            return null;
-          }
-          return (
-            <section className="combined-thread-segment" key={post.uri}>
-              <p className={postTextClass(segment.text)}>
-                {index > 0 && <span className="combined-thread-break" aria-hidden="true" />}
-                {segment.text
-                  ? renderRichText(segment.text, segment.facets, onOpenProfile, onOpenTag)
-                  : `Post ${index + 1} has no plain text.`}
-              </p>
-              <PostEmbeds
-                post={post}
-                onOpenImage={onOpenImage}
-                onOpenPost={onOpenPost}
-                onOpenProfile={onOpenProfile}
-              />
-            </section>
-          );
-        })}
-      </div>
-      <footer className="post-actions combined-thread-actions">
-        <button type="button" onClick={() => onOpenPost?.(rootPost)} title="Open full thread replies">
-          <MessageCircle size={16} /> {replyCount}
-        </button>
-        <span title="Total reposts across combined posts">
-          <Repeat2 size={16} /> {repostCount}
-        </span>
-        <span title="Total quotes across combined posts">
-          <Share2 size={16} /> {quoteCount}
-        </span>
-        {likeCtx?.canLike && likeView ? (
-          <button
-            type="button"
-            className={likeView.liked ? "liked" : ""}
-            onClick={() => likeCtx.toggle(rootPost)}
-            title={likeView.liked ? "Unlike first post" : "Like first post"}
-          >
-            <Heart size={16} /> {liveLikeCount}
-          </button>
-        ) : (
-          <span title="Total likes across combined posts">
-            <Heart size={16} /> {liveLikeCount}
-          </span>
-        )}
-        {bookmarkCtx?.canBookmark && bookmarkView && (
-          <button
-            type="button"
-            className={bookmarkView.error ? "bookmark-error" : bookmarkView.bookmarked ? "bookmarked" : ""}
-            onClick={() => bookmarkCtx.toggle(rootPost)}
-            title={bookmarkView.error || (bookmarkView.bookmarked ? "Remove bookmark from first post" : "Bookmark first post")}
-          >
-            <Bookmark size={16} /> {bookmarkView.error || (bookmarkView.bookmarked ? "Bookmarked" : "Bookmark")}
-          </button>
-        )}
-        <button type="button" onClick={handleShare} title="Share first post">
-          <Share2 size={16} /> {shareButtonLabel(shareState)}
-        </button>
-        <a href={postBskyUrl(rootPost)} target="_blank" rel="noreferrer" title="Open first post on Bluesky">
-          <LinkIcon size={16} /> Open on Bluesky
-        </a>
-        {onReply && (
-          <button type="button" className={replyActive ? "active" : ""} onClick={handleReplyClick} title="Reply to the first post in this thread">
-            <MessageCircle size={16} /> Reply
-          </button>
-        )}
-        {onQuote && (
-          <button type="button" className={quoteActive ? "active" : ""} onClick={() => onQuote(rootPost)} title="Quote the first post in this thread">
-            <Quote size={16} /> Quote
-          </button>
-        )}
-      </footer>
+      <CombinedThreadSegments
+        posts={posts}
+        hideThreadMarkers={hideThreadMarkers}
+        onOpenImage={onOpenImage}
+        onOpenPost={onOpenPost}
+        onOpenProfile={onOpenProfile}
+      />
+      <CombinedThreadActionBar
+        rootPost={rootPost}
+        stats={{ replyCount, repostCount, quoteCount, liveLikeCount }}
+        likeView={likeView}
+        bookmarkView={bookmarkView}
+        shareState={shareState}
+        onShare={handleShare}
+        onOpenThreadReplies={() => onOpenPost?.(rootPost)}
+        openThreadTitle="Open full thread replies"
+        reply={
+          onReply
+            ? { active: replyActive, onClick: handleReplyClick, title: "Reply to the first post in this thread" }
+            : undefined
+        }
+        quote={
+          onQuote
+            ? { active: quoteActive, onClick: () => onQuote(rootPost), title: "Quote the first post in this thread" }
+            : undefined
+        }
+      />
       {showReplyLimited && <ReplyLimitedNotice />}
     </article>
   );
@@ -5462,54 +5574,48 @@ function PostImageVideoMedia({ post, onOpenImage }: { post: FeedPost; onOpenImag
           </div>
         )}
         {images.length > 1 && (
-          <div className={`image-grid image-masonry count-${Math.min(images.length, 4)}`}>
-            {pairedImageRows(images.slice(0, maxPostImages)).map((row, rowIndex) => (
-              <div
-                className={row.length === 1 ? "image-row image-row-solo" : "image-row"}
-                key={`image-row-${post.uri}-${rowIndex}`}
-                style={{ "--media-row-aspect": row.reduce((total, image) => total + imageAspectRatio(image), 0) } as CSSProperties}
-              >
-                {row.map((image, imageIndex) => {
-                  const flatIndex = rowIndex * 2 + imageIndex;
-                  const viewerImages = feedViewerImages(images);
-                  const selectedIndex = Math.max(0, viewerImages.findIndex((viewerImage) => viewerImage.src === (image.fullsize || image.thumb)));
-                  return (
-                    <button
-                      className="image-button"
-                      key={image.thumb || image.fullsize}
-                      type="button"
-                      style={{ "--media-aspect": imageAspectRatio(image) } as CSSProperties}
-                      onClick={(event) => {
-                        if (!clickedImageElement(event)) {
-                          return;
-                        }
-                        if (viewerImages.length === 0) {
-                          return;
-                        }
-                        onOpenImage?.({ images: viewerImages, index: selectedIndex });
-                      }}
-                      aria-label={image.alt ? "Open image" : "Open full size image"}
-                    >
-                      <img
-                        alt={image.alt || ""}
-                        src={image.thumb || image.fullsize}
-                        loading="lazy"
-                        decoding="async"
-                        style={
-                          row.length === 1 && image.aspectRatio?.width && image.aspectRatio?.height
-                            ? { aspectRatio: `${image.aspectRatio.width} / ${image.aspectRatio.height}` }
-                            : undefined
-                        }
-                      />
-                      {images.length > maxPostImages && flatIndex === maxPostImages - 1 && (
-                        <span className="more-media-badge">+{images.length - maxPostImages}</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+          <MasonryImageGrid
+            images={images}
+            rowKeyPrefix={`image-row-${post.uri}`}
+            containerClass="image-grid"
+            renderImage={(image, row, flatIndex) => {
+              const viewerImages = feedViewerImages(images);
+              const selectedIndex = Math.max(0, viewerImages.findIndex((viewerImage) => viewerImage.src === (image.fullsize || image.thumb)));
+              return (
+                <button
+                  className="image-button"
+                  key={image.thumb || image.fullsize}
+                  type="button"
+                  style={{ "--media-aspect": imageAspectRatio(image) } as CSSProperties}
+                  onClick={(event) => {
+                    if (!clickedImageElement(event)) {
+                      return;
+                    }
+                    if (viewerImages.length === 0) {
+                      return;
+                    }
+                    onOpenImage?.({ images: viewerImages, index: selectedIndex });
+                  }}
+                  aria-label={image.alt ? "Open image" : "Open full size image"}
+                >
+                  <img
+                    alt={image.alt || ""}
+                    src={image.thumb || image.fullsize}
+                    loading="lazy"
+                    decoding="async"
+                    style={
+                      row.length === 1 && image.aspectRatio?.width && image.aspectRatio?.height
+                        ? { aspectRatio: `${image.aspectRatio.width} / ${image.aspectRatio.height}` }
+                        : undefined
+                    }
+                  />
+                  {images.length > maxPostImages && flatIndex === maxPostImages - 1 && (
+                    <span className="more-media-badge">+{images.length - maxPostImages}</span>
+                  )}
+                </button>
+              );
+            }}
+          />
         )}
         {video && <VideoEmbedCard video={video} />}
       </div>
@@ -5549,6 +5655,36 @@ function pairedImageRows(images: ReturnType<typeof getEmbedImages>) {
     rows.push(images.slice(index, index + 2));
   }
   return rows;
+}
+
+// Shared masonry image grid: wraps paired rows with the row-aspect style the
+// CSS masonry layout keys off of. The cell content differs between card
+// variants (interactive viewer buttons vs. static imgs), so it is supplied via
+// the renderImage callback.
+function MasonryImageGrid({
+  images,
+  rowKeyPrefix,
+  containerClass,
+  renderImage,
+}: {
+  images: ReturnType<typeof getEmbedImages>;
+  rowKeyPrefix: string;
+  containerClass: string;
+  renderImage: (image: ReturnType<typeof getEmbedImages>[number], row: ReturnType<typeof getEmbedImages>, flatIndex: number) => ReactNode;
+}) {
+  return (
+    <div className={`${containerClass} image-masonry count-${Math.min(images.length, 4)}`}>
+      {pairedImageRows(images.slice(0, maxPostImages)).map((row, rowIndex) => (
+        <div
+          className={row.length === 1 ? "image-row image-row-solo" : "image-row"}
+          key={`${rowKeyPrefix}-${rowIndex}`}
+          style={{ "--media-row-aspect": row.reduce((total, image) => total + imageAspectRatio(image), 0) } as CSSProperties}
+        >
+          {row.map((image, imageIndex) => renderImage(image, row, rowIndex * 2 + imageIndex))}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function mediaImageRows(images: ReturnType<typeof getEmbedImages>) {
@@ -5964,7 +6100,6 @@ function CombinedThreadViewCard({
   onCloseQuote: () => void;
   onQuoted?: () => void;
 }) {
-  const onOpenTag = useContext(TagSearchContext);
   const likeCtx = useContext(LikeContext);
   const bookmarkCtx = useContext(BookmarkContext);
   const rootPost = parts[0].node.post;
@@ -5985,32 +6120,13 @@ function CombinedThreadViewCard({
         onOpenProfile={onOpenProfile}
         onOpenPost={onOpenPost}
       />
-      <div className="combined-thread-text">
-        {parts.map((part, index) => {
-          const post = part.node.post;
-          const segment = combinedThreadSegment(post, hideThreadMarkers);
-          const hasEmbeds = postHasEmbeds(post);
-          if (!segment.text && !hasEmbeds) {
-            return null;
-          }
-          return (
-            <section className="combined-thread-segment" key={post.uri}>
-              <p className={postTextClass(segment.text)}>
-                {index > 0 && <span className="combined-thread-break" aria-hidden="true" />}
-                {segment.text
-                  ? renderRichText(segment.text, segment.facets, onOpenProfile, onOpenTag)
-                  : `Post ${index + 1} has no plain text.`}
-              </p>
-              <PostEmbeds
-                post={post}
-                onOpenImage={onOpenImage}
-                onOpenPost={onOpenPost}
-                onOpenProfile={onOpenProfile}
-              />
-            </section>
-          );
-        })}
-      </div>
+      <CombinedThreadSegments
+        posts={posts}
+        hideThreadMarkers={hideThreadMarkers}
+        onOpenImage={onOpenImage}
+        onOpenPost={onOpenPost}
+        onOpenProfile={onOpenProfile}
+      />
       {activeReplyParentUri === rootPost.uri && (
         <PostComposer
           replyTo={{ parent: rootPost, root: threadRootRef }}
@@ -6022,65 +6138,28 @@ function CombinedThreadViewCard({
       {activeQuoteUri === rootPost.uri && (
         <PostComposer quote={rootPost} onClose={onCloseQuote} onQuoted={onQuoted} />
       )}
-      <footer className="post-actions combined-thread-actions">
-        <button type="button" onClick={() => (onShowReplies ? onShowReplies() : onOpenPost(rootPost))} title="Show full thread replies">
-          <MessageCircle size={16} /> {replyCount}
-        </button>
-        <span title="Total reposts across combined posts">
-          <Repeat2 size={16} /> {repostCount}
-        </span>
-        <span title="Total quotes across combined posts">
-          <Share2 size={16} /> {quoteCount}
-        </span>
-        {likeCtx?.canLike && likeView ? (
-          <button
-            type="button"
-            className={likeView.liked ? "liked" : ""}
-            onClick={() => likeCtx.toggle(rootPost)}
-            title={likeView.liked ? "Unlike first post" : "Like first post"}
-          >
-            <Heart size={16} /> {liveLikeCount}
-          </button>
-        ) : (
-          <span title="Total likes across combined posts">
-            <Heart size={16} /> {liveLikeCount}
-          </span>
-        )}
-        {bookmarkCtx?.canBookmark && bookmarkView ? (
-          <button
-            type="button"
-            className={bookmarkView.error ? "bookmark-error" : bookmarkView.bookmarked ? "bookmarked" : ""}
-            onClick={() => bookmarkCtx.toggle(rootPost)}
-            title={bookmarkView.error || (bookmarkView.bookmarked ? "Remove bookmark from first post" : "Bookmark first post")}
-          >
-            <Bookmark size={16} /> {bookmarkView.error || (bookmarkView.bookmarked ? "Bookmarked" : "Bookmark")}
-          </button>
-        ) : null}
-        <button type="button" onClick={handleShare} title="Share first post">
-          <Share2 size={16} /> {shareButtonLabel(shareState)}
-        </button>
-        <a href={postBskyUrl(rootPost)} target="_blank" rel="noreferrer" title="Open first post on Bluesky">
-          <LinkIcon size={16} /> Open on Bluesky
-        </a>
-        <button
-          type="button"
-          className={activeReplyParentUri === rootPost.uri ? "active" : ""}
-          onClick={handleReplyClick}
-          disabled={!canReply}
-          title="Reply to the first post in this thread"
-        >
-          <MessageCircle size={16} /> Reply
-        </button>
-        <button
-          type="button"
-          className={activeQuoteUri === rootPost.uri ? "active" : ""}
-          onClick={() => onOpenQuote(rootPost)}
-          disabled={!canReply}
-          title="Quote the first post in this thread"
-        >
-          <Quote size={16} /> Quote
-        </button>
-      </footer>
+      <CombinedThreadActionBar
+        rootPost={rootPost}
+        stats={{ replyCount, repostCount, quoteCount, liveLikeCount }}
+        likeView={likeView}
+        bookmarkView={bookmarkView}
+        shareState={shareState}
+        onShare={handleShare}
+        onOpenThreadReplies={() => (onShowReplies ? onShowReplies() : onOpenPost(rootPost))}
+        openThreadTitle="Show full thread replies"
+        reply={{
+          active: activeReplyParentUri === rootPost.uri,
+          onClick: handleReplyClick,
+          disabled: !canReply,
+          title: "Reply to the first post in this thread",
+        }}
+        quote={{
+          active: activeQuoteUri === rootPost.uri,
+          onClick: () => onOpenQuote(rootPost),
+          disabled: !canReply,
+          title: "Quote the first post in this thread",
+        }}
+      />
       {showReplyLimited && <ReplyLimitedNotice />}
     </article>
   );
@@ -6421,30 +6500,25 @@ function QuotedPostCard({
             // (pairedImageRows + --media-row-aspect / --media-aspect) so they
             // fill the quote width and cap at the viewport height, instead of the
             // old flat 2-up grid that sized each image ad hoc.
-            <div className={`image-grid quote-images image-masonry count-${Math.min(embeddedImages.length, 4)}`}>
-              {pairedImageRows(embeddedImages.slice(0, maxPostImages)).map((row, rowIndex) => (
-                <div
-                  className={row.length === 1 ? "image-row image-row-solo" : "image-row"}
-                  key={`quote-image-row-${record.uri}-${rowIndex}`}
-                  style={{ "--media-row-aspect": row.reduce((total, image) => total + imageAspectRatio(image), 0) } as CSSProperties}
-                >
-                  {row.map((image) => (
-                    <img
-                      alt={image.alt || ""}
-                      key={image.thumb || image.fullsize}
-                      src={image.thumb || image.fullsize}
-                      loading="lazy"
-                      decoding="async"
-                      style={
-                        row.length === 1 && image.aspectRatio?.width && image.aspectRatio?.height
-                          ? ({ aspectRatio: `${image.aspectRatio.width} / ${image.aspectRatio.height}`, "--media-aspect": imageAspectRatio(image) } as CSSProperties)
-                          : ({ "--media-aspect": imageAspectRatio(image) } as CSSProperties)
-                      }
-                    />
-                  ))}
-                </div>
-              ))}
-            </div>
+            <MasonryImageGrid
+              images={embeddedImages}
+              rowKeyPrefix={`quote-image-row-${record.uri}`}
+              containerClass="image-grid quote-images"
+              renderImage={(image, row) => (
+                <img
+                  alt={image.alt || ""}
+                  key={image.thumb || image.fullsize}
+                  src={image.thumb || image.fullsize}
+                  loading="lazy"
+                  decoding="async"
+                  style={
+                    row.length === 1 && image.aspectRatio?.width && image.aspectRatio?.height
+                      ? ({ aspectRatio: `${image.aspectRatio.width} / ${image.aspectRatio.height}`, "--media-aspect": imageAspectRatio(image) } as CSSProperties)
+                      : ({ "--media-aspect": imageAspectRatio(image) } as CSSProperties)
+                  }
+                />
+              )}
+            />
           )}
           {embeddedVideo && <VideoEmbedCard video={embeddedVideo} compact />}
         </>

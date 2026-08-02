@@ -50,8 +50,8 @@ vi.mock("../api", () => ({
   getListFeed: (list: string, cursor?: string, signal?: AbortSignal) => mocks.getListFeed(list, cursor, signal),
   getAuthorFeed: (actor: string, cursor?: string, signal?: AbortSignal, filter?: string) =>
     mocks.getAuthorFeed(actor, cursor, signal, filter),
-  getPopularFeedGenerators: (limit?: number, signal?: AbortSignal, query?: string) =>
-    mocks.getPopularFeedGenerators(limit, signal, query),
+  getPopularFeedGenerators: (limit?: number, signal?: AbortSignal, query?: string, cursor?: string) =>
+    mocks.getPopularFeedGenerators(limit, signal, query, cursor),
   getFeedGenerator: (feed: string, signal?: AbortSignal) => mocks.getFeedGenerator(feed, signal),
   getList: (list: string, signal?: AbortSignal) => mocks.getList(list, signal),
   searchActors: (query: string, cursor?: string, signal?: AbortSignal) => mocks.searchActors(query, cursor, signal),
@@ -144,16 +144,12 @@ describe("createFeedLoader", () => {
     const feedState = stateSink<FeedState>({ items: [], status: "idle" });
     const metrics = stateSink<DevMetrics>(devMetricsInitial);
     const restoreScrollFor = vi.fn();
-    const restoreOrResetScroll = vi.fn();
 
     const loadFeed = createFeedLoader({
       feedCache,
       setFeedState: feedState.set,
       setDevMetrics: metrics.set,
       restoreScrollFor,
-      restoreOrResetScroll,
-      timelineRef: { current: null },
-      scrollCache: createCache<number>(),
       density: "comfortable",
       signedInDid: null,
     });
@@ -166,7 +162,7 @@ describe("createFeedLoader", () => {
     expect(metrics.snapshots[metrics.snapshots.length - 1].cacheHits).toBe(1);
   });
 
-  it("loads the public feed on a fresh read, writes the cache, and restores the pixel offset", async () => {
+  it("loads the public feed on a fresh read, writes the cache, and restores via the anchor-aware helper", async () => {
     const author = makeProfile("alice");
     const response = { cursor: "next", feed: [makeFeedItem(makePost("at://alice/1", author))] };
     mocks.getFeed.mockResolvedValue(response);
@@ -174,17 +170,12 @@ describe("createFeedLoader", () => {
     const feedState = stateSink<FeedState>({ items: [], status: "idle" });
     const metrics = stateSink<DevMetrics>(devMetricsInitial);
     const restoreScrollFor = vi.fn();
-    const restoreOrResetScroll = vi.fn();
-    const scrollCache = createCache<number>({ "feed:discover": 42 });
 
     const loadFeed = createFeedLoader({
       feedCache,
       setFeedState: feedState.set,
       setDevMetrics: metrics.set,
       restoreScrollFor,
-      restoreOrResetScroll,
-      timelineRef: { current: null },
-      scrollCache,
       density: "comfortable",
       signedInDid: null,
     });
@@ -196,8 +187,9 @@ describe("createFeedLoader", () => {
     const ready = feedState.snapshots[feedState.snapshots.length - 1];
     expect(ready).toEqual({ items: response.feed, cursor: "next", status: "ready" });
     expect(feedCache.get("feed:discover")).toEqual(ready);
-    expect(restoreOrResetScroll).toHaveBeenCalledWith({ current: null }, 42);
-    expect(restoreScrollFor).not.toHaveBeenCalled();
+    // Cold loads now restore through restoreScrollFor (anchor-aware, with the
+    // pixel fallback inside), not the raw pixel path (issue #45).
+    expect(restoreScrollFor).toHaveBeenCalledWith("feed:discover");
   });
 
   it("routes list URIs through getListFeed and the following sentinel through getFollowingTimeline", async () => {
@@ -216,9 +208,7 @@ describe("createFeedLoader", () => {
       setFeedState: listState.set,
       setDevMetrics: stateSink<DevMetrics>(devMetricsInitial).set,
       restoreScrollFor: vi.fn(),
-      restoreOrResetScroll: vi.fn(),
-      timelineRef: { current: null },
-      scrollCache: createCache<number>(),
+
       density: "comfortable",
       signedInDid: null,
     })(listSource);
@@ -234,9 +224,7 @@ describe("createFeedLoader", () => {
       setFeedState: followingState.set,
       setDevMetrics: stateSink<DevMetrics>(devMetricsInitial).set,
       restoreScrollFor: vi.fn(),
-      restoreOrResetScroll: vi.fn(),
-      timelineRef: { current: null },
-      scrollCache: createCache<number>(),
+
       density: "comfortable",
       signedInDid: null,
     })(followingSource);
@@ -252,9 +240,7 @@ describe("createFeedLoader", () => {
       setFeedState: stateSink<FeedState>({ items: [], status: "idle" }).set,
       setDevMetrics: stateSink<DevMetrics>(devMetricsInitial).set,
       restoreScrollFor: vi.fn(),
-      restoreOrResetScroll: vi.fn(),
-      timelineRef: { current: null },
-      scrollCache: createCache<number>(),
+
       density: "comfortable",
       signedInDid: "did:alice",
     })(discoverSource);
@@ -277,9 +263,7 @@ describe("createFeedLoader", () => {
       setFeedState: feedState.set,
       setDevMetrics: stateSink<DevMetrics>(devMetricsInitial).set,
       restoreScrollFor: vi.fn(),
-      restoreOrResetScroll: vi.fn(),
-      timelineRef: { current: null },
-      scrollCache: createCache<number>(),
+
       density: "comfortable",
       signedInDid: null,
     })(discoverSource, "page2");
@@ -299,9 +283,7 @@ describe("createFeedLoader", () => {
       setFeedState: feedState.set,
       setDevMetrics: stateSink<DevMetrics>(devMetricsInitial).set,
       restoreScrollFor: vi.fn(),
-      restoreOrResetScroll: vi.fn(),
-      timelineRef: { current: null },
-      scrollCache: createCache<number>(),
+
       density: "comfortable",
       signedInDid: null,
     })(discoverSource, "page2");
@@ -321,9 +303,7 @@ describe("createFeedLoader", () => {
       setFeedState: feedState.set,
       setDevMetrics: stateSink<DevMetrics>(devMetricsInitial).set,
       restoreScrollFor: vi.fn(),
-      restoreOrResetScroll: vi.fn(),
-      timelineRef: { current: null },
-      scrollCache: createCache<number>(),
+
       density: "comfortable",
       signedInDid: null,
     })(discoverSource);
@@ -344,9 +324,7 @@ describe("createFeedLoader", () => {
       setFeedState: feedState.set,
       setDevMetrics: stateSink<DevMetrics>(devMetricsInitial).set,
       restoreScrollFor: vi.fn(),
-      restoreOrResetScroll: vi.fn(),
-      timelineRef: { current: null },
-      scrollCache: createCache<number>(),
+
       density: "comfortable",
       signedInDid: null,
     })(discoverSource, undefined, controller.signal);
@@ -528,9 +506,8 @@ describe("createActorSearchLoader", () => {
 });
 
 describe("createFeedSearchLoader", () => {
-  beforeEach(() => mocks.getPopularFeedGenerators.mockReset());
-
   it("serves a cache hit", async () => {
+    mocks.getPopularFeedGenerators.mockReset();
     const cached: FeedSearchState = { feeds: [], status: "ready" };
     const feedSearchCache = createCache<FeedSearchState>({ "feeds:hello": cached });
     const feedSearchState = stateSink<FeedSearchState>({ feeds: [], status: "idle" });
@@ -560,8 +537,46 @@ describe("createFeedSearchLoader", () => {
       setDevMetrics: stateSink<DevMetrics>(devMetricsInitial).set,
     })("discover");
 
-    expect(mocks.getPopularFeedGenerators).toHaveBeenCalledWith(20, undefined, "discover");
+    expect(mocks.getPopularFeedGenerators).toHaveBeenCalledWith(20, undefined, "discover", undefined);
     expect(feedSearchState.snapshots[feedSearchState.snapshots.length - 1].feeds).toHaveLength(1);
+  });
+
+  it("appends feeds and carries the cursor on load-more", async () => {
+    const feedA = { uri: "at://did:plc:abc/app.bsky.feed.generator/a", displayName: "A", creator: makeProfile("alice") };
+    const feedB = { uri: "at://did:plc:abc/app.bsky.feed.generator/b", displayName: "B", creator: makeProfile("alice") };
+    mocks.getPopularFeedGenerators.mockResolvedValue({ feeds: [feedB], cursor: "page2" });
+    const feedSearchCache = createCache<FeedSearchState>();
+    const feedSearchState = stateSink<FeedSearchState>({ feeds: [feedA], cursor: "page1", status: "ready" });
+
+    await createFeedSearchLoader({
+      feedSearchCache,
+      setFeedSearchState: feedSearchState.set,
+      setDevMetrics: stateSink<DevMetrics>(devMetricsInitial).set,
+    })("discover", "page1");
+
+    expect(mocks.getPopularFeedGenerators).toHaveBeenCalledWith(20, undefined, "discover", "page1");
+    expect(feedSearchState.snapshots[feedSearchState.snapshots.length - 1]).toEqual({
+      feeds: [feedA, feedB],
+      cursor: "page2",
+      status: "ready",
+    });
+  });
+
+  it("surfaces a load-more error without dropping loaded feeds", async () => {
+    const feedA = { uri: "at://did:plc:abc/app.bsky.feed.generator/a", displayName: "A", creator: makeProfile("alice") };
+    mocks.getPopularFeedGenerators.mockRejectedValue(rateError());
+    const feedSearchState = stateSink<FeedSearchState>({ feeds: [feedA], cursor: "page1", status: "ready" });
+
+    await createFeedSearchLoader({
+      feedSearchCache: createCache<FeedSearchState>(),
+      setFeedSearchState: feedSearchState.set,
+      setDevMetrics: stateSink<DevMetrics>(devMetricsInitial).set,
+    })("discover", "page1");
+
+    const finalState = feedSearchState.snapshots[feedSearchState.snapshots.length - 1];
+    expect(finalState.status).toBe("ready");
+    expect(finalState.feeds).toEqual([feedA]);
+    expect(finalState.loadMoreError).toBe("rate limited");
   });
 });
 

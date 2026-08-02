@@ -8,7 +8,7 @@
 // cache keys carry no viewer DID, so identity changes rely on App's
 // `clearAllDataCaches()` running before any loader repopulates a cache.
 
-import type { Dispatch, RefObject, SetStateAction } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import {
   type ActorSearchResponse,
   type FeedGeneratorView,
@@ -81,8 +81,10 @@ export type ActorSearchState = {
 
 export type FeedSearchState = {
   feeds: FeedGeneratorView[];
+  cursor?: string;
   status: "idle" | "loading" | "ready" | "error" | "rate-limit";
   error?: string;
+  loadMoreError?: string;
 };
 
 export type DevMetrics = {
@@ -247,16 +249,13 @@ export interface FeedLoaderDeps {
   setFeedState: Dispatch<SetStateAction<FeedState>>;
   setDevMetrics: Dispatch<SetStateAction<DevMetrics>>;
   restoreScrollFor: (key: string) => void;
-  restoreOrResetScroll: (ref: { readonly current: HTMLElement | null }, target: number) => void;
-  timelineRef: RefObject<HTMLDivElement | null>;
-  scrollCache: Cache<number>;
   density: string;
   signedInDid: string | null | undefined;
 }
 
 export function createFeedLoader(deps: FeedLoaderDeps) {
   return async function loadFeed(source: FeedSource, cursor?: string, signal?: AbortSignal) {
-    const { feedCache, setFeedState, setDevMetrics, restoreScrollFor, restoreOrResetScroll, timelineRef, scrollCache, density, signedInDid } = deps;
+    const { feedCache, setFeedState, setDevMetrics, restoreScrollFor, density, signedInDid } = deps;
     const cacheKey = `feed:${source.id}`;
     if (!cursor) {
       const cached = feedCache.get(cacheKey);
@@ -332,7 +331,13 @@ export function createFeedLoader(deps: FeedLoaderDeps) {
         return next;
       });
       if (!cursor) {
-        restoreOrResetScroll(timelineRef, scrollCache.get(cacheKey) || 0);
+        // Restore through the anchor-aware helper even on a fresh (cold) load:
+        // the anchored path hands the saved top-visible post URI to VirtualPostList,
+        // which keeps recomputing the target as async rows mount/measure instead of
+        // the fixed 30-frame pixel budget expiring before the content grows (issue
+        // #45). When no anchor is saved, restoreScrollFor falls back to the pixel
+        // offset exactly as the old path did.
+        restoreScrollFor(cacheKey);
       }
     } catch (error) {
       if (!signal?.aborted) {
@@ -565,33 +570,46 @@ export interface FeedSearchLoaderDeps {
 }
 
 export function createFeedSearchLoader(deps: FeedSearchLoaderDeps) {
-  return async function loadFeedSearch(query: string, signal?: AbortSignal) {
+  return async function loadFeedSearch(query: string, cursor?: string, signal?: AbortSignal) {
     const { feedSearchCache, setFeedSearchState, setDevMetrics } = deps;
     const cacheKey = `feeds:${query.trim().toLowerCase()}`;
-    const cached = feedSearchCache.get(cacheKey);
-    if (cached?.status === "ready") {
-      setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
-      setFeedSearchState(cached);
-      return;
+    if (!cursor) {
+      const cached = feedSearchCache.get(cacheKey);
+      if (cached?.status === "ready") {
+        setDevMetrics((current) => ({ ...current, cacheHits: current.cacheHits + 1 }));
+        setFeedSearchState(cached);
+        return;
+      }
     }
 
-    setFeedSearchState({ feeds: [], status: "loading" });
+    setFeedSearchState((current) => ({
+      ...current,
+      status: cursor ? current.status : "loading",
+      error: undefined,
+      loadMoreError: undefined,
+    }));
 
     try {
-      const response = await getPopularFeedGenerators(20, signal, query);
+      const response = await getPopularFeedGenerators(20, signal, query, cursor);
       if (signal?.aborted) {
         return;
       }
-      const next: FeedSearchState = { feeds: response.feeds, status: "ready" };
-      feedSearchCache.set(cacheKey, next);
-      setFeedSearchState(next);
+      setFeedSearchState((current) => {
+        const next: FeedSearchState = {
+          feeds: cursor ? [...current.feeds, ...response.feeds] : response.feeds,
+          cursor: response.cursor,
+          status: "ready",
+        };
+        feedSearchCache.set(cacheKey, next);
+        return next;
+      });
     } catch (error) {
       if (!signal?.aborted) {
-        setFeedSearchState({
-          feeds: [],
-          status: isRateLimit(error) ? "rate-limit" : "error",
-          error: rateLimitMessage(error),
-        });
+        setFeedSearchState((current) =>
+          cursor
+            ? { ...current, status: "ready", loadMoreError: rateLimitMessage(error) }
+            : { ...current, status: isRateLimit(error) ? "rate-limit" : "error", error: rateLimitMessage(error) },
+        );
       }
     }
   };
