@@ -307,6 +307,10 @@ function readContentLanguages() {
 // Bluesky's newer gallery embed allows up to 10 authored images per post.
 const maxPostImages = 10;
 
+// Stable no-op for hot paths that only feed DEV-only widgets (see the
+// DEV-gated onRenderedRowsChange in App).
+const noop = () => {};
+
 // Authenticated reverse-chronological home timeline. Only shown/loaded when
 // signed in; its sentinel uri "following" routes the loader to getTimeline.
 const followingSource: FeedSource = {
@@ -883,6 +887,35 @@ export function App() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const toastIdRef = useRef(0);
   const [virtualRenderedRows, setVirtualRenderedRows] = useState(0);
+  // The rendered-row count is only shown in the DevInspector (DEV builds). In
+  // production, forwarding it would call setState on every scroll and re-render
+  // the whole tree for nothing, so gate the forward behind DEV (stable noop
+  // otherwise keeps the effect deps stable).
+  const onRenderedRowsChange = import.meta.env.DEV ? setVirtualRenderedRows : noop;
+  // The Settings "local data" key count walks localStorage; recompute it only
+  // when a preference state that writes a bigbsky:* key changes, not on every
+  // render.
+  const localDataKeyCount = useMemo(
+    () => countBigBskyLocalKeys(),
+    [
+      densityByContext,
+      showMediaByFeed,
+      columns,
+      showNsfw,
+      showMedia,
+      contentLanguages,
+      homeSourceId,
+      recentItems,
+      localLists,
+      pinnedFeedIds,
+      pinnedFeedMeta,
+      feedOrder,
+      pinnedSearches,
+      pinnedProfiles,
+      pinnedNotificationIds,
+      collapsedFeedGroups,
+    ],
+  );
   const [thread, setThread] = useState<{ status: "idle" | "loading" | "ready" | "error"; node?: ThreadNode; error?: string }>({
     status: "idle",
   });
@@ -1246,6 +1279,9 @@ export function App() {
     setLikeOverrides({});
     setBookmarkOverrides({});
     setBlockOverrides({});
+    likeInFlight.current.clear();
+    bookmarkInFlight.current.clear();
+    blockInFlight.current.clear();
   }, [signedInDid]);
 
   useEffect(() => {
@@ -2128,6 +2164,15 @@ export function App() {
     scrollAnchorCache.clear();
     setPendingScrollAnchor(null);
     setDevMetrics((current) => ({ ...current, cacheHits: 0 }));
+    // Wipe the optimistic write overrides + in-flight guards too, or a stale
+    // override (or a stuck in-flight entry) would repaint/block that URI after
+    // the wipe — the identity-change effect below only fires on sign-out.
+    setLikeOverrides({});
+    setBookmarkOverrides({});
+    setBlockOverrides({});
+    likeInFlight.current.clear();
+    bookmarkInFlight.current.clear();
+    blockInFlight.current.clear();
     setAuthState({ status: "signed-out", session: null });
   }
 
@@ -3180,7 +3225,7 @@ export function App() {
             densityByContext={densityByContext}
             recentCount={recentItems.length}
             savedPreferenceCount={Object.keys(densityByContext).length}
-            localDataKeyCount={countBigBskyLocalKeys()}
+            localDataKeyCount={localDataKeyCount}
             localLists={localLists}
             myLists={myLists}
             myListsStatus={myListsStatus}
@@ -3321,7 +3366,7 @@ export function App() {
                     currentDid={authState.session?.did}
                     localLists={localLists}
                     onToggleListPost={togglePostInLocalList}
-                    onRenderedRowsChange={setVirtualRenderedRows}
+                    onRenderedRowsChange={onRenderedRowsChange}
                     scrollAnchor={activeScrollAnchor}
                     scrollFallbackTarget={activeScrollFallback}
                     onAnchorRestored={clearPendingAnchor}
@@ -3355,7 +3400,7 @@ export function App() {
                 currentDid={authState.session?.did}
                 localLists={localLists}
                 onToggleListPost={togglePostInLocalList}
-                onRenderedRowsChange={setVirtualRenderedRows}
+                onRenderedRowsChange={onRenderedRowsChange}
                 scrollAnchor={activeScrollAnchor}
                 scrollFallbackTarget={activeScrollFallback}
                 onAnchorRestored={clearPendingAnchor}
@@ -3696,8 +3741,8 @@ function VirtualPostList({
       // grow/shrink the scroll position by the same delta so the content
       // under the user's eyes doesn't jump. Done here (not in the updater)
       // to keep setRowHeights pure.
-      const rowIndex = rows.findIndex((candidate) => feedRowKey(candidate) === rowKey);
-      const rowTop = rowIndex >= 0 ? rowOffsets[rowIndex] ?? 0 : 0;
+      const rowIndex = anchoredRowsRef.current.findIndex((candidate) => feedRowKey(candidate) === rowKey);
+      const rowTop = rowIndex >= 0 ? anchoredRowOffsetsRef.current[rowIndex] ?? 0 : 0;
       const container = containerRef.current;
       if (container && rowTop + previousHeight <= container.scrollTop) {
         container.scrollTop += height - previousHeight;
@@ -3710,7 +3755,7 @@ function VirtualPostList({
         (current[rowKey] ?? defaultRowHeight) === height ? current : { ...current, [rowKey]: height },
       );
     },
-    [containerRef, defaultRowHeight, rowOffsets, rows],
+    [containerRef, defaultRowHeight],
   );
 
   return (
@@ -4135,11 +4180,9 @@ function SurfaceView({
     },
     feeds: {
       copy: "Your saved Bluesky feeds, the built-in feeds, and popular feeds to discover. Open any feed as a timeline, pin it to the top of the selector, or follow/unfollow it on your account.",
-      cards: [
-        { title: "Pinned Feeds", detail: "Local pins keep important destinations at the top of the selector, stored only in this browser.", status: "Local" },
-        { title: "Discover New Feeds", detail: "Feed search opens known public Feed sources immediately.", status: "Active" },
-        { title: "Follow Feeds", detail: "Following a feed saves it to your Bluesky account; the Following control writes through your session.", status: "Active" },
-      ],
+      // The feeds surface renders its own dedicated directory layout, so no
+      // generic surface cards are needed here.
+      cards: [],
     },
   };
   const surface = surfaces[name] || {
@@ -5486,7 +5529,12 @@ function feedViewerImages(images: ReturnType<typeof getEmbedImages>) {
 }
 
 function clickedImageElement(event: ReactMouseEvent<HTMLButtonElement>) {
-  return event.target instanceof HTMLImageElement;
+  // The "+N more" overflow badge lives inside the last image button; clicking
+  // it should open the viewer too (its target is the span, not the img).
+  return (
+    event.target instanceof HTMLImageElement ||
+    (event.target instanceof HTMLElement && event.target.classList.contains("more-media-badge"))
+  );
 }
 
 function imageAspectRatio(image: ReturnType<typeof getEmbedImages>[number]) {
