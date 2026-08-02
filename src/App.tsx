@@ -50,6 +50,14 @@ import {
   parseStringArray,
 } from "./lib/preferences";
 import { postPath, extractFacetLinks } from "./lib/url";
+import {
+  computeRowOffsets,
+  estimateRowHeight,
+  findRowIndexByOffset,
+  isAboveViewport,
+  overscanPixelsFor,
+  totalRowHeight,
+} from "./lib/virtual-list";
 import { createCache, useCache } from "./lib/cache";
 import { detectPostLanguage, filterFeedByLanguages, postsNeedingDetection } from "./lib/content-language";
 import {
@@ -3232,8 +3240,8 @@ function VirtualPostList({
     [incomingItems, mediaOnly, showNsfw],
   );
   const rows = useMemo(() => buildThreadedFeedRows(items), [items]);
-  const defaultRowHeight = density === "compact" ? 112 : density === "media" ? 360 : 260;
-  const overscanPixels = defaultRowHeight * 3;
+  const defaultRowHeight = estimateRowHeight(density);
+  const overscanPixels = overscanPixelsFor(defaultRowHeight);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(720);
   const [rowHeights, setRowHeights] = useState<Record<string, number>>({});
@@ -3246,38 +3254,15 @@ function VirtualPostList({
   rowHeightsRef.current = rowHeights;
   const { activeReplyParentUri, activeQuoteUri, toggleReplyFor, toggleQuoteFor, closeReply, closeQuote } = useComposerTargets();
   const canReply = !!currentDid;
-  const rowOffsets = useMemo(() => {
-    let offset = 0;
-    return rows.map((row) => {
-      const top = offset;
-      offset += rowHeights[feedRowKey(row)] ?? defaultRowHeight;
-      return top;
-    });
-  }, [defaultRowHeight, rowHeights, rows]);
-  const totalHeight = useMemo(
-    () => rows.reduce((total, row) => total + (rowHeights[feedRowKey(row)] ?? defaultRowHeight), 0),
+  const rowOffsets = useMemo(
+    () => computeRowOffsets(rows, (row) => rowHeights[feedRowKey(row)], defaultRowHeight),
     [defaultRowHeight, rowHeights, rows],
   );
-  const findRowIndex = useCallback(
-    (targetOffset: number) => {
-      let low = 0;
-      let high = rows.length - 1;
-      let match = 0;
-
-      while (low <= high) {
-        const middle = Math.floor((low + high) / 2);
-        if ((rowOffsets[middle] ?? 0) <= targetOffset) {
-          match = middle;
-          low = middle + 1;
-        } else {
-          high = middle - 1;
-        }
-      }
-
-      return match;
-    },
-    [rowOffsets, rows.length],
+  const totalHeight = useMemo(
+    () => totalRowHeight(rows, (row) => rowHeights[feedRowKey(row)], defaultRowHeight),
+    [defaultRowHeight, rowHeights, rows],
   );
+  const findRowIndex = useCallback((targetOffset: number) => findRowIndexByOffset(rowOffsets, targetOffset), [rowOffsets]);
   const startIndex = rows.length > 0 ? findRowIndex(Math.max(0, scrollTop - overscanPixels)) : 0;
   const endIndex =
     rows.length > 0 ? Math.min(rows.length - 1, findRowIndex(scrollTop + viewportHeight + overscanPixels) + 1) : -1;
@@ -3428,7 +3413,7 @@ function VirtualPostList({
       const rowIndex = anchoredRowsRef.current.findIndex((candidate) => feedRowKey(candidate) === rowKey);
       const rowTop = rowIndex >= 0 ? anchoredRowOffsetsRef.current[rowIndex] ?? 0 : 0;
       const container = containerRef.current;
-      if (container && rowTop + previousHeight <= container.scrollTop) {
+      if (container && isAboveViewport(rowTop, previousHeight, container.scrollTop)) {
         container.scrollTop += height - previousHeight;
       }
 

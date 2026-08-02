@@ -26,12 +26,18 @@ requirePattern(app, /const \[columns, setColumns\][\s\S]*readColumnPreferences\(
 requirePattern(app, /columns\.feeds \? "" : " feeds-hidden"[\s\S]*columns\.right \? "" : " right-hidden"/, "the shell should apply feeds-hidden / right-hidden state classes from column visibility");
 requirePattern(app, /safeLocalStorageSet\(columnsStorageKey, JSON\.stringify\(next\)\)/, "column visibility should persist locally");
 
-requirePattern(app, /function VirtualPostList\([\s\S]*defaultRowHeight = density === "compact" \? 112 : density === "media" \? 360 : 260/s, "virtual rows should use density-aware estimated heights");
-requirePattern(app, /const overscanPixels = defaultRowHeight \* 3/, "virtual list should overscan a bounded row window");
-requirePattern(app, /function VirtualPostList\([\s\S]*const findRowIndex = useCallback\([\s\S]*while \(low <= high\)/s, "virtual list should locate rows by offset without scanning all rows on scroll");
+// The VirtualPostList measurement math (density-aware estimated row heights,
+// overscan window, binary-search row lookup, and above-viewport scroll
+// compensation) moved to src/lib/virtual-list.ts (issue #19 slice). Its
+// behavior is now guaranteed by the pure unit suite src/lib/virtual-list.test.ts
+// (estimateRowHeight per density, overscanPixelsFor scaling, findRowIndexByOffset
+// binary search incl. empty/pre-target/past-end, computeRowOffsets/totalRowHeight
+// accumulation + estimate defaulting, isAboveViewport boundary). The old App.tsx
+// source pins (defaultRowHeight ternary, `defaultRowHeight * 3` overscan, the
+// inline `while (low <= high)` search, and the `rowTop + previousHeight <=
+// scrollTop` compensation condition) were retired per #19.
 requirePattern(app, /data-total-rows=\{items\.length\}[\s\S]*data-rendered-rows=\{visibleItems\.length\}/s, "virtual list should expose loaded and rendered row counts");
 requirePattern(app, /topSpacerHeight > 0[\s\S]*bottomSpacerHeight > 0/s, "virtual list should use top and bottom spacers instead of mounting all rows");
-requirePattern(app, /rowTop \+ previousHeight <= container\.scrollTop[\s\S]*container\.scrollTop \+= height - previousHeight/s, "measured row updates should compensate scroll position above the viewport");
 requirePattern(css, /\.virtual-list \{[\s\S]*overflow-anchor: none;/s, "virtual list should disable native scroll anchoring so measured row compensation is not doubled");
 requirePattern(app, /onRenderedRowsChange\(visibleItems\.length\)/, "development inspector should receive rendered row counts");
 
