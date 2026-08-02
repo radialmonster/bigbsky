@@ -611,6 +611,10 @@ function hasPostVideo(post: FeedPost) {
   return !!getVideoEmbed(post.embed);
 }
 
+function postTextClass(text: string) {
+  return text.includes("\n") ? "post-text has-line-breaks" : "post-text";
+}
+
 function postHasEmbeds(post: FeedPost): boolean {
   return (
     getEmbedImages(post.embed).length > 0 ||
@@ -2051,27 +2055,23 @@ export function App() {
   }
 
   function toggleShowNsfw() {
-    setShowNsfw((current) => {
-      const next = !current;
-      if (next) {
-        const confirmed = window.confirm(
-          "Show NSFW media in BigBSky on this browser? Confirm that you are allowed to view adult content where you live. BigBSky will not ask for or store your birthday. For Bluesky account-wide moderation settings, use https://bsky.app/moderation.",
-        );
-        if (!confirmed) {
-          return current;
-        }
+    const next = !showNsfw;
+    if (next) {
+      const confirmed = window.confirm(
+        "Show NSFW media in BigBSky on this browser? Confirm that you are allowed to view adult content where you live. BigBSky will not ask for or store your birthday. For Bluesky account-wide moderation settings, use https://bsky.app/moderation.",
+      );
+      if (!confirmed) {
+        return;
       }
-      safeLocalStorageSet(showNsfwStorageKey, next ? "true" : "false");
-      return next;
-    });
+    }
+    setShowNsfw(next);
+    safeLocalStorageSet(showNsfwStorageKey, next ? "true" : "false");
   }
 
   function toggleShowMedia() {
-    setShowMedia((current) => {
-      const next = !current;
-      safeLocalStorageSet(showMediaStorageKey, next ? "true" : "false");
-      return next;
-    });
+    const next = !showMedia;
+    setShowMedia(next);
+    safeLocalStorageSet(showMediaStorageKey, next ? "true" : "false");
   }
 
   // "Show posts from language" selection. Passing an empty array selects Any
@@ -3011,7 +3011,7 @@ export function App() {
         <div className="feed-map-header">
           <strong>Feeds</strong>
           <div className="feed-map-actions">
-            <button type="button" title="Search feeds" onClick={() => setFeedSearch("")}>
+            <button type="button" title="Clear feed filter" aria-label="Clear feed filter" onClick={() => setFeedSearch("")}>
               <Search size={16} />
             </button>
             <button
@@ -3138,6 +3138,7 @@ export function App() {
 
         {route.kind === "post" ? (
           <ThreadView
+            key={`${route.actor}/${route.rkey}`}
             currentDid={authState.session?.did}
             thread={thread}
             loadingBranches={loadingThreadBranches}
@@ -4027,61 +4028,33 @@ function SurfaceView({
             {!showMedia && <p className="settings-note">Media density needs Show Media on.</p>}
             <p className="settings-note">Per-feed view overrides are managed on the Feeds page.</p>
             <p>Side columns are optional. Hide either to give the reader more room — the X on a column hides it, and these toggles bring it back. The far-left icon rail always stays.</p>
-            <button
-              type="button"
-              className={columns.feeds ? "settings-toggle on" : "settings-toggle"}
-              role="switch"
-              aria-checked={columns.feeds}
-              onClick={() => onSetColumnVisible("feeds", !columns.feeds)}
-            >
-              <span className="settings-toggle-track" aria-hidden="true">
-                <span className="settings-toggle-thumb" />
-              </span>
-              <span>{columns.feeds ? "Feeds column shown" : "Feeds column hidden"}</span>
-            </button>
-            <button
-              type="button"
-              className={columns.right ? "settings-toggle on" : "settings-toggle"}
-              role="switch"
-              aria-checked={columns.right}
-              onClick={() => onSetColumnVisible("right", !columns.right)}
-            >
-              <span className="settings-toggle-track" aria-hidden="true">
-                <span className="settings-toggle-thumb" />
-              </span>
-              <span>{columns.right ? "Right column shown" : "Right column hidden"}</span>
-            </button>
+            <SettingsToggle
+              checked={columns.feeds}
+              label={columns.feeds ? "Feeds column shown" : "Feeds column hidden"}
+              onChange={() => onSetColumnVisible("feeds", !columns.feeds)}
+            />
+            <SettingsToggle
+              checked={columns.right}
+              label={columns.right ? "Right column shown" : "Right column hidden"}
+              onChange={() => onSetColumnVisible("right", !columns.right)}
+            />
             <p className="settings-note">Stored locally in this browser. On narrow screens these columns hide automatically to fit.</p>
           </article>
           <article className="settings-panel">
             <span>{showMedia ? "On" : "Off"}</span>
             <h3>Media</h3>
             <p>On by default. Turn off for text-only reading: media becomes a per-post reveal control.</p>
-            <button
-              type="button"
-              className={showMedia ? "settings-toggle on" : "settings-toggle"}
-              role="switch"
-              aria-checked={showMedia}
-              onClick={onToggleShowMedia}
-            >
-              <span className="settings-toggle-track" aria-hidden="true">
-                <span className="settings-toggle-thumb" />
-              </span>
-              <span>{showMedia ? "Showing media" : "Hiding media"}</span>
-            </button>
+            <SettingsToggle
+              checked={showMedia}
+              label={showMedia ? "Showing media" : "Hiding media"}
+              onChange={onToggleShowMedia}
+            />
             <p>Adult / graphic media is off by default. Enabling asks for a local confirmation, not your birthday. BigBSky does not store this on a server; it only changes how this browser displays Bluesky-hosted labeled media. Use Bluesky&apos;s moderation settings for account-wide content filtering.</p>
-            <button
-              type="button"
-              className={showNsfw ? "settings-toggle on" : "settings-toggle"}
-              role="switch"
-              aria-checked={showNsfw}
-              onClick={onToggleNsfw}
-            >
-              <span className="settings-toggle-track" aria-hidden="true">
-                <span className="settings-toggle-thumb" />
-              </span>
-              <span>{showNsfw ? "Showing adult / graphic media" : "Hiding adult / graphic media"}</span>
-            </button>
+            <SettingsToggle
+              checked={showNsfw}
+              label={showNsfw ? "Showing adult / graphic media" : "Hiding adult / graphic media"}
+              onChange={onToggleNsfw}
+            />
             <a className="settings-link" href="https://bsky.app/moderation" target="_blank" rel="noreferrer">
               Open Bluesky moderation settings
             </a>
@@ -5094,6 +5067,31 @@ function SearchView({
   );
 }
 
+function SettingsToggle({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={checked ? "settings-toggle on" : "settings-toggle"}
+      role="switch"
+      aria-checked={checked}
+      onClick={onChange}
+    >
+      <span className="settings-toggle-track" aria-hidden="true">
+        <span className="settings-toggle-thumb" />
+      </span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
 function PostCardHeader({
   profile,
   post,
@@ -5193,7 +5191,7 @@ function ThreadedPostCard({
           }
           return (
             <section className="combined-thread-segment" key={post.uri}>
-              <p className={segment.text.includes("\n") ? "post-text has-line-breaks" : "post-text"}>
+              <p className={postTextClass(segment.text)}>
                 {index > 0 && <span className="combined-thread-break" aria-hidden="true" />}
                 {segment.text
                   ? renderRichText(segment.text, segment.facets, onOpenProfile, onOpenTag)
@@ -5765,7 +5763,6 @@ function PostActionBar({
             {canDeletePost && (
               <button
                 type="button"
-                className="danger-action"
                 onClick={() => {
                   setMoreMenuOpen(false);
                   deletePostCtx?.deletePost(post);
@@ -5858,7 +5855,7 @@ function CombinedThreadViewCard({
           }
           return (
             <section className="combined-thread-segment" key={post.uri}>
-              <p className={segment.text.includes("\n") ? "post-text has-line-breaks" : "post-text"}>
+              <p className={postTextClass(segment.text)}>
                 {index > 0 && <span className="combined-thread-break" aria-hidden="true" />}
                 {segment.text
                   ? renderRichText(segment.text, segment.facets, onOpenProfile, onOpenTag)
@@ -6040,7 +6037,6 @@ function PostCard({
   const text = post.record.text?.trim() || "";
   const postTimestamp = postSortAt(post);
   const postTimeLabel = formatPostTime(postTimestamp);
-  const preservesLineBreaks = text.includes("\n");
   const threadMarker = threadMarkerMatch(text);
   const hasRichContent = images.length > 0 || !!external || !!recordEmbed || !!video;
   const postVariant = images.length > 0 || !!video ? "has-media" : external ? "has-link" : recordEmbed ? "has-quote" : "text-only";
@@ -6112,7 +6108,7 @@ function PostCard({
         </div>
       )}
       {text ? (
-        <p className={preservesLineBreaks ? "post-text has-line-breaks" : "post-text"}>
+        <p className={postTextClass(text)}>
           {renderRichText(post.record.facets?.length ? post.record.text || "" : text, post.record.facets, onOpenProfile, onOpenTag)}
         </p>
       ) : (
@@ -6700,7 +6696,7 @@ function LongThreadCard({
             <section className="long-thread-part" key={post.uri}>
               <div className="long-thread-part-label">Thread post {part.partNumber} of {parts.length}</div>
               {text ? (
-                <p className={text.includes("\n") ? "post-text has-line-breaks" : "post-text"}>
+                <p className={postTextClass(text)}>
                   {renderRichText(post.record.facets?.length ? post.record.text || "" : text, post.record.facets, handlers.onOpenProfile, onOpenTag)}
                 </p>
               ) : (
