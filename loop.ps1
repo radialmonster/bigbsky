@@ -1,9 +1,9 @@
-# run-prompt.ps1 -- watchdog-driven autonomous opencode loop
+# loop.ps1 -- watchdog-driven autonomous opencode loop
 #
-# Replaces the blind `start /wait cmd /c "opencode run --auto < nextsessionprompt.md"`
-# loop with the same guards proven in N:\Projects\agent-dev-loop\loop.ps1:
+# Replaces a blind `start /wait cmd /c "opencode run --auto < nextsessionprompt.md"`
+# loop with watchdog and process-cleanup guards:
 #   - idle watchdog: kill the session + its process tree after IdleKillMinutes
-#     without output (fixes the recurring bigbsky-style dead hang)
+#     without output (prevents a silent child from hanging the loop forever)
 #   - hard per-iteration cap (HardTimeoutMinutes)
 #   - child-PID tracking + orphan reaping so dev servers (Vite, etc.) spawned by
 #     the agent can't hold the stdout pipe open and block the loop forever
@@ -13,10 +13,10 @@
 #   - single-instance mutex per repo
 #
 # Usage:
-#   pwsh -NoProfile -ExecutionPolicy Bypass -File run-prompt.ps1 [-DelayMinutes 10]
+#   pwsh -NoProfile -ExecutionPolicy Bypass -File loop.ps1 [-DelayMinutes 10]
 #        [-IdleKillMinutes 15] [-HardTimeoutMinutes 120] [-MaxIterations N]
 #
-# run-prompt.bat in this directory is a thin wrapper around this file.
+# loop.bat in this directory is a thin wrapper around this file.
 
 param(
   [int]$DelayMinutes      = 10,
@@ -32,6 +32,14 @@ param(
 # Globals / settings
 # ============================================================================
 $ErrorActionPreference   = 'Continue'
+$Utf8NoBom               = [System.Text.UTF8Encoding]::new($false)
+try {
+  # opencode emits UTF-8. Process defaults on Windows can otherwise decode the
+  # redirected bytes with an OEM code page, producing strings such as ΓåÆ.
+  [Console]::InputEncoding  = $Utf8NoBom
+  [Console]::OutputEncoding = $Utf8NoBom
+  $global:OutputEncoding    = $Utf8NoBom
+} catch {}
 $bar                     = '=' * 80
 $root                    = $PSScriptRoot
 $promptPath              = Join-Path $root $PromptFile
@@ -39,21 +47,47 @@ $logPath                 = Join-Path $root 'run.log'
 $tempDir                 = Join-Path $root '.loop-tmp'
 $stopFlagPath            = Join-Path $tempDir 'stop-after.flag'
 $lastKilledPath          = Join-Path $tempDir 'last-killed.txt'
+$activeSessionPath       = Join-Path $tempDir 'active-session.json'
 $HardTimeoutSec          = $HardTimeoutMinutes * 60
 $IdleKillSec             = $IdleKillMinutes * 60
 $NoOutputStatusSec       = 120    # heartbeat while agent is silent; does not kill
 $ChildDrainTimeoutSec    = 5      # after cmd exits, give children time to flush before force-kill
+$ChildScanIntervalSec    = 15     # WMI is slow; keep it off the hot output path as much as possible
 $OrphanSweepPids         = @()    # pids swept last iteration (for logging only)
 $LogMaxBytes             = 50MB
 $LogKeepDays             = 14
 
 if (-not (Test-Path $tempDir)) { New-Item -ItemType Directory -Path $tempDir -Force | Out-Null }
 
+$script:logWriter = $null
+
+function Open-LogWriter {
+  if ($script:logWriter) { return }
+  try {
+    $stream = [System.IO.FileStream]::new(
+      $logPath,
+      [System.IO.FileMode]::Append,
+      [System.IO.FileAccess]::Write,
+      [System.IO.FileShare]::ReadWrite
+    )
+    $script:logWriter = [System.IO.StreamWriter]::new($stream, $Utf8NoBom, 4096, $false)
+    $script:logWriter.AutoFlush = $true
+  } catch {
+    $script:logWriter = $null
+  }
+}
+
+function Close-LogWriter {
+  try { if ($script:logWriter) { $script:logWriter.Flush(); $script:logWriter.Dispose() } } catch {}
+  $script:logWriter = $null
+}
+
 function Rotate-LogIfNeeded {
   try {
     if (-not (Test-Path $logPath)) { return }
     $info = Get-Item $logPath -ErrorAction SilentlyContinue
     if ($null -eq $info -or $info.Length -lt $LogMaxBytes) { return }
+    Close-LogWriter
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $rotated = "$logPath.$stamp"
     if (Test-Path $rotated) { $rotated = "$logPath.$stamp-$([guid]::NewGuid().ToString('N').Substring(0,6))" }
@@ -76,28 +110,45 @@ function Normalize-LoopText {
   $normalized = $Text
   $normalized = $normalized.Replace([string][char]0x001A, ' - ')
   $normalized = $normalized.Replace([string][char]0x2426, ' - ')
+  # Remove complete ANSI CSI/OSC sequences. Removing only ESC leaves visible
+  # fragments such as "[31;1m" in both the terminal and run.log.
+  $normalized = $normalized -replace '\x1B\[[0-?]*[ -/]*[@-~]', ''
+  $normalized = $normalized -replace '\x1B\][^\x07]*(?:\x07|\x1B\\)', ''
   $normalized = $normalized -replace '[\x00-\x08\x0B\x0C\x0E-\x19\x1B-\x1F]', ''
   return $normalized
+}
+
+function Get-LogStamp {
+  return '[' + (Get-Date -Format 'HH:mm:ss.fff') + '] '
 }
 
 function Write-Both {
   param([string]$Text, [System.ConsoleColor]$Color = [System.ConsoleColor]::Gray)
   $Text = Normalize-LoopText $Text
   try { Write-Host $Text -ForegroundColor $Color } catch { Write-Host $Text }
-  try { Add-Content -Path $logPath -Value $Text -Encoding UTF8 -ErrorAction SilentlyContinue } catch {}
+  try { Open-LogWriter; $script:logWriter.WriteLine((Get-LogStamp) + $Text) } catch {}
 }
 
 function Append-Log {
   param([string]$Text, [switch]$NoNewline)
   $Text = Normalize-LoopText $Text
   try {
-    if ($NoNewline) { Add-Content -Path $logPath -Value $Text -NoNewline -Encoding UTF8 -ErrorAction SilentlyContinue }
-    else            { Add-Content -Path $logPath -Value $Text                -Encoding UTF8 -ErrorAction SilentlyContinue }
+    Open-LogWriter
+    if ($NoNewline) { $script:logWriter.Write($Text) }
+    else            { $script:logWriter.WriteLine((Get-LogStamp) + $Text) }
   } catch {}
 }
 
 function Stop-ProcessTree {
   param([int]$RootPid)
+  if ($RootPid -le 0) { return }
+  try {
+    # .NET's tree kill is both faster and more reliable than one WMI query per
+    # descendant. Keep the recursive fallback for older runtimes.
+    $rootProcess = [System.Diagnostics.Process]::GetProcessById($RootPid)
+    $rootProcess.Kill($true)
+    return
+  } catch {}
   try {
     $children = Get-CimInstance Win32_Process -Filter "ParentProcessId=$RootPid" -ErrorAction SilentlyContinue
     foreach ($c in $children) { Stop-ProcessTree -RootPid $c.ProcessId }
@@ -108,21 +159,79 @@ function Stop-ProcessTree {
 function Get-DescendantProcessIds {
   param([int]$RootPid)
   $seen = New-Object System.Collections.Generic.HashSet[int]
-  $queue = New-Object System.Collections.Generic.Queue[int]
-  [void]$queue.Enqueue($RootPid)
-  while ($queue.Count -gt 0) {
-    $parentPid = $queue.Dequeue()
-    try {
-      $children = Get-CimInstance Win32_Process -Filter "ParentProcessId=$parentPid" -ErrorAction SilentlyContinue
-      foreach ($child in @($children)) {
-        $childPid = [int]$child.ProcessId
-        if ($seen.Add($childPid)) {
-          [void]$queue.Enqueue($childPid)
+  try {
+    # Single WMI snapshot + in-memory parent map, instead of a recursive WMI
+    # query per parent (which stalled the read loop for seconds per cycle).
+    $childrenOf = @{}
+    foreach ($p in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
+      $ppid = [int]$p.ParentProcessId
+      $pid  = [int]$p.ProcessId
+      if (-not $childrenOf.ContainsKey($ppid)) { $childrenOf[$ppid] = New-Object System.Collections.Generic.List[int] }
+      $childrenOf[$ppid].Add($pid)
+    }
+    $queue = New-Object System.Collections.Generic.Queue[int]
+    [void]$queue.Enqueue($RootPid)
+    while ($queue.Count -gt 0) {
+      $parentPid = $queue.Dequeue()
+      if ($childrenOf.ContainsKey($parentPid)) {
+        foreach ($childPid in $childrenOf[$parentPid]) {
+          if ($seen.Add($childPid)) { [void]$queue.Enqueue($childPid) }
         }
       }
+    }
+  } catch {}
+  return @($seen)
+}
+
+function Save-ActiveSession {
+  param([System.Diagnostics.Process]$Process)
+  try {
+    $state = [ordered]@{
+      repo               = $root
+      pid                = $Process.Id
+      startedFileTimeUtc = $Process.StartTime.ToFileTimeUtc()
+    }
+    $state | ConvertTo-Json | Set-Content -LiteralPath $activeSessionPath -Encoding UTF8
+  } catch {
+    Write-Both "[loop] could not save active-session state (non-fatal): $_" DarkYellow
+  }
+}
+
+function Clear-ActiveSession {
+  param([int]$ExpectedPid = 0)
+  if (-not (Test-Path -LiteralPath $activeSessionPath)) { return }
+  if ($ExpectedPid -gt 0) {
+    try {
+      $state = Get-Content -Raw -LiteralPath $activeSessionPath | ConvertFrom-Json
+      if ([int]$state.pid -ne $ExpectedPid) { return }
     } catch {}
   }
-  return @($seen)
+  Remove-Item -LiteralPath $activeSessionPath -Force -ErrorAction SilentlyContinue
+}
+
+function Reap-TrackedSession {
+  if (-not (Test-Path -LiteralPath $activeSessionPath)) { return }
+  try {
+    $state = Get-Content -Raw -LiteralPath $activeSessionPath | ConvertFrom-Json
+    if ($state.repo -ne $root -or [int]$state.pid -le 0) {
+      throw 'state does not identify this repository'
+    }
+    $trackedPid = [int]$state.pid
+    $tracked = Get-Process -Id $trackedPid -ErrorAction SilentlyContinue
+    if ($tracked) {
+      $expectedFileTime = [int64]$state.startedFileTimeUtc
+      $actualFileTime = [int64]$tracked.StartTime.ToFileTimeUtc()
+      $startDeltaSec = [math]::Abs(($actualFileTime - $expectedFileTime) / 10000000.0)
+      if ($expectedFileTime -le 0 -or $startDeltaSec -gt 2) {
+        throw "PID $trackedPid was reused; creation time differs by $([math]::Round($startDeltaSec, 3))s"
+      }
+      Write-Both "[loop] reaping tracked session left by an interrupted wrapper: $($tracked.ProcessName) (PID $trackedPid)" Yellow
+      Stop-ProcessTree -RootPid $trackedPid
+    }
+    Clear-ActiveSession -ExpectedPid $trackedPid
+  } catch {
+    Write-Both "[loop] tracked-session cleanup skipped: $_" Red
+  }
 }
 
 # ============================================================================
@@ -138,7 +247,19 @@ try {
   $script:loopMutex = New-Object System.Threading.Mutex($false, $mutexName)
 }
 $script:loopMutexHeld = $false
+$script:activeRootPid = 0
 Register-EngineEvent PowerShell.Exiting -Action {
+  try {
+    if ($script:activeRootPid -gt 0) {
+      [System.Diagnostics.Process]::GetProcessById($script:activeRootPid).Kill($true)
+    }
+  } catch {}
+  try { if ($script:logWriter) { $script:logWriter.Flush(); $script:logWriter.Dispose() } } catch {}
+  try {
+    if ($script:activeRootPid -gt 0 -and (Test-Path -LiteralPath $activeSessionPath)) {
+      Remove-Item -LiteralPath $activeSessionPath -Force -ErrorAction SilentlyContinue
+    }
+  } catch {}
   try {
     if ($script:loopMutexHeld -and $script:loopMutex) { $script:loopMutex.ReleaseMutex() }
     if ($script:loopMutex) { $script:loopMutex.Dispose() }
@@ -244,6 +365,7 @@ function Show-HintBannerThrottled {
 function Sweep-Orphans {
   $swept = @()
   $escapedRoot = [regex]::Escape($root)
+  Reap-TrackedSession
   try {
     $candidates = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
       Where-Object { $_.CommandLine -and $_.CommandLine -match $escapedRoot }
@@ -251,7 +373,9 @@ function Sweep-Orphans {
       $name = $c.Name
       # Skip our own process and cmd.exe wrappers; target stale agent/dev processes.
       if ($c.ProcessId -eq $PID) { continue }
-      if ($name -in @('opencode.exe', 'node.exe', 'npm.exe', 'npx.exe')) {
+      $isTrackedRuntime = $name -in @('opencode.exe', 'node.exe', 'npm.exe', 'npx.exe')
+      $isLauncher = $name -eq 'cmd.exe' -and $c.CommandLine -match [regex]::Escape($promptPath)
+      if ($isTrackedRuntime -or $isLauncher) {
         $swept += "`"$($c.Name)`" PID $($c.ProcessId)"
         Stop-ProcessTree -RootPid $c.ProcessId
       }
@@ -276,17 +400,17 @@ if (-not (Test-Path $promptPath)) {
 }
 
 Write-Both ''
-Write-Both "[run-prompt.ps1] starting at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" Magenta
-Write-Both "[run-prompt.ps1] repo:        $root" DarkGray
-Write-Both "[run-prompt.ps1] prompt:      $PromptFile" DarkGray
-Write-Both "[run-prompt.ps1] delay:       ${DelayMinutes}m between sessions" DarkGray
-Write-Both "[run-prompt.ps1] idle kill:   ${IdleKillMinutes}m without output" DarkGray
-Write-Both "[run-prompt.ps1] hard cap:    ${HardTimeoutMinutes}m per session" DarkGray
-if ($MaxIterations -gt 0) { Write-Both "[run-prompt.ps1] max iterations: $MaxIterations" DarkGray }
-Write-Both "[run-prompt.ps1] logging to:  $logPath" DarkGray
+Write-Both "[loop.ps1] starting at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" Magenta
+Write-Both "[loop.ps1] repo:        $root" DarkGray
+Write-Both "[loop.ps1] prompt:      $PromptFile" DarkGray
+Write-Both "[loop.ps1] delay:       ${DelayMinutes}m between sessions" DarkGray
+Write-Both "[loop.ps1] idle kill:   ${IdleKillMinutes}m without output" DarkGray
+Write-Both "[loop.ps1] hard cap:    ${HardTimeoutMinutes}m per session" DarkGray
+if ($MaxIterations -gt 0) { Write-Both "[loop.ps1] max iterations: $MaxIterations" DarkGray }
+Write-Both "[loop.ps1] logging to:  $logPath" DarkGray
 Write-Both ''
-Write-Both '[run-prompt.ps1] Ctrl+C aborts immediately.  Q ends after this session.' Yellow
-Write-Both ('[run-prompt.ps1] Or drop a sentinel file: ' + $stopFlagPath) DarkGray
+Write-Both '[loop.ps1] Ctrl+C aborts immediately.  Q ends after this session.' Yellow
+Write-Both ('[loop.ps1] Or drop a sentinel file: ' + $stopFlagPath) DarkGray
 Write-Both '             (touch it from another window to stop cleanly)' DarkGray
 Write-Both ''
 
@@ -297,14 +421,23 @@ if (Test-Path $stopFlagPath) { Remove-Item $stopFlagPath -ErrorAction SilentlyCo
 # ============================================================================
 $iter = 0
 $script:anySessionFailed = $false
+Acquire-LoopLock
+try {
 while ($true) {
   $iter++
   $sessionFailed = $false
   $sessionStopRequested = $false
   $aborted = $false
   $abortReason = ''
+  $sessionRootPid = 0
+  $sessionCleaned = $false
+  $proc = $null
+  $stdout = $null
+  $stderr = $null
+  $pendingRead = $null
+  $pendingErrRead = $null
+  $knownChildPids = New-Object System.Collections.Generic.HashSet[int]
   try {
-    Acquire-LoopLock
     if ($script:stopRequested) {
       $sessionStopRequested = $true
       continue
@@ -335,31 +468,39 @@ while ($true) {
     # 2) Spawn opencode exactly like the old bat did.
     $psi                        = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName               = (Get-Command cmd.exe).Source
-    $psi.Arguments              = '/d /c "' + $LauncherCommand + ' < "' + $PromptFile + '"'
+    # Include the absolute prompt path so a fallback WMI sweep can identify
+    # this repo's launcher after an ungraceful wrapper exit.
+    $psi.Arguments              = '/d /s /c "' + $LauncherCommand + ' < "' + $promptPath + '""'
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError  = $true
     $psi.UseShellExecute        = $false
     $psi.CreateNoWindow         = $true
     $psi.WorkingDirectory       = $root
+    try {
+      $psi.StandardOutputEncoding = $Utf8NoBom
+      $psi.StandardErrorEncoding  = $Utf8NoBom
+    } catch {}
 
     Write-Both "[loop] invoking $LauncherCommand (prompt: $PromptFile) ..." DarkGray
 
     $proc = New-Object System.Diagnostics.Process
     $proc.StartInfo = $psi
     [void]$proc.Start()
+    $sessionRootPid = $proc.Id
+    $script:activeRootPid = $sessionRootPid
+    Save-ActiveSession -Process $proc
     $stdout = $proc.StandardOutput
     $stderr = $proc.StandardError
 
     $iterStart = Get-Date
     $exitDetectedAt = $null
-    $knownChildPids = New-Object System.Collections.Generic.HashSet[int]
-    $lastChildScanAt = [DateTime]::MinValue
+    $exitCleanupAt = $null
+    $exitCleanupDone = $false
+    $lastChildScanAt = Get-Date
     $lastOutputAt = Get-Date
     $lastNoOutputStatusAt = Get-Date
 
     # 3) Read loop with idle watchdog + hard cap + orphan tracking.
-    $pendingRead = $null
-    $pendingErrRead = $null
     $stdoutClosed = $false
     $stderrClosed = $false
     $truncateLine = {
@@ -376,7 +517,7 @@ while ($true) {
       $trim = $shown.Trim()
       if ($trim -eq '') { return }
       $color = if ($Source -eq 'stderr') { [System.ConsoleColor]::DarkGray } else { [System.ConsoleColor]::Gray }
-      Write-Host $shown -ForegroundColor $color
+      Write-Host ((Get-LogStamp) + $shown) -ForegroundColor $color
       Append-Log -Text $shown
     }
 
@@ -386,12 +527,12 @@ while ($true) {
       # Hard cap.
       if (($now - $iterStart).TotalSeconds -ge $HardTimeoutSec) {
         $aborted = $true
-        $abortReason = "hard cap ${HardTimeoutSec}s -- killing opencode + descendants"
+        $abortReason = "hard cap ${HardTimeoutSec}s -- killing launcher + descendants"
         break
       }
 
       # Track child PIDs while alive so we can reap orphans after exit.
-      if (-not $proc.HasExited -and ($now - $lastChildScanAt).TotalSeconds -ge 2) {
+      if (-not $proc.HasExited -and ($now - $lastChildScanAt).TotalSeconds -ge $ChildScanIntervalSec) {
         $lastChildScanAt = $now
         try {
           foreach ($childPid in @(Get-DescendantProcessIds -RootPid $proc.Id)) {
@@ -403,41 +544,44 @@ while ($true) {
       # Idle watchdog: kill if no output for IdleKillSec.
       if (-not $proc.HasExited -and ($now - $lastOutputAt).TotalSeconds -ge $IdleKillSec) {
         $aborted = $true
-        $abortReason = "no output for ${IdleKillSec}s -- killing opencode + descendants"
+        $abortReason = "no output for ${IdleKillSec}s -- killing launcher + descendants"
         break
       }
 
       # Heartbeat while silent (does not kill).
       if (-not $proc.HasExited -and ($now - $lastOutputAt).TotalSeconds -ge $NoOutputStatusSec -and ($now - $lastNoOutputStatusAt).TotalSeconds -ge $NoOutputStatusSec) {
         $silentFor = [int]($now - $lastOutputAt).TotalSeconds
-        Write-Both "[loop] waiting: no opencode output for ${silentFor}s; process still alive (watchdog kills at ${IdleKillSec}s silent)." DarkYellow
+        Write-Both "[loop] waiting: no launcher output for ${silentFor}s; process still alive (watchdog kills at ${IdleKillSec}s silent)." DarkYellow
         $lastNoOutputStatusAt = $now
       }
 
       if ($proc.HasExited) {
         if ($null -eq $exitDetectedAt) {
           $exitDetectedAt = $now
+        }
+        $streamsClosed = $stdoutClosed -and $stderrClosed
+        $drainExpired = ($now - $exitDetectedAt).TotalSeconds -ge $ChildDrainTimeoutSec
+        if (($streamsClosed -or $drainExpired) -and -not $exitCleanupDone) {
+          # Do the slow final WMI snapshot only after buffered output is
+          # drained (or the drain deadline expires), never before it.
+          try {
+            foreach ($childPid in @(Get-DescendantProcessIds -RootPid $sessionRootPid)) {
+              [void]$knownChildPids.Add([int]$childPid)
+            }
+          } catch {}
           foreach ($childPid in @($knownChildPids)) {
             try {
               $still = Get-Process -Id $childPid -ErrorAction SilentlyContinue
               if ($still) {
-                Write-Both "[loop] opencode exited; reaping orphan child: $($still.ProcessName) (PID $childPid)" DarkYellow
+                Write-Both "[loop] launcher exited; reaping orphan child: $($still.ProcessName) (PID $childPid)" DarkYellow
                 Stop-ProcessTree -RootPid $childPid
               }
             } catch {}
           }
+          $exitCleanupDone = $true
+          $exitCleanupAt = Get-Date
         }
-        if (($now - $exitDetectedAt).TotalSeconds -ge $ChildDrainTimeoutSec) {
-          try {
-            $rest = $stdout.ReadToEnd()
-            if ($rest) {
-              foreach ($l in ($rest -split "`r?`n")) { & $emitLine $l 'stdout' }
-            }
-            $errRest = $stderr.ReadToEnd()
-            if ($errRest) {
-              foreach ($l in ($errRest -split "`r?`n")) { & $emitLine $l 'stderr' }
-            }
-          } catch {}
+        if ($streamsClosed -or ($exitCleanupDone -and ((Get-Date) - $exitCleanupAt).TotalSeconds -ge $ChildDrainTimeoutSec)) {
           break
         }
       }
@@ -454,8 +598,8 @@ while ($true) {
       }
 
       $finished = $false
-      if ($null -ne $pendingRead) { $finished = $pendingRead.Wait(1000) }
-      else { Start-Sleep -Seconds 1 }
+      if ($null -ne $pendingRead) { $finished = $pendingRead.Wait(100) }
+      else { Start-Sleep -Milliseconds 100 }
       if ($finished -and $null -ne $pendingRead) {
         $line = $pendingRead.Result
         try { $pendingRead.Dispose() } catch {}
@@ -507,26 +651,13 @@ while ($true) {
     if ($exitCode -ne 0) {
       $sessionFailed = $true
       $script:anySessionFailed = $true
-      try {
-        if (-not $proc.HasExited) {
-          Write-Both "[loop] child process has not exited after stream drain; skipping blocking stderr ReadToEnd." Red
-          throw 'child process did not exit cleanly'
-        }
-        $err = $proc.StandardError.ReadToEnd()
-        if ($err) {
-          Write-Both '[loop] STDERR:' Red
-          $i = 0
-          foreach ($line in ($err -split "`r?`n")) {
-            if (-not $line) { continue }
-            if ($i -lt 8) { Write-Both "         $line" Red }
-            $i++
-          }
-        }
-      } catch {}
     }
     try { $stdout.Dispose() } catch {}
     try { $stderr.Dispose() } catch {}
     try { $proc.Dispose() } catch {}
+    Clear-ActiveSession -ExpectedPid $sessionRootPid
+    $script:activeRootPid = 0
+    $sessionCleaned = $true
 
     # 5) SESSION COMPLETE banner.
     $endStamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
@@ -534,7 +665,7 @@ while ($true) {
     Write-Both ''
     Write-Both ''
     Write-Both $bar Green
-    Write-Both " SESSION COMPLETE  #$iter   $endStamp   (opencode exit=$exitCode$extra)" Green
+    Write-Both " SESSION COMPLETE  #$iter   $endStamp   (launcher exit=$exitCode$extra)" Green
 
     [void](Test-StopRequested)
     if ($script:stopRequested) {
@@ -550,7 +681,18 @@ while ($true) {
     Write-Both '' Red
     Write-Both "[loop] iteration #$iter raised: $_" Red
   } finally {
-    Release-LoopLock
+    if (-not $sessionCleaned -and $sessionRootPid -gt 0) {
+      Write-Both "[loop] cleaning process tree after interrupted iteration: PID $sessionRootPid" DarkYellow
+      Stop-ProcessTree -RootPid $sessionRootPid
+      foreach ($childPid in @($knownChildPids)) { Stop-ProcessTree -RootPid $childPid }
+      Clear-ActiveSession -ExpectedPid $sessionRootPid
+      $script:activeRootPid = 0
+    }
+    try { if ($pendingRead) { $pendingRead.Dispose() } } catch {}
+    try { if ($pendingErrRead) { $pendingErrRead.Dispose() } } catch {}
+    try { if ($stdout) { $stdout.Dispose() } } catch {}
+    try { if ($stderr) { $stderr.Dispose() } } catch {}
+    try { if ($proc) { $proc.Dispose() } } catch {}
   }
 
   if ($sessionStopRequested) { break }
@@ -606,11 +748,20 @@ while ($true) {
     $script:skipSleepRequested = $false
   }
 }
+} finally {
+  if ($script:activeRootPid -gt 0) {
+    Stop-ProcessTree -RootPid $script:activeRootPid
+    Clear-ActiveSession -ExpectedPid $script:activeRootPid
+    $script:activeRootPid = 0
+  }
+  Release-LoopLock
+}
 
 if ($MaxIterations -gt 0 -and $script:anySessionFailed) {
   Write-Both ''
-  Write-Both '[run-prompt.ps1] exited after failed bounded session.' Red
+  Write-Both '[loop.ps1] exited after failed bounded session.' Red
   exit 1
 }
 Write-Both ''
-Write-Both '[run-prompt.ps1] exited cleanly.' Magenta
+Write-Both '[loop.ps1] exited cleanly.' Magenta
+Close-LogWriter
