@@ -123,7 +123,12 @@ if (!/export function getLikes\(/.test(api) || !/export function getRepostedBy\(
 // navigation, and close (ThreadEngagementPanel.test.tsx); the old App.tsx
 // definition / loadMore regexes (on-demand loadPage, cursor pagination, and the
 // load-more button) were retired per #19.
-requirePattern(/<ErrorBoundary label=\{`post-row:\$\{post\.uri\}`\} fallback=\{\(\) => <PostRowFallback \/>\}>\s*\{children\}\s*<\/ErrorBoundary>/, "each virtualized row should be wrapped in a per-row error boundary so one bad record degrades a single row");
+// The virtualized row rendering (VirtualPostList + MeasuredPostRow) moved to
+// src/features/feed/VirtualPostList.tsx (slice of #18/#19). The per-row error
+// boundary (a malformed record degrades a single row to a compact fallback) is
+// now guaranteed behaviorally by src/features/feed/VirtualPostList.test.tsx
+// (MeasuredPostRow wraps children in an ErrorBoundary with the PostRowFallback);
+// the old App.tsx source pin was retired per #19.
 if (!/import\.meta\.env\.PROD[\s\S]*import\.meta\.env\.BASE_URL\}sw\.js/.test(main)) {
   failures.push("service-worker registration should be gated behind PROD and derive its path from BASE_URL");
 }

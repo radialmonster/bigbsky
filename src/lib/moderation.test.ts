@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { isSensitiveLabel, moderationLabelText, sensitiveMediaValues } from "./moderation";
+import { isAdultPost, isSensitiveLabel, moderationLabelText, sensitiveMediaValues } from "./moderation";
+import type { FeedPost } from "../api";
 
 describe("moderationLabelText", () => {
   it("formats a plain label value as title-cased words", () => {
@@ -57,5 +58,29 @@ describe("sensitiveMediaValues", () => {
   it("returns an empty array when nothing is sensitive", () => {
     expect(sensitiveMediaValues([{ val: "news" }, { val: "funny" }])).toEqual([]);
     expect(sensitiveMediaValues([])).toEqual([]);
+  });
+});
+
+describe("isAdultPost", () => {
+  const makePost = (labels: Array<{ val?: string }>, authorLabels: Array<{ val?: string }> = []): FeedPost => ({
+    uri: "at://did:plc:author/app.bsky.feed.post/abc",
+    cid: "cid-1",
+    author: { did: "did:plc:author", handle: "author.bsky.social", displayName: "Author", labels: authorLabels },
+    record: { text: "hello", createdAt: "2026-01-01T00:00:00.000Z" },
+    labels,
+  });
+
+  it("flags a post carrying an adult/graphic media label", () => {
+    expect(isAdultPost(makePost([{ val: "adult" }]))).toBe(true);
+    expect(isAdultPost(makePost([{ val: "graphic" }]))).toBe(true);
+  });
+
+  it("flags a post whose author carries an adult/graphic label", () => {
+    expect(isAdultPost(makePost([], [{ val: "porn" }]))).toBe(true);
+  });
+
+  it("ignores non-sensitive labels", () => {
+    expect(isAdultPost(makePost([{ val: "news" }]))).toBe(false);
+    expect(isAdultPost(makePost([]))).toBe(false);
   });
 });

@@ -36,10 +36,17 @@ requirePattern(app, /safeLocalStorageSet\(columnsStorageKey, JSON\.stringify\(ne
 // source pins (defaultRowHeight ternary, `defaultRowHeight * 3` overscan, the
 // inline `while (low <= high)` search, and the `rowTop + previousHeight <=
 // scrollTop` compensation condition) were retired per #19.
-requirePattern(app, /data-total-rows=\{items\.length\}[\s\S]*data-rendered-rows=\{visibleItems\.length\}/s, "virtual list should expose loaded and rendered row counts");
-requirePattern(app, /topSpacerHeight > 0[\s\S]*bottomSpacerHeight > 0/s, "virtual list should use top and bottom spacers instead of mounting all rows");
+//
+// The VirtualPostList/MeasuredPostRow component slice moved to
+// src/features/feed/VirtualPostList.tsx (issue #18/#19). Its guarantees are now
+// covered behaviorally by src/features/feed/VirtualPostList.test.tsx: loaded and
+// rendered row counts on the list root (data-total-rows / data-rendered-rows),
+// top/bottom spacer rendering instead of mounting every row, the rendered-rows
+// callback (onRenderedRowsChange), and the per-row error boundary fallback. The
+// old App.tsx source pins (data-total-rows/data-rendered-rows attributes, the
+// topSpacerHeight > 0 / bottomSpacerHeight > 0 spacer conditions, and the
+// onRenderedRowsChange(visibleItems.length) call) were retired per #19.
 requirePattern(css, /\.virtual-list \{[\s\S]*overflow-anchor: none;/s, "virtual list should disable native scroll anchoring so measured row compensation is not doubled");
-requirePattern(app, /onRenderedRowsChange\(visibleItems\.length\)/, "development inspector should receive rendered row counts");
 
 // Image aspect-ratio metadata moved to src/features/post/PostImageVideoMedia.tsx;
 // guaranteed behaviorally by PostImageVideoMedia.test.tsx (inline aspectRatio
