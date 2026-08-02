@@ -36,8 +36,9 @@ requirePattern(css, /\.virtual-list \{[\s\S]*overflow-anchor: none;/s, "virtual 
 requirePattern(app, /onRenderedRowsChange\(visibleItems\.length\)/, "development inspector should receive rendered row counts");
 
 requirePattern(app, /image\.aspectRatio\?\.width && image\.aspectRatio\?\.height[\s\S]*aspectRatio: `\$\{image\.aspectRatio\.width\} \/ \$\{image\.aspectRatio\.height\}`/s, "image embeds should use Bluesky aspect-ratio metadata");
-requirePattern(app, /video\.aspectRatio\?\.width && video\.aspectRatio\?\.height[\s\S]*`\$\{video\.aspectRatio\.width\} \/ \$\{video\.aspectRatio\.height\}`/s, "video embeds should use Bluesky aspect-ratio metadata");
-requirePattern(app, /const videoFrameStyle = aspectRatio[\s\S]*"--video-aspect": aspectRatio/s, "video embeds should put aspect ratio on the stable card frame");
+// Video aspect-ratio metadata and frame-style handling moved to
+// src/features/post/VideoEmbedCard.tsx; guaranteed behaviorally by
+// VideoEmbedCard.test.tsx (--video-aspect on the stable frame).
 requirePattern(css, /\.post-card \{[\s\S]*contain: content;/s, "post cards should use containment to limit repaint scope");
 requirePattern(css, /\.post-card\.has-media,[\s\S]*--post-embed-min: 220px;/s, "rich post cards should reserve stable embed space");
 requirePattern(css, /\.link-card \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto;/s, "link cards should have stable desktop grid sizing");
