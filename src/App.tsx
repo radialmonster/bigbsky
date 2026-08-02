@@ -3815,6 +3815,161 @@ function MeasuredPostRow({
   );
 }
 
+function FeedDirectoryCard({
+  source,
+  densityByContext,
+  showMediaByFeed,
+  showMedia,
+  defaultDensity,
+  pinnedFeedIds,
+  onOpenFeed,
+  onTogglePinnedFeed,
+  onFeedDensityOverrideChange,
+  onFeedShowMediaOverrideChange,
+  canFollowFeeds,
+  followBusyUri,
+  onToggleFollowFeed,
+  canReorderFeeds = false,
+  index = 0,
+  reorderCount = 0,
+  draggingFeedUri = null,
+  setDraggingFeedUri,
+  onReorderFeed,
+  onMoveFeed,
+}: {
+  source: FeedSource;
+  densityByContext: Record<string, DensityMode>;
+  showMediaByFeed: Record<string, boolean>;
+  showMedia: boolean;
+  defaultDensity: DensityMode;
+  pinnedFeedIds: string[];
+  onOpenFeed: (source: FeedSource) => void;
+  onTogglePinnedFeed: (source: FeedSource) => void;
+  onFeedDensityOverrideChange: (source: FeedSource, density: DensityMode | null) => void;
+  onFeedShowMediaOverrideChange: (source: FeedSource, value: boolean | null) => void;
+  canFollowFeeds?: boolean;
+  followBusyUri?: string | null;
+  onToggleFollowFeed?: (feedUri: string, label?: string) => void;
+  canReorderFeeds?: boolean;
+  index?: number;
+  reorderCount?: number;
+  draggingFeedUri?: string | null;
+  setDraggingFeedUri?: (uri: string | null) => void;
+  onReorderFeed?: (fromUri: string, toUri: string) => void;
+  onMoveFeed?: (uri: string, direction: -1 | 1) => void;
+}) {
+  const override = feedDensityOverride(source, densityByContext);
+  const mediaOverride = feedShowMediaOverride(source, showMediaByFeed);
+  const feedShowMedia = mediaOverride ?? showMedia;
+  return (
+    <article
+      className={
+        draggingFeedUri && draggingFeedUri !== source.uri
+          ? "feed-directory-card reorderable drop-target"
+          : canReorderFeeds
+            ? "feed-directory-card reorderable"
+            : "feed-directory-card"
+      }
+      key={source.id}
+      onDragOver={
+        canReorderFeeds && onReorderFeed
+          ? (event) => {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+            }
+          : undefined
+      }
+      onDrop={
+        canReorderFeeds && onReorderFeed
+          ? (event) => {
+              event.preventDefault();
+              const fromUri = event.dataTransfer.getData("text/plain");
+              if (fromUri) {
+                onReorderFeed(fromUri, source.uri);
+              }
+              setDraggingFeedUri?.(null);
+            }
+          : undefined
+      }
+    >
+      {canReorderFeeds && setDraggingFeedUri && onMoveFeed && (
+        <div
+          className="feed-card-reorder"
+          draggable
+          onDragStart={(event) => {
+            event.dataTransfer.setData("text/plain", source.uri);
+            event.dataTransfer.effectAllowed = "move";
+            setDraggingFeedUri(source.uri);
+          }}
+          onDragEnd={() => setDraggingFeedUri(null)}
+          title="Drag to reorder"
+        >
+          <span className="feed-card-grip" aria-hidden="true">
+            <GripVertical size={14} />
+          </span>
+          <button
+            className="feed-move"
+            type="button"
+            disabled={index === 0}
+            onClick={() => onMoveFeed(source.uri, -1)}
+            aria-label={`Move ${source.label} up`}
+            title="Move up"
+          >
+            <ChevronUp size={14} />
+          </button>
+          <button
+            className="feed-move"
+            type="button"
+            disabled={index === reorderCount - 1}
+            onClick={() => onMoveFeed(source.uri, 1)}
+            aria-label={`Move ${source.label} down`}
+            title="Move down"
+          >
+            <ChevronDown size={14} />
+          </button>
+        </div>
+      )}
+      <button type="button" onClick={() => onOpenFeed(source)}>
+        <span>{source.group}</span>
+        <strong>{source.label}</strong>
+        <small>{source.description}</small>
+      </button>
+      <FeedDensityOverrideControl
+        source={source}
+        defaultDensity={defaultDensity}
+        override={override}
+        showMedia={feedShowMedia}
+        onChange={onFeedDensityOverrideChange}
+      />
+      <FeedShowMediaOverrideControl
+        source={source}
+        defaultShowMedia={showMedia}
+        override={mediaOverride}
+        onChange={onFeedShowMediaOverrideChange}
+      />
+      <div className="feed-directory-card-actions">
+        <button
+          className={pinnedFeedIds.includes(source.id) ? "directory-pin pinned" : "directory-pin"}
+          type="button"
+          onClick={() => onTogglePinnedFeed(source)}
+        >
+          {pinnedFeedIds.includes(source.id) ? "Pinned" : "Pin locally"}
+        </button>
+        {canFollowFeeds && onToggleFollowFeed && (
+          <button
+            type="button"
+            className="directory-unfollow"
+            onClick={() => onToggleFollowFeed(source.uri, source.label)}
+            disabled={followBusyUri === source.uri}
+          >
+            {followBusyUri === source.uri ? "…" : "Following"}
+          </button>
+        )}
+      </div>
+    </article>
+  );
+}
+
 function SurfaceView({
   containerRef,
   auth,
@@ -4389,158 +4544,52 @@ function SurfaceView({
               />
             ) : (
               <div className="feed-directory-grid">
-                {subscribedFeeds.map((source, index) => {
-                  const override = feedDensityOverride(source, densityByContext);
-                  const mediaOverride = feedShowMediaOverride(source, showMediaByFeed);
-                  const feedShowMedia = mediaOverride ?? showMedia;
-                  return (
-                    <article
-                      className={
-                        draggingFeedUri && draggingFeedUri !== source.uri
-                          ? "feed-directory-card reorderable drop-target"
-                          : canReorderFeeds
-                            ? "feed-directory-card reorderable"
-                            : "feed-directory-card"
-                      }
-                      key={source.id}
-                      onDragOver={
-                        canReorderFeeds
-                          ? (event) => {
-                              event.preventDefault();
-                              event.dataTransfer.dropEffect = "move";
-                            }
-                          : undefined
-                      }
-                      onDrop={
-                        canReorderFeeds
-                          ? (event) => {
-                              event.preventDefault();
-                              const fromUri = event.dataTransfer.getData("text/plain");
-                              if (fromUri) {
-                                onReorderFeed(fromUri, source.uri);
-                              }
-                              setDraggingFeedUri(null);
-                            }
-                          : undefined
-                      }
-                    >
-                      {canReorderFeeds && (
-                        <div
-                          className="feed-card-reorder"
-                          draggable
-                          onDragStart={(event) => {
-                            event.dataTransfer.setData("text/plain", source.uri);
-                            event.dataTransfer.effectAllowed = "move";
-                            setDraggingFeedUri(source.uri);
-                          }}
-                          onDragEnd={() => setDraggingFeedUri(null)}
-                          title="Drag to reorder"
-                        >
-                          <span className="feed-card-grip" aria-hidden="true">
-                            <GripVertical size={14} />
-                          </span>
-                          <button
-                            className="feed-move"
-                            type="button"
-                            disabled={index === 0}
-                            onClick={() => onMoveFeed(source.uri, -1)}
-                            aria-label={`Move ${source.label} up`}
-                            title="Move up"
-                          >
-                            <ChevronUp size={14} />
-                          </button>
-                          <button
-                            className="feed-move"
-                            type="button"
-                            disabled={index === subscribedFeeds.length - 1}
-                            onClick={() => onMoveFeed(source.uri, 1)}
-                            aria-label={`Move ${source.label} down`}
-                            title="Move down"
-                          >
-                            <ChevronDown size={14} />
-                          </button>
-                        </div>
-                      )}
-                      <button type="button" onClick={() => onOpenFeed(source)}>
-                        <span>{source.group}</span>
-                        <strong>{source.label}</strong>
-                        <small>{source.description}</small>
-                      </button>
-                      <FeedDensityOverrideControl
-                        source={source}
-                        defaultDensity={defaultDensity}
-                        override={override}
-                        showMedia={feedShowMedia}
-                        onChange={onFeedDensityOverrideChange}
-                      />
-                      <FeedShowMediaOverrideControl
-                        source={source}
-                        defaultShowMedia={showMedia}
-                        override={mediaOverride}
-                        onChange={onFeedShowMediaOverrideChange}
-                      />
-                      <div className="feed-directory-card-actions">
-                        <button
-                          className={pinnedFeedIds.includes(source.id) ? "directory-pin pinned" : "directory-pin"}
-                          type="button"
-                          onClick={() => onTogglePinnedFeed(source)}
-                        >
-                          {pinnedFeedIds.includes(source.id) ? "Pinned" : "Pin locally"}
-                        </button>
-                        {canFollowFeeds && (
-                          <button
-                            type="button"
-                            className="directory-unfollow"
-                            onClick={() => onToggleFollowFeed(source.uri, source.label)}
-                            disabled={followBusyUri === source.uri}
-                          >
-                            {followBusyUri === source.uri ? "…" : "Following"}
-                          </button>
-                        )}
-                      </div>
-                    </article>
-                  );
-                })}
+                {subscribedFeeds.map((source, index) => (
+                  <FeedDirectoryCard
+                    key={source.id}
+                    source={source}
+                    densityByContext={densityByContext}
+                    showMediaByFeed={showMediaByFeed}
+                    showMedia={showMedia}
+                    defaultDensity={defaultDensity}
+                    pinnedFeedIds={pinnedFeedIds}
+                    onOpenFeed={onOpenFeed}
+                    onTogglePinnedFeed={onTogglePinnedFeed}
+                    onFeedDensityOverrideChange={onFeedDensityOverrideChange}
+                    onFeedShowMediaOverrideChange={onFeedShowMediaOverrideChange}
+                    canFollowFeeds={canFollowFeeds}
+                    followBusyUri={followBusyUri}
+                    onToggleFollowFeed={onToggleFollowFeed}
+                    canReorderFeeds={canReorderFeeds}
+                    index={index}
+                    reorderCount={subscribedFeeds.length}
+                    draggingFeedUri={draggingFeedUri}
+                    setDraggingFeedUri={setDraggingFeedUri}
+                    onReorderFeed={onReorderFeed}
+                    onMoveFeed={onMoveFeed}
+                  />
+                ))}
               </div>
             )}
           </section>
           <section className="bsky-list-section" aria-label="Built-in feeds">
             <h3 className="bsky-list-section-heading">Built-in feeds</h3>
             <div className="feed-directory-grid">
-              {builtInFeeds.map((source) => {
-                const override = feedDensityOverride(source, densityByContext);
-                const mediaOverride = feedShowMediaOverride(source, showMediaByFeed);
-                const feedShowMedia = mediaOverride ?? showMedia;
-                return (
-                  <article className="feed-directory-card" key={source.id}>
-                    <button type="button" onClick={() => onOpenFeed(source)}>
-                      <span>{source.group}</span>
-                      <strong>{source.label}</strong>
-                      <small>{source.description}</small>
-                    </button>
-                    <FeedDensityOverrideControl
-                      source={source}
-                      defaultDensity={defaultDensity}
-                      override={override}
-                      showMedia={feedShowMedia}
-                      onChange={onFeedDensityOverrideChange}
-                    />
-                    <FeedShowMediaOverrideControl
-                      source={source}
-                      defaultShowMedia={showMedia}
-                      override={mediaOverride}
-                      onChange={onFeedShowMediaOverrideChange}
-                    />
-                    <button
-                      className={pinnedFeedIds.includes(source.id) ? "directory-pin pinned" : "directory-pin"}
-                      type="button"
-                      onClick={() => onTogglePinnedFeed(source)}
-                    >
-                      {pinnedFeedIds.includes(source.id) ? "Pinned" : "Pin locally"}
-                    </button>
-                  </article>
-                );
-              })}
+              {builtInFeeds.map((source) => (
+                <FeedDirectoryCard
+                  key={source.id}
+                  source={source}
+                  densityByContext={densityByContext}
+                  showMediaByFeed={showMediaByFeed}
+                  showMedia={showMedia}
+                  defaultDensity={defaultDensity}
+                  pinnedFeedIds={pinnedFeedIds}
+                  onOpenFeed={onOpenFeed}
+                  onTogglePinnedFeed={onTogglePinnedFeed}
+                  onFeedDensityOverrideChange={onFeedDensityOverrideChange}
+                  onFeedShowMediaOverrideChange={onFeedShowMediaOverrideChange}
+                />
+              ))}
             </div>
           </section>
           <ExploreDiscoverFeeds
