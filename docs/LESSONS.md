@@ -2,9 +2,6 @@
 
 Reusable knowledge for future sessions. NOT a changelog: no per-session history, no "what we did" notes. Append a bullet only when a future session would otherwise re-learn it. Things to DO belong in GitHub issues; things to KNOW belong here. Keep it lean - if this file starts reading like a changelog, trim it.
 
-## Upstream reference docs are vendored locally
-- The `docs/` folder contains full copies of the upstream references: `atproto` (AT Protocol monorepo: lexicons + `@atproto/*` packages), `bsky-docs` (Bluesky API docs), `atproto-website` (atproto.com docs source), `cookbook` (Bluesky cookbook examples), `social-app` (actual bsky.app web source), `nextjs-oauth-tutorial` + `statusphere-example-app` (OAuth examples). Grep these before hitting docs.bsky.app or the network - the answer is usually already vendored.
-
 ## Extracting code out of App.tsx (#18)
 - Before moving a component/lib module out of App.tsx, grep the verifiers: `rg "<name|className" scripts/verify-*.mjs`. Retire any matching reader regex in the SAME commit or `npm run build` fails. Not every move has a regex - check first, don't assume.
 - Splice large regions with a tiny Node script (read App.tsx, slice by 1-indexed line range, write new file, join-remove the range) to guarantee verbatim bodies; verify boundaries with `rg`/`read` and run `tsc` immediately after.
@@ -22,14 +19,15 @@ Reusable knowledge for future sessions. NOT a changelog: no per-session history,
 - `src/features/post/RichText.tsx` (`renderRichText`) - any surface needing facets imports it; no inline copies.
 
 ## Live smoke / dev loop
-- `scripts/cdp.mjs` only talks to an http(s) page target - `about:blank` tabs are ignored. Open a tab via `Invoke-RestMethod -Method Put 'http://127.0.0.1:9222/json/new?<url>'`.
 - `location.href` navigation is a FULL reload (cold feed, empty caches). To exercise the cache-hit/anchored-restore path use in-app navigation (click a post, then `history.back()`).
-- Kill the dev server via the port-5173 listener's OwningProcess; `$PID` is read-only in PowerShell - use another variable name.
 - Scroll restore: the scroller is `.timeline`; programmatic `scrollTop` gets re-adjusted by measurement, so set it, let it settle a few seconds, and assert the settled value.
+- `$PID` is read-only in PowerShell - when killing the port-5173 dev server (find the listener's OwningProcess), use another variable name.
 
 ## Scroll restore (the content-anchored model)
 - Pixel-offset restore fights the virtual list: it re-asserts a stale target -> rows re-mount at the too-tall default estimate -> measure shorter -> totalHeight shrinks -> scrollTop clamps back. The fix anchors to the top-visible post URI (+ intra-row offset), recomputes from live measured layout each frame, clamps to live totalHeight.
 - If a future scroll bug shows "restore never converges / lands near top", apply the anchored pattern - do NOT just widen the rAF budget (tried and reverted).
+- A restore path that runs BEFORE the surface finishes loading needs the anchored path, not the fixed-frame pixel loop: the pixel path's ~30-frame budget expires while async rows/images still grow, so it clamps to ~0. The cold-load feed restore now routes through `restoreScrollFor` (which falls back to the pixel path when no anchor is saved) exactly like the cache-hit and profile paths - don't add a fresh raw-pixel call site.
+- Live smoke gotcha: the public Discover feed is dynamic, so a saved anchor post may not be present in the freshly-fetched rows after a cold reload; the anchored effect then falls back to the pixel offset clamped against the shorter cold-load content. Assert "restored non-zero" rather than "top-visible post URI matches the anchor" on a live feed.
 
 ## jsdom / vitest gotchas
 - `Element.prototype.scrollIntoView`, `window.matchMedia`, `window.requestAnimationFrame`, `URL.createObjectURL/revokeObjectURL`, and `navigator.share`/`navigator.clipboard` are NOT implemented in jsdom - stub in `beforeAll`/`beforeEach` as needed.

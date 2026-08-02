@@ -34,13 +34,12 @@ SHIPPING (when an issue's fix is verified):
 - #23 (stale origin) is CLOSED as of 2026-08-01. Re-verify on the live origin once Cloudflare rebuilds: app boots, feed/trending render, engagement panels load, no CSP violations in the console; the service worker registers only in PROD; the boot failure-detector lives in public/boot-error.js. Anything needing auth (OAuth writes, moderation, composer) requires commit + push + operator sign-in; never promise local auth verification.
 
 WHAT TO WORK ON THIS SESSION (forward-looking; use your judgement, keep rotating areas, batch small fixes):
-- Pick from the open GitHub issues (currently #1-#49). Skip any that already carry the `claimed` label (check `--json number,title,labels`). Highlights:
-  - #18 (App.tsx decomposition) is the structural track; most clusters are already extracted to `src/features/**` + `src/lib/**`. The remaining big clusters - ThreadView/renderThreadNode + CombinedThreadViewCard/LongThreadCard and the PostCard/media cluster (PostCard/PostEmbeds/QuotedPostCard/PostImageVideoMedia/VideoEmbedCard/MediaOnlyPostCard) - are BLOCKED on #7 (claimed): `scripts/verify-layout-behavior.mjs` pins their App.tsx source, and importing them back would be a circular dep. Do NOT attempt them until #7 lands.
-  - #19 (regex source-text tests -> behavioral tests) continues alongside every extraction. Reader verifier is 34 assertions (31 requirePattern + 3 requireInfoPattern); layout is 35. Retire reader regexes as components/lib modules move; the layout regexes (media aspectRatio/videoFrameStyle pins) can only be swapped once #7 lands.
-  - #7 (CSS tokens / visual-regression coverage) is CLAIMED - do NOT touch `src/styles.css` or `scripts/verify-layout-behavior.mjs` until it lands. After it lands: #20 dead-selector sweep + co-locate each extracted component's CSS slice (and fold #36's orphaned .plain-info-icon CSS), then finally the media + ThreadView extraction.
-  - #39 (combined-thread segment + footer JSX dedup, ThreadedPostCard vs CombinedThreadViewCard) is CLAIMED. The other in-file dedups (#46 openTag useCallback, #48 feed-search cursor pagination, #49 masonry grid dedup, #50 recent-item copy, #51 a11y reorder handle) are small self-contained #6 follow-ups.
-  - #45 (cold-load scroll restore lands at 0 - the pixel-restore rAF budget expires before async content grows; anchored path only runs on cache hits) is a genuine UX robustness gap. Consider handing the saved content anchor to VirtualPostList on the cold-load path too (restoreScrollFor already does this on cache hits); the `src/lib/scroll.test.ts` suite + a live smoke are the gates.
-  - Investigate-and-decide: #30 (composer video attachment - needs blob:video scope + app.bsky.video.uploadVideo, deploy/sign-in gated), #16 (saved-feed-order cross-client confirmation - was blocked by #23, now unblocked; re-check on a healthy origin), #24 (mobile touch-viewport confirmation of the anchored scroll restore - needs a healthy deploy + signed-in CDP).
+- Pick from the open GitHub issues (currently #1-#47 open + #45-#51 mostly closed). Skip any that already carry the `claimed` label (check `--json number,title,labels`). Highlights:
+  - #18 (App.tsx decomposition) is the structural track; most clusters are already extracted to `src/features/**` + `src/lib/**`. The remaining big clusters - ThreadView/renderThreadNode + CombinedThreadViewCard/LongThreadCard and the PostCard/media cluster (PostCard/PostEmbeds/QuotedPostCard/PostImageVideoMedia/VideoEmbedCard/MediaOnlyPostCard) - are BLOCKED on #7: `scripts/verify-layout-behavior.mjs` pins their App.tsx source, and importing them back would be a circular dep. Do NOT attempt them until #7 lands.
+  - #19 (regex source-text tests -> behavioral tests) continues alongside every extraction. Reader verifier is 31 requirePattern + 3 requireInfoPattern + 2 forbidPattern; layout is 35. Retire reader regexes as components/lib modules move; the layout regexes (media aspectRatio/videoFrameStyle pins) can only be swapped once #7 lands.
+  - #7 (CSS tokens / visual-regression coverage) no longer carries the `claimed` label but its in-flight edits to `src/styles.css` + `scripts/verify-layout-behavior.mjs` are STILL in the worktree - check its actual state (it may be ready to claim/land) before touching those two files; if unclaimed, it is the highest-value target since the media + ThreadView extraction and the #20 dead-selector sweep all wait on it. After it lands: #20 dead-selector sweep + co-locate each extracted component's CSS slice (and fold #36's orphaned .plain-info-icon CSS), then finally the media + ThreadView extraction.
+  - #45/#46/#48/#49/#50/#51 are CLOSED this batch (cold-load anchored restore, useCallback search/tag context, feed-search cursor pagination, masonry-grid dedup, recent-trail copy, a11y reorder handle). #39 (combined-thread JSX dedup) is also CLOSED.
+  - Investigate-and-decide: #30 (composer video attachment - needs blob:video scope + app.bsky.video.uploadVideo, deploy/sign-in gated), #16 (saved-feed-order cross-client confirmation - #23 is closed so re-check on a healthy origin), #24 (mobile touch-viewport confirmation of the anchored scroll restore - needs a healthy deploy + signed-in CDP), #47 (mobile-header scroll listener leaks on surface->surface nav - small self-contained fix).
   - #5/#6/#22 are open-ended improvement/triage items. A code-review pass over App.tsx is a proven source of shippable micro-fixes and is a good session fill - delegate the research to a sub-agent, verify findings against the source, confirm no verify-script pins match (`rg "<pattern>" scripts/verify-*.mjs`), then implement.
 - Leave the worktree with no unrelated revert; keep changes scoped; file a follow-up GitHub issue for anything you notice but defer. Surface infra problems (e.g. stale deploys) as issues and move on - don't burn the session on them.
 
@@ -55,9 +54,10 @@ Required startup reads:
 
 1. Get-Content -LiteralPath docs\PLAN.md
 2. Get-Content -LiteralPath docs\LESSONS.md
-3. git status --short --branch
-4. rg --files
-5. gh issue list --repo radialmonster/bigbsky --state open --json number,title,labels
+3. Get-Content -LiteralPath CLAUDE.md
+4. git status --short --branch
+5. rg --files
+6. gh issue list --repo radialmonster/bigbsky --state open --json number,title,labels
 
 Command retry rules:
 
@@ -79,9 +79,9 @@ Do not diagnose this as a repo path, PowerShell, npm, or git problem unless Powe
 
 After reading:
 
-- Use the open GitHub issues, docs\PLAN.md, and docs\LESSONS.md as the source of truth for what has been done, what is next, and durable project knowledge; there is no separate memory.md file.
-- OFFLINE REFERENCE DOCS: the docs/ folder vendors full copies of the upstream references - docs\atproto (the AT Protocol monorepo: lexicons + @atproto packages), docs\bsky-docs (Bluesky API docs, Docusaurus site), docs\atproto-website (atproto.com docs source), docs\cookbook (Bluesky cookbook with runnable API examples), docs\social-app (the actual bsky.app web source - useful for how Bluesky does a surface), docs\nextjs-oauth-tutorial and docs\statusphere-example-app (OAuth examples). Grep these before reaching for a network call to docs.bsky.app or the atproto lexicon - the answer is often already vendored locally.
-- Inspect docs\PLAN.md for the next unfinished item that is feasible in the static SPA.
+- Source-of-truth roles: open GitHub issues = OPEN WORK (what is next); docs\PLAN.md = design context + history (it no longer tracks open tasks); docs\LESSONS.md = durable lessons; CLAUDE.md = project notes + the vendored reference list. There is no separate memory.md file.
+- OFFLINE REFERENCE DOCS: the docs/ folder vendors full copies of the upstream references (atproto, bsky-docs, atproto-website, cookbook, social-app, nextjs-oauth-tutorial, statusphere-example-app). The annotated per-repo list lives in CLAUDE.md; grep a vendored clone before reaching for a network call to docs.bsky.app or the atproto lexicon.
+- Pick the next item from the open GitHub issues; prefer one feasible in the static SPA.
 - Prefer items that can be implemented, verified, documented in the plan, committed, and pushed in one run.
 - Avoid duplicating the most recent completed work.
 - If the worktree has unrelated user changes, do not revert them.
@@ -140,7 +140,7 @@ The same applies to `npx` (use `npx.cmd`) and any other `.cmd`-shimmed CLI when 
 - To start the local BigBsky dev server, run `npm run dev` (or `npm.cmd run dev`) from the repo root. Vite serves it at `http://127.0.0.1:5173/` by default.
 - For browser checks, first see whether Chrome dev mode is already running on port 9222. Check processes for `chrome.exe` with `--remote-debugging-port=9222`, then verify `http://127.0.0.1:9222/json/version`. If it is running, use that browser instead of starting another one. If it is not running, start Chrome with:
   `Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" -ArgumentList "--remote-debugging-port=9222 --user-data-dir=$env:LOCALAPPDATA\Codex\ChromeProfiles\fb-tools-test --start-maximized --auto-open-devtools-for-tabs --disable-first-run-ui --no-first-run about:blank" -WindowStyle Hidden`
-- `scripts/cdp.mjs` only talks to an http(s) page target - `about:blank` tabs are ignored; open a new tab first via `Invoke-RestMethod -Method Put 'http://127.0.0.1:9222/json/new?<url>'`. Kill the dev server by finding the port 5173 listener's OwningProcess and `Stop-Process` it (note: `$PID` is read-only in PowerShell - use another variable name).
+- To drive a page, `scripts/cdp.mjs` only talks to an http(s) page target - `about:blank` tabs are ignored, so open a real tab first via `Invoke-RestMethod -Method Put 'http://127.0.0.1:9222/json/new?<url>'`. Kill the dev server by finding the port 5173 listener's OwningProcess and `Stop-Process` it (use a non-`$PID` variable name - `$PID` is read-only). Full CDP reference: docs\ops.md "Dev Tooling"; browser gotchas: docs\LESSONS.md "Live smoke / dev loop".
 
 ## Watchdog loop note (shared)
 
