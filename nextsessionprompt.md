@@ -54,7 +54,7 @@ Required startup reads:
 
 1. Get-Content -LiteralPath docs\PLAN.md
 2. Get-Content -LiteralPath docs\LESSONS.md
-3. Get-Content -LiteralPath CLAUDE.md
+3. Get-Content -LiteralPath AGENTS.md
 4. git status --short --branch
 5. rg --files
 6. gh issue list --repo radialmonster/bigbsky --state open --json number,title,labels
@@ -79,8 +79,8 @@ Do not diagnose this as a repo path, PowerShell, npm, or git problem unless Powe
 
 After reading:
 
-- Source-of-truth roles: open GitHub issues = OPEN WORK (what is next); docs\PLAN.md = design context + history (it no longer tracks open tasks); docs\LESSONS.md = durable lessons; CLAUDE.md = project notes + the vendored reference list. There is no separate memory.md file.
-- OFFLINE REFERENCE DOCS: the docs/ folder vendors full copies of the upstream references (atproto, bsky-docs, atproto-website, cookbook, social-app, nextjs-oauth-tutorial, statusphere-example-app). The annotated per-repo list lives in CLAUDE.md; grep a vendored clone before reaching for a network call to docs.bsky.app or the atproto lexicon.
+- Source-of-truth roles: open GitHub issues = OPEN WORK (what is next); docs\PLAN.md = design context + history (it no longer tracks open tasks); docs\LESSONS.md = durable lessons; AGENTS.md = project notes + the vendored reference list. There is no separate memory.md file.
+- OFFLINE REFERENCE DOCS: the docs/ folder vendors full copies of the upstream references (atproto, bsky-docs, atproto-website, cookbook, social-app, nextjs-oauth-tutorial, statusphere-example-app). The annotated per-repo list lives in AGENTS.md; grep a vendored clone before reaching for a network call to docs.bsky.app or the atproto lexicon.
 - Pick the next item from the open GitHub issues; prefer one feasible in the static SPA.
 - Prefer items that can be implemented, verified, documented in the plan, committed, and pushed in one run.
 - Avoid duplicating the most recent completed work.

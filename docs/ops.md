@@ -54,7 +54,7 @@ with the operator's normal Chrome windows:
 ```
 & "C:\Program Files\Google\Chrome\Application\chrome.exe" `
   --remote-debugging-port=9222 `
-  --user-data-dir=$env:TEMP\chrome-debug-profile `
+  --user-data-dir=$env:LOCALAPPDATA\Codex\ChromeProfiles\fb-tools-test `
   --auto-open-devtools-for-tabs `
   http://127.0.0.1:5173/
 ```
@@ -105,11 +105,12 @@ Workflow:
    ```
    & "C:\Program Files\Google\Chrome\Application\chrome.exe" `
      --remote-debugging-port=9222 `
-     --user-data-dir=$env:TEMP\chrome-debug-profile `
+     --user-data-dir=$env:LOCALAPPDATA\Codex\ChromeProfiles\fb-tools-test `
      https://bigbsky.com/
    ```
 
-   The dedicated `--user-data-dir` profile persists the OAuth session between
+   The dedicated `--user-data-dir` profile (same path as the local-launch command
+   above, so the OAuth session carries over) persists the session between
    launches, so the operator usually only has to sign in once.
 3. **Confirm the new code actually shipped** before testing behavior — fetch the
    page HTML, extract the hashed `assets/index-*.js` name, fetch it, and grep for
